@@ -9,11 +9,18 @@ class BinomialTree:
     def __init__(
         self,
         spot: float,
-        rate: float,  # determines the forward level of the next column
+        rate: float,
         volatility: float,
         maturity: float,
         nb_steps: int,
     ) -> None:
+        self._validate_inputs(
+            spot,
+            volatility,
+            maturity,
+            nb_steps,
+        )
+
         self.spot: float = spot
         self.rate: float = rate
         self.volatility: float = volatility
@@ -22,13 +29,45 @@ class BinomialTree:
 
         self.dt: float = maturity / nb_steps
 
-        # Controls the spacing between price levels in the lattice
+        # Controls the spacing between price levels
         self.alpha: float = self._compute_alpha()
 
-        self.up_probability: float = 1.0 / (self.alpha + 1.0)
-        self.down_probability: float = 1.0 - self.up_probability
+        self.up_probability: float = 1.0 / (
+            self.alpha + 1.0
+        )
+        self.down_probability: float = (
+            1.0 - self.up_probability
+        )
 
         self.root: Node = Node(spot)
+
+    @staticmethod
+    def _validate_inputs(
+        spot: float,
+        volatility: float,
+        maturity: float,
+        nb_steps: int,
+    ) -> None:
+        """Validate the main lattice parameters."""
+        if spot <= 0.0:
+            raise ValueError(
+                "Spot must be strictly positive."
+            )
+
+        if volatility < 0.0:
+            raise ValueError(
+                "Volatility cannot be negative."
+            )
+
+        if maturity <= 0.0:
+            raise ValueError(
+                "Maturity must be strictly positive."
+            )
+
+        if type(nb_steps) is not int or nb_steps < 1:
+            raise ValueError(
+                "Number of steps must be a positive integer."
+            )
 
     def _compute_alpha(self) -> float:
         """Compute the lattice spacing factor alpha."""
@@ -36,7 +75,9 @@ class BinomialTree:
             self.volatility ** 2 * self.dt
         )
 
-        middle_term = (1.0 + variance_factor) / 2.0
+        middle_term = (
+            1.0 + variance_factor
+        ) / 2.0
 
         return middle_term + math.sqrt(
             middle_term ** 2 - 1.0
@@ -81,7 +122,9 @@ class BinomialTree:
             current_node.next_down = down_node
             next_node.lower_neighbor = down_node
 
-            current_node = current_node.lower_neighbor
+            current_node = (
+                current_node.lower_neighbor
+            )
 
             if current_node is not None:
                 current_node.next_up = down_node

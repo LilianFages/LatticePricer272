@@ -1,5 +1,7 @@
 import math
 
+import pytest
+
 from src.binomial_tree import BinomialTree
 
 
@@ -35,8 +37,13 @@ def test_binomial_probabilities_sum_to_one() -> None:
         nb_steps=1,
     )
 
+    probability_sum = (
+        tree.up_probability
+        + tree.down_probability
+    )
+
     assert math.isclose(
-        tree.up_probability + tree.down_probability,
+        probability_sum,
         1.0,
         rel_tol=1e-12,
     )
@@ -57,13 +64,17 @@ def test_expected_value_matches_forward() -> None:
     assert tree.root.next_down is not None
 
     expected_price = (
-        tree.up_probability * tree.root.next_up.price
-        + tree.down_probability * tree.root.next_down.price
+        tree.up_probability
+        * tree.root.next_up.price
+        + tree.down_probability
+        * tree.root.next_down.price
     )
 
     forward_price = (
         tree.spot
-        * math.exp(tree.rate * tree.dt)
+        * math.exp(
+            tree.rate * tree.dt
+        )
     )
 
     assert math.isclose(
@@ -87,8 +98,15 @@ def test_two_step_tree_recombines() -> None:
     assert tree.root.next_up is not None
     assert tree.root.next_down is not None
 
-    assert tree.root.next_up.next_down is not None
-    assert tree.root.next_down.next_up is not None
+    assert (
+        tree.root.next_up.next_down
+        is not None
+    )
+
+    assert (
+        tree.root.next_down.next_up
+        is not None
+    )
 
     assert (
         tree.root.next_up.next_down
@@ -121,7 +139,10 @@ def test_three_step_tree_structure() -> None:
     assert second_middle is not None
     assert second_bottom is not None
 
-    assert second_middle is first_down.next_up
+    assert (
+        second_middle
+        is first_down.next_up
+    )
 
     assert (
         second_top.next_down
@@ -142,9 +163,12 @@ def test_three_step_tree_structure() -> None:
 
     while current_node is not None:
         node_count += 1
-        current_node = current_node.lower_neighbor
+        current_node = (
+            current_node.lower_neighbor
+        )
 
     assert node_count == 4
+
 
 def test_up_down_price_matches_two_step_forward() -> None:
     tree = BinomialTree(
@@ -162,11 +186,15 @@ def test_up_down_price_matches_two_step_forward() -> None:
     assert first_up is not None
     assert first_up.next_down is not None
 
-    middle_price = first_up.next_down.price
+    middle_price = (
+        first_up.next_down.price
+    )
 
     expected_price = (
         tree.spot
-        * math.exp(tree.rate * tree.maturity)
+        * math.exp(
+            tree.rate * tree.maturity
+        )
     )
 
     assert math.isclose(
@@ -198,9 +226,14 @@ def test_terminal_column_has_nb_steps_plus_one_nodes() -> None:
 
     while current_node is not None:
         node_count += 1
-        current_node = current_node.lower_neighbor
+        current_node = (
+            current_node.lower_neighbor
+        )
 
-    assert node_count == tree.nb_steps + 1
+    assert (
+        node_count
+        == tree.nb_steps + 1
+    )
 
 
 def test_terminal_prices_are_geometrically_spaced() -> None:
@@ -223,7 +256,9 @@ def test_terminal_prices_are_geometrically_spaced() -> None:
     upper_node = terminal_top
 
     while upper_node.lower_neighbor is not None:
-        lower_node = upper_node.lower_neighbor
+        lower_node = (
+            upper_node.lower_neighbor
+        )
 
         price_ratio = (
             upper_node.price
@@ -237,3 +272,59 @@ def test_terminal_prices_are_geometrically_spaced() -> None:
         )
 
         upper_node = lower_node
+
+
+def test_invalid_spot_raises_error() -> None:
+    with pytest.raises(
+        ValueError,
+        match="Spot must be strictly positive",
+    ):
+        BinomialTree(
+            spot=0.0,
+            rate=0.02,
+            volatility=0.20,
+            maturity=1.0,
+            nb_steps=10,
+        )
+
+
+def test_negative_volatility_raises_error() -> None:
+    with pytest.raises(
+        ValueError,
+        match="Volatility cannot be negative",
+    ):
+        BinomialTree(
+            spot=100.0,
+            rate=0.02,
+            volatility=-0.20,
+            maturity=1.0,
+            nb_steps=10,
+        )
+
+
+def test_invalid_maturity_raises_error() -> None:
+    with pytest.raises(
+        ValueError,
+        match="Maturity must be strictly positive",
+    ):
+        BinomialTree(
+            spot=100.0,
+            rate=0.02,
+            volatility=0.20,
+            maturity=0.0,
+            nb_steps=10,
+        )
+
+
+def test_invalid_number_of_steps_raises_error() -> None:
+    with pytest.raises(
+        ValueError,
+        match="Number of steps must be a positive integer",
+    ):
+        BinomialTree(
+            spot=100.0,
+            rate=0.02,
+            volatility=0.20,
+            maturity=1.0,
+            nb_steps=0,
+        )
