@@ -1,0 +1,15 @@
+User-defined precision experiment
+=================================
+
+Spot: 100.0
+Rate: 0.02
+Volatility: 0.2
+Maturity: 1.0
+
+Target | Steps | Empirical gap | Status
+---------------------------------------
+0.500% | 9 | 0.4373% | OK
+0.250% | 17 | 0.2268% | OK
+0.100% | 41 | 0.0969% | OK
+0.050% | 81 | 0.0475% | OK
+0.010% | 403 | 0.0097% | OK
