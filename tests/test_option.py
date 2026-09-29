@@ -27,12 +27,22 @@ def test_put_payoff_out_of_the_money() -> None:
     assert option.payoff(120.0) == 0.0
 
 
-def test_invalid_strike_raises_error() -> None:
+def test_negative_strike_raises_error() -> None:
     with pytest.raises(
         ValueError,
-        match="Strike must be strictly positive",
+        match="Strike cannot be negative",
     ):
-        CallOption(strike=0.0)
+        CallOption(
+            strike=-1.0
+        )
+
+
+def test_zero_strike_is_allowed() -> None:
+    option = CallOption(
+        strike=0.0
+    )
+
+    assert option.strike == 0.0
 
 
 def test_european_option_keeps_hold_value() -> None:

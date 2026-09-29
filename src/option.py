@@ -6,9 +6,9 @@ class Option:
         strike: float,
         is_american: bool = False,
     ) -> None:
-        if strike <= 0.0:
+        if strike < 0.0:
             raise ValueError(
-                "Strike must be strictly positive."
+                "Strike cannot be negative."
             )
 
         self.strike: float = strike
