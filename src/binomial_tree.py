@@ -1,6 +1,6 @@
 import math
 
-from src.node import Node
+from src.node import Node, TrunkNode
 
 
 class BinomialTree:
@@ -39,7 +39,7 @@ class BinomialTree:
             1.0 - self.up_probability
         )
 
-        self.root: Node = Node(spot)
+        self.root: TrunkNode = TrunkNode(spot)
 
     @staticmethod
     def _validate_inputs(
@@ -85,12 +85,59 @@ class BinomialTree:
 
     def build(self) -> None:
         """Build the complete recombining binomial lattice."""
-        current_top = self.root
+        current_top: Node = self.root
 
         for _ in range(self.nb_steps):
             current_top = self._build_next_column(
                 current_top
             )
+
+    def build_trunk(self) -> TrunkNode:
+        """Build the binomial trunk and return its last node."""
+        current_trunk = self.root
+
+        growth_factor = math.exp(
+            self.rate * self.dt
+        )
+
+        for step in range(self.nb_steps):
+            if step % 2 == 0:
+                next_price = (
+                    current_trunk.price
+                    * growth_factor
+                    * self.alpha
+                )
+
+                next_trunk = TrunkNode(
+                    next_price
+                )
+
+                current_trunk.next_up = (
+                    next_trunk
+                )
+
+            else:
+                next_price = (
+                    current_trunk.price
+                    * growth_factor
+                    / self.alpha
+                )
+
+                next_trunk = TrunkNode(
+                    next_price
+                )
+
+                current_trunk.next_down = (
+                    next_trunk
+                )
+
+            next_trunk.previous_trunk = (
+                current_trunk
+            )
+
+            current_trunk = next_trunk
+
+        return current_trunk
 
     def _build_next_column(
         self,

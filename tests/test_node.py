@@ -1,10 +1,12 @@
-from src.node import Node
+from src.node import Node, TrunkNode
 
 
 def test_node_creation() -> None:
     node = Node(100.0)
 
     assert node.price == 100.0
+    assert node.option_value is None
+
     assert node.next_up is None
     assert node.next_mid is None
     assert node.next_down is None
@@ -24,3 +26,24 @@ def test_node_direct_connections() -> None:
     assert root.next_down is down_node
     assert root.next_mid is None
     assert up_node.lower_neighbor is down_node
+
+
+def test_trunk_node_creation() -> None:
+    node = TrunkNode(100.0)
+
+    assert isinstance(node, Node)
+    assert node.price == 100.0
+    assert node.option_value is None
+    assert node.previous_trunk is None
+
+
+def test_trunk_node_backward_link() -> None:
+    previous_node = TrunkNode(100.0)
+    current_node = TrunkNode(102.0)
+
+    current_node.previous_trunk = previous_node
+
+    assert (
+        current_node.previous_trunk
+        is previous_node
+    )

@@ -3,6 +3,7 @@ import math
 import pytest
 
 from src.binomial_tree import BinomialTree
+from src.node import TrunkNode
 
 
 def test_one_step_tree_creation() -> None:
@@ -328,3 +329,116 @@ def test_invalid_number_of_steps_raises_error() -> None:
             maturity=1.0,
             nb_steps=0,
         )
+
+
+def test_root_is_trunk_node() -> None:
+    tree = BinomialTree(
+        spot=100.0,
+        rate=0.02,
+        volatility=0.20,
+        maturity=1.0,
+        nb_steps=4,
+    )
+
+    assert isinstance(
+        tree.root,
+        TrunkNode,
+    )
+
+
+def test_binomial_trunk_alternates_up_and_down() -> None:
+    tree = BinomialTree(
+        spot=100.0,
+        rate=0.02,
+        volatility=0.20,
+        maturity=1.0,
+        nb_steps=4,
+    )
+
+    tree.build_trunk()
+
+    first_trunk = tree.root.next_up
+
+    assert isinstance(
+        first_trunk,
+        TrunkNode,
+    )
+
+    second_trunk = first_trunk.next_down
+
+    assert isinstance(
+        second_trunk,
+        TrunkNode,
+    )
+
+    third_trunk = second_trunk.next_up
+
+    assert isinstance(
+        third_trunk,
+        TrunkNode,
+    )
+
+    fourth_trunk = third_trunk.next_down
+
+    assert isinstance(
+        fourth_trunk,
+        TrunkNode,
+    )
+
+
+def test_trunk_backward_links() -> None:
+    tree = BinomialTree(
+        spot=100.0,
+        rate=0.02,
+        volatility=0.20,
+        maturity=1.0,
+        nb_steps=3,
+    )
+
+    last_trunk = tree.build_trunk()
+
+    previous = last_trunk.previous_trunk
+
+    assert previous is not None
+
+    previous = previous.previous_trunk
+
+    assert previous is not None
+
+    previous = previous.previous_trunk
+
+    assert previous is tree.root
+
+
+def test_even_trunk_node_matches_forward() -> None:
+    tree = BinomialTree(
+        spot=100.0,
+        rate=0.02,
+        volatility=0.20,
+        maturity=1.0,
+        nb_steps=4,
+    )
+
+    tree.build_trunk()
+
+    first_trunk = tree.root.next_up
+
+    assert first_trunk is not None
+    assert first_trunk.next_down is not None
+
+    second_trunk = first_trunk.next_down
+
+    expected_price = (
+        tree.spot
+        * math.exp(
+            tree.rate
+            * 2.0
+            * tree.dt
+        )
+    )
+
+    assert math.isclose(
+        second_trunk.price,
+        expected_price,
+        rel_tol=1e-12,
+    )   
