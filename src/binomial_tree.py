@@ -83,6 +83,26 @@ class BinomialTree:
             middle_term ** 2 - 1.0
         )
 
+    def _node_price(
+        self,
+        step: int,
+        position: int,
+    ) -> float:
+        """Compute the price of one node in a column."""
+        growth_factor = math.exp(
+            self.rate * self.dt * step
+        )
+
+        alpha_power = (
+            step - 2 * position
+        )
+
+        return (
+            self.spot
+            * growth_factor
+            * self.alpha ** alpha_power
+        )
+
     def build(self) -> None:
         """Build the complete recombining binomial lattice."""
         current_top: Node = self.root
@@ -138,6 +158,63 @@ class BinomialTree:
             current_trunk = next_trunk
 
         return current_trunk
+
+    def build_column_backward(
+        self,
+        trunk_node: TrunkNode,
+        step: int,
+        next_top: Node | None = None,
+    ) -> Node:
+        """Build one column around its trunk node."""
+        trunk_position = step // 2
+
+        if trunk_position == 0:
+            top_node: Node = trunk_node
+        else:
+            top_node = Node(
+                self._node_price(
+                    step,
+                    0,
+                )
+            )
+
+        current_node = top_node
+        next_node = next_top
+
+        for position in range(step + 1):
+            if position > 0:
+                if position == trunk_position:
+                    lower_node: Node = trunk_node
+                else:
+                    lower_node = Node(
+                        self._node_price(
+                            step,
+                            position,
+                        )
+                    )
+
+                current_node.lower_neighbor = (
+                    lower_node
+                )
+
+                current_node = lower_node
+
+            if next_node is not None:
+                lower_next = (
+                    next_node.lower_neighbor
+                )
+
+                if lower_next is None:
+                    raise RuntimeError(
+                        "Incomplete next column."
+                    )
+
+                current_node.next_up = next_node
+                current_node.next_down = lower_next
+
+                next_node = lower_next
+
+        return top_node
 
     def _build_next_column(
         self,

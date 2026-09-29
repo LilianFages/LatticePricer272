@@ -441,4 +441,164 @@ def test_even_trunk_node_matches_forward() -> None:
         second_trunk.price,
         expected_price,
         rel_tol=1e-12,
-    )   
+    )
+
+
+def test_backward_terminal_column_node_count() -> None:
+    tree = BinomialTree(
+        spot=100.0,
+        rate=0.02,
+        volatility=0.20,
+        maturity=1.0,
+        nb_steps=4,
+    )
+
+    last_trunk = tree.build_trunk()
+
+    terminal_top = tree.build_column_backward(
+        trunk_node=last_trunk,
+        step=tree.nb_steps,
+    )
+
+    node_count = 0
+    current_node = terminal_top
+
+    while current_node is not None:
+        node_count += 1
+        current_node = (
+            current_node.lower_neighbor
+        )
+
+    assert node_count == 5
+
+
+def test_backward_column_reuses_trunk_node() -> None:
+    tree = BinomialTree(
+        spot=100.0,
+        rate=0.02,
+        volatility=0.20,
+        maturity=1.0,
+        nb_steps=5,
+    )
+
+    last_trunk = tree.build_trunk()
+
+    terminal_top = tree.build_column_backward(
+        trunk_node=last_trunk,
+        step=tree.nb_steps,
+    )
+
+    current_node = terminal_top
+
+    for _ in range(tree.nb_steps // 2):
+        assert current_node.lower_neighbor is not None
+        current_node = (
+            current_node.lower_neighbor
+        )
+
+    assert current_node is last_trunk
+
+
+def test_backward_columns_are_connected() -> None:
+    tree = BinomialTree(
+        spot=100.0,
+        rate=0.02,
+        volatility=0.20,
+        maturity=1.0,
+        nb_steps=3,
+    )
+
+    last_trunk = tree.build_trunk()
+
+    next_top = tree.build_column_backward(
+        trunk_node=last_trunk,
+        step=3,
+    )
+
+    previous_trunk = (
+        last_trunk.previous_trunk
+    )
+
+    assert previous_trunk is not None
+
+    current_top = tree.build_column_backward(
+        trunk_node=previous_trunk,
+        step=2,
+        next_top=next_top,
+    )
+
+    current_node = current_top
+    next_node = next_top
+
+    while current_node is not None:
+        assert current_node.next_up is next_node
+
+        assert (
+            current_node.next_down
+            is next_node.lower_neighbor
+        )
+
+        current_node = (
+            current_node.lower_neighbor
+        )
+
+        next_node = (
+            next_node.lower_neighbor
+        )
+
+
+def test_backward_terminal_prices_match_forward_tree() -> None:
+    forward_tree = BinomialTree(
+        spot=100.0,
+        rate=0.02,
+        volatility=0.20,
+        maturity=1.0,
+        nb_steps=4,
+    )
+
+    forward_tree.build()
+
+    forward_top = forward_tree.root
+
+    for _ in range(forward_tree.nb_steps):
+        assert forward_top.next_up is not None
+        forward_top = forward_top.next_up
+
+    backward_tree = BinomialTree(
+        spot=100.0,
+        rate=0.02,
+        volatility=0.20,
+        maturity=1.0,
+        nb_steps=4,
+    )
+
+    last_trunk = backward_tree.build_trunk()
+
+    backward_top = (
+        backward_tree.build_column_backward(
+            trunk_node=last_trunk,
+            step=backward_tree.nb_steps,
+        )
+    )
+
+    forward_node = forward_top
+    backward_node = backward_top
+
+    while forward_node is not None:
+        assert backward_node is not None
+
+        assert math.isclose(
+            forward_node.price,
+            backward_node.price,
+            rel_tol=1e-12,
+        )
+
+        forward_node = (
+            forward_node.lower_neighbor
+        )
+
+        backward_node = (
+            backward_node.lower_neighbor
+        )
+
+    assert backward_node is None
