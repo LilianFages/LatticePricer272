@@ -1,0 +1,13 @@
+Binomial convergence experiment
+===============================
+
+Spot: 100.0
+Strike: 100.0
+Rate: 0.02
+Volatility: 0.2
+Maturity: 1.0
+
+Black-Scholes price: 8.91603728
+
+Absolute error at N=1: 2.02423179
+Absolute error at N=500: 0.00055731
