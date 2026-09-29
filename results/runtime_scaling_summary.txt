@@ -1,0 +1,11 @@
+Runtime scaling experiment
+==========================
+
+Runs per point: 5
+Fit from N >= 50
+
+Model:
+runtime = C * N^q
+
+Recursive exponent q: 1.917018
+Backward exponent q: 1.860692
