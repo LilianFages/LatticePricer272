@@ -1,0 +1,20 @@
+Binomial convergence order experiment
+=====================================
+
+Spot: 100.0
+Rate: 0.02
+Volatility: 0.2
+Maturity: 1.0
+Strike range: 90.0 to 110.0
+
+Error measure:
+E_N = max_K |Tree(N, K) - BlackScholes(K)|
+
+Model:
+E_N = C * N^(-p)
+
+Estimated p: 0.997875
+Estimated C: 2.020220
+Log-log R²: 0.999985
+
+Theoretical first-order target: p = 1
