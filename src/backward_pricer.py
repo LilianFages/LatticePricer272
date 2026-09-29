@@ -6,14 +6,14 @@ from src.option import Option
 
 
 class BackwardPricer:
-    """Prices European options backward on a binomial lattice."""
+    """Prices vanilla options backward on a binomial lattice."""
 
     def price(
         self,
         tree: BinomialTree,
         option: Option,
     ) -> float:
-        """Price a European option by backward induction."""
+        """Price an option by backward induction."""
         last_trunk = tree.build_trunk()
 
         next_top = tree.build_column_backward(
@@ -55,6 +55,7 @@ class BackwardPricer:
             self._price_column(
                 current_top,
                 tree,
+                option,
                 discount_factor,
             )
 
@@ -91,6 +92,7 @@ class BackwardPricer:
     def _price_column(
         top_node: Node,
         tree: BinomialTree,
+        option: Option,
         discount_factor: float,
     ) -> None:
         """Price all nodes of one column."""
@@ -113,13 +115,17 @@ class BackwardPricer:
                     "Next column has not been priced."
                 )
 
+            hold_value = discount_factor * (
+                tree.up_probability
+                * next_up.option_value
+                + tree.down_probability
+                * next_down.option_value
+            )
+
             current_node.option_value = (
-                discount_factor
-                * (
-                    tree.up_probability
-                    * next_up.option_value
-                    + tree.down_probability
-                    * next_down.option_value
+                option.value_at_node(
+                    spot=current_node.price,
+                    hold_value=hold_value,
                 )
             )
 

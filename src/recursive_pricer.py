@@ -6,7 +6,7 @@ from src.option import Option
 
 
 class RecursivePricer:
-    """Prices European options recursively on a binomial lattice."""
+    """Prices vanilla options recursively on a binomial lattice."""
 
     def price(
         self,
@@ -72,9 +72,14 @@ class RecursivePricer:
             discount_factor=discount_factor,
         )
 
-        node.option_value = discount_factor * (
+        hold_value = discount_factor * (
             tree.up_probability * up_value
             + tree.down_probability * down_value
+        )
+
+        node.option_value = option.value_at_node(
+            spot=node.price,
+            hold_value=hold_value,
         )
 
         return node.option_value

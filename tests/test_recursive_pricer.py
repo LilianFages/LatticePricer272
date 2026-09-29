@@ -165,6 +165,7 @@ def test_recombining_node_has_option_value() -> None:
         is not None
     )
 
+
 def test_recursive_two_step_call_matches_manual_pricing() -> None:
     tree = BinomialTree(
         spot=100.0,
@@ -284,6 +285,101 @@ def test_recursive_pricer_respects_put_call_parity() -> None:
     assert math.isclose(
         call_price - put_price,
         expected_difference,
+        rel_tol=1e-12,
+        abs_tol=1e-12,
+    )
+
+
+def test_recursive_american_put_can_exercise_early() -> None:
+    european_tree = BinomialTree(
+        spot=50.0,
+        rate=0.10,
+        volatility=0.01,
+        maturity=1.0,
+        nb_steps=1,
+    )
+
+    american_tree = BinomialTree(
+        spot=50.0,
+        rate=0.10,
+        volatility=0.01,
+        maturity=1.0,
+        nb_steps=1,
+    )
+
+    european_put = PutOption(
+        strike=100.0,
+        is_american=False,
+    )
+
+    american_put = PutOption(
+        strike=100.0,
+        is_american=True,
+    )
+
+    pricer = RecursivePricer()
+
+    european_price = pricer.price(
+        european_tree,
+        european_put,
+    )
+
+    american_price = pricer.price(
+        american_tree,
+        american_put,
+    )
+
+    assert american_price > european_price
+
+    assert math.isclose(
+        american_price,
+        50.0,
+        rel_tol=1e-12,
+    )
+
+
+def test_recursive_american_call_equals_european_call() -> None:
+    european_tree = BinomialTree(
+        spot=100.0,
+        rate=0.05,
+        volatility=0.20,
+        maturity=1.0,
+        nb_steps=10,
+    )
+
+    american_tree = BinomialTree(
+        spot=100.0,
+        rate=0.05,
+        volatility=0.20,
+        maturity=1.0,
+        nb_steps=10,
+    )
+
+    european_call = CallOption(
+        strike=100.0,
+        is_american=False,
+    )
+
+    american_call = CallOption(
+        strike=100.0,
+        is_american=True,
+    )
+
+    pricer = RecursivePricer()
+
+    european_price = pricer.price(
+        european_tree,
+        european_call,
+    )
+
+    american_price = pricer.price(
+        american_tree,
+        american_call,
+    )
+
+    assert math.isclose(
+        american_price,
+        european_price,
         rel_tol=1e-12,
         abs_tol=1e-12,
     )
