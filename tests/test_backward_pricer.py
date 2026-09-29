@@ -237,3 +237,41 @@ def test_backward_american_put_can_exercise_early() -> None:
         50.0,
         rel_tol=1e-12,
     )
+
+def test_backward_matches_recursive_american_call_negative_rate() -> None:
+    backward_tree = BinomialTree(
+        spot=150.0,
+        rate=-0.10,
+        volatility=0.15,
+        maturity=1.0,
+        nb_steps=8,
+    )
+
+    recursive_tree = BinomialTree(
+        spot=150.0,
+        rate=-0.10,
+        volatility=0.15,
+        maturity=1.0,
+        nb_steps=8,
+    )
+
+    option = CallOption(
+        strike=100.0,
+        is_american=True,
+    )
+
+    backward_price = BackwardPricer().price(
+        backward_tree,
+        option,
+    )
+
+    recursive_price = RecursivePricer().price(
+        recursive_tree,
+        option,
+    )
+
+    assert math.isclose(
+        backward_price,
+        recursive_price,
+        rel_tol=1e-12,
+    )

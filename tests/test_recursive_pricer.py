@@ -383,3 +383,50 @@ def test_recursive_american_call_equals_european_call() -> None:
         rel_tol=1e-12,
         abs_tol=1e-12,
     )
+
+def test_recursive_american_call_can_exercise_with_negative_rate() -> None:
+    european_tree = BinomialTree(
+        spot=150.0,
+        rate=-0.10,
+        volatility=0.01,
+        maturity=1.0,
+        nb_steps=1,
+    )
+
+    american_tree = BinomialTree(
+        spot=150.0,
+        rate=-0.10,
+        volatility=0.01,
+        maturity=1.0,
+        nb_steps=1,
+    )
+
+    european_call = CallOption(
+        strike=100.0,
+        is_american=False,
+    )
+
+    american_call = CallOption(
+        strike=100.0,
+        is_american=True,
+    )
+
+    pricer = RecursivePricer()
+
+    european_price = pricer.price(
+        european_tree,
+        european_call,
+    )
+
+    american_price = pricer.price(
+        american_tree,
+        american_call,
+    )
+
+    assert american_price > european_price
+
+    assert math.isclose(
+        american_price,
+        50.0,
+        rel_tol=1e-12,
+    )
