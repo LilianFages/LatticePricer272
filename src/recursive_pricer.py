@@ -5,9 +5,10 @@ from src.binomial_tree import BinomialTree
 from src.node import Node
 from src.option import Option
 from src.trinomial_tree import TrinomialTree
+from src.hybrid_tree import HybridTree
 
 
-LatticeTree = BinomialTree | TrinomialTree
+LatticeTree = BinomialTree | TrinomialTree | HybridTree
 
 
 class RecursivePricer:
