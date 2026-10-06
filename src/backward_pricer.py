@@ -1,4 +1,5 @@
 import math
+from typing import Self
 
 from src.binomial_tree import BinomialTree
 from src.node import Node
@@ -9,13 +10,14 @@ class BackwardPricer:
     """Prices vanilla options backward on a binomial lattice."""
 
     def price(
-        self,
+        self: Self,
         tree: BinomialTree,
         option: Option,
     ) -> float:
         """Price an option by backward induction."""
         last_trunk = tree.build_trunk()
 
+        # Start from the complete maturity column.
         next_top = tree.build_column_backward(
             trunk_node=last_trunk,
             step=tree.nb_steps,
@@ -32,6 +34,7 @@ class BackwardPricer:
 
         current_trunk = last_trunk
 
+        # Rebuild and price one column at a time toward the root.
         for step in range(
             tree.nb_steps - 1,
             -1,
@@ -59,6 +62,7 @@ class BackwardPricer:
                 discount_factor,
             )
 
+            # The priced column becomes the reference for the next step.
             next_top = current_top
             current_trunk = previous_trunk
 
@@ -77,6 +81,7 @@ class BackwardPricer:
         """Set option payoffs on the maturity column."""
         current_node: Node | None = top_node
 
+        # Traverse the terminal column through vertical links.
         while current_node is not None:
             current_node.option_value = (
                 option.payoff(
@@ -102,6 +107,7 @@ class BackwardPricer:
             next_up = current_node.next_up
             next_down = current_node.next_down
 
+            # Both successors must belong to the already-priced next column.
             if next_up is None or next_down is None:
                 raise RuntimeError(
                     "Incomplete lattice connections."
@@ -115,6 +121,7 @@ class BackwardPricer:
                     "Next column has not been priced."
                 )
 
+            # Risk-neutral continuation value discounted over one time step.
             hold_value = discount_factor * (
                 tree.up_probability
                 * next_up.option_value

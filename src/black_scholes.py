@@ -1,4 +1,5 @@
 import math
+from typing import Self
 
 from src.option import CallOption, Option, PutOption
 
@@ -54,6 +55,7 @@ class BlackScholesPricer:
             * math.sqrt(maturity)
         )
 
+        # Combine moneyness, carry and variance in the d1 term.
         d1 = (
             math.log(
                 spot / strike
@@ -73,7 +75,7 @@ class BlackScholesPricer:
         return d1, d2
 
     def price(
-        self,
+        self: Self,
         option: Option,
         spot: float,
         rate: float,
@@ -92,45 +94,102 @@ class BlackScholesPricer:
                 "Black-Scholes only prices European options."
             )
 
+        # Handle cases where the standard formula becomes singular.
         if option.strike == 0.0:
-            if isinstance(
+            return self._price_zero_strike(
                 option,
-                CallOption,
-            ):
-                return spot
-
-            if isinstance(
-                option,
-                PutOption,
-            ):
-                return 0.0
-
-        if volatility == 0.0:
-            discounted_strike = (
-                option.strike
-                * math.exp(
-                    -rate * maturity
-                )
+                spot,
             )
 
-            if isinstance(
+        if volatility == 0.0:
+            return self._price_zero_volatility(
                 option,
-                CallOption,
-            ):
-                return max(
-                    spot - discounted_strike,
-                    0.0,
-                )
+                spot,
+                rate,
+                maturity,
+            )
 
-            if isinstance(
-                option,
-                PutOption,
-            ):
-                return max(
-                    discounted_strike - spot,
-                    0.0,
-                )
+        # Standard Black-Scholes case.
+        return self._price_standard_case(
+            option,
+            spot,
+            rate,
+            volatility,
+            maturity,
+        )
 
+    @staticmethod
+    def _price_zero_strike(
+        option: Option,
+        spot: float,
+    ) -> float:
+        """Price an option with a zero strike."""
+        if isinstance(
+            option,
+            CallOption,
+        ):
+            return spot
+
+        if isinstance(
+            option,
+            PutOption,
+        ):
+            return 0.0
+
+        raise TypeError(
+            "Unsupported option type."
+        )
+
+    @staticmethod
+    def _price_zero_volatility(
+        option: Option,
+        spot: float,
+        rate: float,
+        maturity: float,
+    ) -> float:
+        """Price a deterministic option when volatility is zero."""
+        discounted_strike = (
+            option.strike
+            * math.exp(
+                -rate * maturity
+            )
+        )
+
+        # With zero volatility, pricing reduces to discounted intrinsic value.
+        if isinstance(
+            option,
+            CallOption,
+        ):
+            return max(
+                spot - discounted_strike,
+                0.0,
+            )
+
+        if isinstance(
+            option,
+            PutOption,
+        ):
+            return max(
+                discounted_strike - spot,
+                0.0,
+            )
+
+        raise TypeError(
+            "Unsupported option type."
+        )
+
+    # Standard pricing once singular cases have been excluded.
+    def _price_standard_case(
+        self: Self,
+        option: Option,
+        spot: float,
+        rate: float,
+        volatility: float,
+        maturity: float,
+    ) -> float:
+        """Price an option using the standard Black-Scholes formula."""
+
+        # Compute the standardized variables shared by call and put formulas.
         d1, d2 = self._compute_d1_d2(
             spot,
             option.strike,
@@ -139,6 +198,7 @@ class BlackScholesPricer:
             maturity,
         )
 
+        # Discount the strike once for both call and put formulas.
         discounted_strike = (
             option.strike
             * math.exp(
@@ -157,6 +217,7 @@ class BlackScholesPricer:
                 * self._normal_cdf(d2)
             )
 
+        # Put pricing uses the symmetric normal probabilities.
         if isinstance(
             option,
             PutOption,

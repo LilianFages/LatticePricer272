@@ -1,4 +1,5 @@
 import math
+from typing import Self
 
 
 class BinomialErrorEstimator:
@@ -27,9 +28,11 @@ class BinomialErrorEstimator:
         maturity: float,
     ) -> float:
         """Return the constant in relative_gap = C / N."""
+        # With no volatility, the theoretical discretization gap vanishes.
         if volatility == 0.0:
             return 0.0
 
+        # The numerator combines growth and variance over maturity.
         numerator = (
             math.exp(
                 rate * maturity
@@ -38,6 +41,7 @@ class BinomialErrorEstimator:
             * maturity
         )
 
+        # The denominator normalizes by the dispersion of the diffusion.
         denominator = (
             2.0
             * math.sqrt(
@@ -52,13 +56,14 @@ class BinomialErrorEstimator:
             )
         )
 
+        # This constant determines the asymptotic size of the pricing gap.
         return (
             numerator
             / denominator
         )
 
     def relative_gap(
-        self,
+        self: Self,
         nb_steps: int,
         rate: float,
         volatility: float,
@@ -70,6 +75,7 @@ class BinomialErrorEstimator:
             maturity,
         )
 
+        # A binomial lattice requires a strictly positive integer step count.
         if (
             type(nb_steps) is not int
             or nb_steps < 1
@@ -84,13 +90,14 @@ class BinomialErrorEstimator:
             maturity,
         )
 
+        # The theoretical relative gap decreases at first order in 1 / N.
         return (
             constant
             / nb_steps
         )
 
     def steps_for_relative_precision(
-        self,
+        self: Self,
         target_precision: float,
         rate: float,
         volatility: float,
@@ -113,6 +120,7 @@ class BinomialErrorEstimator:
             maturity,
         )
 
+        # With zero volatility, one step is sufficient for this criterion.
         if constant == 0.0:
             return 1
 
