@@ -4,7 +4,7 @@ class Option:
     def __init__(
         self,
         strike: float,
-        is_american: bool = False,
+        is_american: bool = False
     ) -> None:
         if strike < 0.0:
             raise ValueError(
@@ -21,7 +21,7 @@ class Option:
     def value_at_node(
         self,
         spot: float,
-        hold_value: float,
+        hold_value: float
     ) -> float:
         """Return the option value at an interim node."""
         if not self.is_american:

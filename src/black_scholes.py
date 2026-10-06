@@ -9,7 +9,7 @@ class BlackScholesPricer:
 
     @staticmethod
     def _normal_cdf(
-        value: float,
+        value: float
     ) -> float:
         """Return the standard normal cumulative distribution."""
         return 0.5 * (
@@ -23,7 +23,7 @@ class BlackScholesPricer:
     def _validate_inputs(
         spot: float,
         volatility: float,
-        maturity: float,
+        maturity: float
     ) -> None:
         """Validate Black-Scholes market inputs."""
         if spot <= 0.0:
@@ -47,7 +47,7 @@ class BlackScholesPricer:
         strike: float,
         rate: float,
         volatility: float,
-        maturity: float,
+        maturity: float
     ) -> tuple[float, float]:
         """Compute Black-Scholes d1 and d2."""
         volatility_sqrt_time = (
@@ -80,7 +80,7 @@ class BlackScholesPricer:
         spot: float,
         rate: float,
         volatility: float,
-        maturity: float,
+        maturity: float
     ) -> float:
         """Return the Black-Scholes European option price."""
         self._validate_inputs(
@@ -121,7 +121,7 @@ class BlackScholesPricer:
     @staticmethod
     def _price_zero_strike(
         option: Option,
-        spot: float,
+        spot: float
     ) -> float:
         """Price an option with a zero strike."""
         if isinstance(
@@ -145,7 +145,7 @@ class BlackScholesPricer:
         option: Option,
         spot: float,
         rate: float,
-        maturity: float,
+        maturity: float
     ) -> float:
         """Price a deterministic option when volatility is zero."""
         discounted_strike = (
@@ -185,7 +185,7 @@ class BlackScholesPricer:
         spot: float,
         rate: float,
         volatility: float,
-        maturity: float,
+        maturity: float
     ) -> float:
         """Price an option using the standard Black-Scholes formula."""
 
