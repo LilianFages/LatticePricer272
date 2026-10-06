@@ -17,7 +17,8 @@ class TrinomialTree:
         volatility: float,
         maturity: float,
         nb_steps: int,
-        dividends: list[CashDividend] | None = None
+        dividends: list[CashDividend] | None = None,
+        pruning_threshold: float = 1e-18
     ) -> None:
         self._validate_inputs(
             spot,
@@ -25,6 +26,7 @@ class TrinomialTree:
             maturity,
             nb_steps,
             dividends,
+            pruning_threshold,
         )
 
         self.spot: float = spot
@@ -38,6 +40,12 @@ class TrinomialTree:
             if dividends is None
             else dividends
         )
+
+        self.pruning_threshold: float = (
+            pruning_threshold
+        )
+
+        self.pruned_node_count: int = 0
 
         self.dt: float = (
             maturity
@@ -62,13 +70,17 @@ class TrinomialTree:
             spot
         )
 
+        # The root is reached with certainty.
+        self.root.reach_probability = 1.0
+
     @staticmethod
     def _validate_inputs(
         spot: float,
         volatility: float,
         maturity: float,
         nb_steps: int,
-        dividends: list[CashDividend] | None
+        dividends: list[CashDividend] | None,
+        pruning_threshold: float
     ) -> None:
         """Validate the main lattice parameters."""
         if spot <= 0.0:
@@ -89,6 +101,15 @@ class TrinomialTree:
         if type(nb_steps) is not int or nb_steps < 1:
             raise ValueError(
                 "Number of steps must be a positive integer."
+            )
+
+        if not (
+            0.0
+            <= pruning_threshold
+            < 1.0
+        ):
+            raise ValueError(
+                "Pruning threshold must belong to [0, 1)."
             )
 
         if dividends is None:
@@ -153,6 +174,9 @@ class TrinomialTree:
         self: Self
     ) -> None:
         """Build the complete recombining trinomial lattice."""
+        self.root.reach_probability = 1.0
+        self.pruned_node_count = 0
+
         current_top: Node = self.root
         current_trunk: TrunkNode = self.root
 
@@ -469,6 +493,82 @@ class TrinomialTree:
             trunk_node,
         )
 
+    def _should_prune(
+        self: Self,
+        node: Node
+    ) -> bool:
+        """Return whether a node should use monomial branching."""
+        return (
+            self.pruning_threshold > 0.0
+            and node.reach_probability
+            < self.pruning_threshold
+        )
+
+    def _set_monomial_transition(
+        self: Self,
+        node: Node,
+        next_mid: Node
+    ) -> None:
+        """Connect a negligible node only to its middle successor."""
+        node.next_up = (
+            next_mid
+        )
+
+        node.next_mid = (
+            next_mid
+        )
+
+        node.next_down = (
+            next_mid
+        )
+
+        node.up_probability = 0.0
+        node.mid_probability = 1.0
+        node.down_probability = 0.0
+
+        self.pruned_node_count += 1
+
+    @staticmethod
+    def _add_reach_probability(
+        starting_node: Node,
+        ending_node: Node | None,
+        transition_probability: float | None
+    ) -> None:
+        """Add one transition contribution to a successor probability."""
+        if ending_node is None:
+            return
+
+        if transition_probability is None:
+            return
+
+        ending_node.reach_probability += (
+            starting_node.reach_probability
+            * transition_probability
+        )
+
+    def _propagate_reach_probability(
+        self: Self,
+        node: Node
+    ) -> None:
+        """Propagate root-to-node probability to all successors."""
+        self._add_reach_probability(
+            node,
+            node.next_up,
+            node.up_probability,
+        )
+
+        self._add_reach_probability(
+            node,
+            node.next_mid,
+            node.mid_probability,
+        )
+
+        self._add_reach_probability(
+            node,
+            node.next_down,
+            node.down_probability,
+        )
+
     def _connect_columns(
         self: Self,
         current_top: Node,
@@ -525,29 +625,43 @@ class TrinomialTree:
                 )
             )
 
-            current_node.next_up = (
-                next_up
+            if self._should_prune(
+                current_node
+            ):
+                self._set_monomial_transition(
+                    current_node,
+                    next_mid,
+                )
+
+            else:
+                current_node.next_up = (
+                    next_up
+                )
+
+                current_node.next_mid = (
+                    next_mid
+                )
+
+                current_node.next_down = (
+                    next_down
+                )
+
+                self._set_probabilities(
+                    current_node,
+                    next_up,
+                    next_mid,
+                    next_down,
+                    expected_value,
+                    variance,
+                    dividend,
+                )
+
+            self._propagate_reach_probability(
+                current_node
             )
 
-            current_node.next_mid = (
-                next_mid
-            )
-
-            current_node.next_down = (
-                next_down
-            )
-
-            self._set_probabilities(
-                current_node,
-                next_up,
-                next_mid,
-                next_down,
-                expected_value,
-                variance,
-                dividend,
-            )
-
-            # Expected values decrease while moving down the column.
+            # Candidate movement must remain based on the geometric grid,
+            # independently of whether the current node was pruned.
             upper_candidate = (
                 next_up
             )

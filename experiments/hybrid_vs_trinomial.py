@@ -519,11 +519,11 @@ def save_node_figure(
     )
 
     plt.ylabel(
-        "Reachable nodes"
+    "Reachable pricing nodes"
     )
 
     plt.title(
-        "Hybrid versus full trinomial lattice size"
+        "Hybrid versus full trinomial reachable pricing nodes"
     )
 
     plt.legend()

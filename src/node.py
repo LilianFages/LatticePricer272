@@ -4,7 +4,10 @@ from __future__ import annotations
 class Node:
     """Represents a node in a recombining lattice."""
 
-    def __init__(self, price: float) -> None:
+    def __init__(
+        self,
+        price: float
+    ) -> None:
         self.price: float = price
         self.option_value: float | None = None
 
@@ -19,11 +22,19 @@ class Node:
         self.mid_probability: float | None = None
         self.down_probability: float | None = None
 
+        # Probability of reaching this node from the root.
+        self.reach_probability: float = 0.0
+
 
 class TrunkNode(Node):
     """Represents a trunk node with a backward link."""
 
-    def __init__(self, price: float) -> None:
-        super().__init__(price)
+    def __init__(
+        self,
+        price: float
+    ) -> None:
+        super().__init__(
+            price
+        )
 
         self.previous_trunk: TrunkNode | None = None
