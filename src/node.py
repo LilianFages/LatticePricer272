@@ -14,6 +14,11 @@ class Node:
 
         self.lower_neighbor: Node | None = None
 
+        # Transition probabilities belong to the starting node.
+        self.up_probability: float | None = None
+        self.mid_probability: float | None = None
+        self.down_probability: float | None = None
+
 
 class TrunkNode(Node):
     """Represents a trunk node with a backward link."""

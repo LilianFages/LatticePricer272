@@ -1,0 +1,18 @@
+Discrete dividend impact experiment
+===================================
+
+Spot: 100.0
+Strike: 100.0
+Rate: 0.0
+Volatility: 0.2
+Maturity: 1.0
+Dividend time: 0.5
+Number of steps: 100
+
+Call price without dividend: 7.94566980
+Call price with D=7.00: 4.94794449
+
+Put price without dividend: 7.94566980
+Put price with D=7.00: 11.94794449
+
+Maximum put-call parity error: 1.59872116e-14

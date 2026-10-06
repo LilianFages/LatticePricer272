@@ -13,7 +13,7 @@ class BinomialTree:
         rate: float,
         volatility: float,
         maturity: float,
-        nb_steps: int,
+        nb_steps: int
     ) -> None:
         self._validate_inputs(
             spot,
@@ -49,7 +49,7 @@ class BinomialTree:
         spot: float,
         volatility: float,
         maturity: float,
-        nb_steps: int,
+        nb_steps: int
     ) -> None:
         """Validate the main lattice parameters."""
         if spot <= 0.0:
@@ -73,7 +73,7 @@ class BinomialTree:
             )
 
     def _compute_alpha(
-        self: Self,
+        self: Self
     ) -> float:
         """Compute the lattice spacing factor alpha."""
         variance_factor = math.exp(
@@ -95,7 +95,7 @@ class BinomialTree:
     def _node_price(
         self: Self,
         step: int,
-        position: int,
+        position: int
     ) -> float:
         """Compute the price of one node in a column."""
         growth_factor = math.exp(
@@ -115,8 +115,21 @@ class BinomialTree:
             * self.alpha ** alpha_power
         )
 
-    def build(
+    def _set_node_probabilities(
         self: Self,
+        node: Node
+    ) -> None:
+        """Store binomial transition probabilities on one node."""
+        node.up_probability = (
+            self.up_probability
+        )
+        node.mid_probability = None
+        node.down_probability = (
+            self.down_probability
+        )
+
+    def build(
+        self: Self
     ) -> None:
         """Build the complete recombining binomial lattice."""
         current_top: Node = self.root
@@ -132,7 +145,7 @@ class BinomialTree:
             )
 
     def build_trunk(
-        self: Self,
+        self: Self
     ) -> TrunkNode:
         """Build the binomial trunk and return its last node."""
         current_trunk = self.root
@@ -188,7 +201,7 @@ class BinomialTree:
         self: Self,
         trunk_node: TrunkNode,
         step: int,
-        next_top: Node | None = None,
+        next_top: Node | None = None
     ) -> Node:
         """Build one column around its trunk node."""
         trunk_position = step // 2
@@ -228,7 +241,7 @@ class BinomialTree:
         self: Self,
         trunk_node: TrunkNode,
         step: int,
-        trunk_position: int,
+        trunk_position: int
     ) -> Node:
         """Return the top node of a backward-built column."""
         if trunk_position == 0:
@@ -247,7 +260,7 @@ class BinomialTree:
         trunk_node: TrunkNode,
         step: int,
         position: int,
-        trunk_position: int,
+        trunk_position: int
     ) -> Node:
         """Add one lower node and reuse the trunk when needed."""
         # The trunk node already exists and must not be duplicated.
@@ -267,10 +280,10 @@ class BinomialTree:
 
         return lower_node
 
-    @staticmethod
     def _connect_next_column(
+        self: Self,
         current_node: Node,
-        next_node: Node,
+        next_node: Node
     ) -> Node:
         """Connect one node to its two successors."""
         lower_next = (
@@ -285,11 +298,16 @@ class BinomialTree:
         current_node.next_up = next_node
         current_node.next_down = lower_next
 
+        # Store the probabilities on the starting node.
+        self._set_node_probabilities(
+            current_node
+        )
+
         return lower_next
 
     def _build_next_column(
         self: Self,
-        current_top: Node,
+        current_top: Node
     ) -> Node:
         """Build one new column from the current one."""
         growth_factor = math.exp(
@@ -317,6 +335,11 @@ class BinomialTree:
 
             current_node.next_down = down_node
             next_node.lower_neighbor = down_node
+
+            # Store the local probabilities before moving to the next node.
+            self._set_node_probabilities(
+                current_node
+            )
 
             # Recombination makes this node the next upper successor too.
             current_node = (

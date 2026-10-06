@@ -4,18 +4,21 @@ from typing import Self
 from src.binomial_tree import BinomialTree
 from src.node import Node
 from src.option import Option
+from src.trinomial_tree import TrinomialTree
+
+
+LatticeTree = BinomialTree | TrinomialTree
 
 
 class RecursivePricer:
-    """Prices vanilla options recursively on a binomial lattice."""
+    """Prices vanilla options recursively on a recombining lattice."""
 
     def price(
         self: Self,
-        tree: BinomialTree,
-        option: Option,
+        tree: LatticeTree,
+        option: Option
     ) -> float:
         """Build the lattice and return the option price."""
-        # Clear a possible value left by a previous pricing run.
         tree.root.option_value = None
 
         # Recursive pricing requires the complete lattice in memory.
@@ -28,7 +31,6 @@ class RecursivePricer:
         return self._price_node(
             node=tree.root,
             remaining_steps=tree.nb_steps,
-            tree=tree,
             option=option,
             discount_factor=discount_factor,
         )
@@ -37,9 +39,8 @@ class RecursivePricer:
         self: Self,
         node: Node,
         remaining_steps: int,
-        tree: BinomialTree,
         option: Option,
-        discount_factor: float,
+        discount_factor: float
     ) -> float:
         """Recursively price the option from one node."""
 
@@ -55,7 +56,6 @@ class RecursivePricer:
 
             return node.option_value
 
-        # An intermediate node must have both binomial successors.
         if (
             node.next_up is None
             or node.next_down is None
@@ -64,11 +64,18 @@ class RecursivePricer:
                 "Incomplete lattice."
             )
 
-        # Recursively price the two successor nodes.
+        if (
+            node.up_probability is None
+            or node.down_probability is None
+        ):
+            raise RuntimeError(
+                "Missing transition probabilities."
+            )
+
+        # Price the upper and lower branches shared by both lattice types.
         up_value = self._price_node(
             node=node.next_up,
             remaining_steps=remaining_steps - 1,
-            tree=tree,
             option=option,
             discount_factor=discount_factor,
         )
@@ -76,15 +83,37 @@ class RecursivePricer:
         down_value = self._price_node(
             node=node.next_down,
             remaining_steps=remaining_steps - 1,
-            tree=tree,
             option=option,
             discount_factor=discount_factor,
         )
 
-        # Compute the discounted risk-neutral continuation value.
-        hold_value = discount_factor * (
-            tree.up_probability * up_value
-            + tree.down_probability * down_value
+        expected_option_value = (
+            node.up_probability * up_value
+            + node.down_probability * down_value
+        )
+
+        # A trinomial node additionally contributes its middle branch.
+        if node.next_mid is not None:
+            if node.mid_probability is None:
+                raise RuntimeError(
+                    "Missing middle transition probability."
+                )
+
+            mid_value = self._price_node(
+                node=node.next_mid,
+                remaining_steps=remaining_steps - 1,
+                option=option,
+                discount_factor=discount_factor,
+            )
+
+            expected_option_value += (
+                node.mid_probability
+                * mid_value
+            )
+
+        hold_value = (
+            discount_factor
+            * expected_option_value
         )
 
         # American options may exercise early at the current node.
