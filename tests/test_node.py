@@ -7,6 +7,7 @@ def test_node_creation() -> None:
     assert node.price == 100.0
     assert node.option_value is None
 
+    # A new node must not have any lattice connection yet.
     assert node.next_up is None
     assert node.next_mid is None
     assert node.next_down is None
@@ -22,6 +23,7 @@ def test_node_direct_connections() -> None:
     root.next_down = down_node
     up_node.lower_neighbor = down_node
 
+    # Direct references must preserve the recombining lattice structure.
     assert root.next_up is up_node
     assert root.next_down is down_node
     assert root.next_mid is None
@@ -31,6 +33,7 @@ def test_node_direct_connections() -> None:
 def test_trunk_node_creation() -> None:
     node = TrunkNode(100.0)
 
+    # A trunk node extends Node with a backward trunk reference.
     assert isinstance(node, Node)
     assert node.price == 100.0
     assert node.option_value is None
@@ -43,7 +46,4 @@ def test_trunk_node_backward_link() -> None:
 
     current_node.previous_trunk = previous_node
 
-    assert (
-        current_node.previous_trunk
-        is previous_node
-    )
+    assert current_node.previous_trunk is previous_node

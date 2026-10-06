@@ -6,10 +6,9 @@ from src.black_scholes import BlackScholesPricer
 from src.option import CallOption, PutOption
 
 
+# Validate the implementation against the standard Black-Scholes call price.
 def test_black_scholes_call_known_price() -> None:
-    option = CallOption(
-        strike=100.0
-    )
+    option = CallOption(strike=100.0)
 
     price = BlackScholesPricer().price(
         option=option,
@@ -26,10 +25,9 @@ def test_black_scholes_call_known_price() -> None:
     )
 
 
+# Validate the implementation against the standard Black-Scholes put price.
 def test_black_scholes_put_known_price() -> None:
-    option = PutOption(
-        strike=100.0
-    )
+    option = PutOption(strike=100.0)
 
     price = BlackScholesPricer().price(
         option=option,
@@ -46,41 +44,35 @@ def test_black_scholes_put_known_price() -> None:
     )
 
 
+# European call and put prices must satisfy put-call parity.
 def test_black_scholes_put_call_parity() -> None:
     spot = 100.0
     strike = 105.0
     rate = 0.03
     volatility = 0.25
     maturity = 2.0
-
     pricer = BlackScholesPricer()
 
     call_price = pricer.price(
-        option=CallOption(
-            strike=strike
-        ),
+        option=CallOption(strike=strike),
         spot=spot,
         rate=rate,
         volatility=volatility,
         maturity=maturity,
     )
-
     put_price = pricer.price(
-        option=PutOption(
-            strike=strike
-        ),
+        option=PutOption(strike=strike),
         spot=spot,
         rate=rate,
         volatility=volatility,
         maturity=maturity,
     )
 
+    # Put-call parity implies C - P = S - K exp(-rT).
     expected_difference = (
         spot
         - strike
-        * math.exp(
-            -rate * maturity
-        )
+        * math.exp(-rate * maturity)
     )
 
     assert math.isclose(
@@ -91,11 +83,10 @@ def test_black_scholes_put_call_parity() -> None:
     )
 
 
+# A zero-strike European call is worth the underlying spot.
 def test_black_scholes_zero_strike_call() -> None:
     price = BlackScholesPricer().price(
-        option=CallOption(
-            strike=0.0
-        ),
+        option=CallOption(strike=0.0),
         spot=100.0,
         rate=0.05,
         volatility=0.20,
@@ -105,11 +96,10 @@ def test_black_scholes_zero_strike_call() -> None:
     assert price == 100.0
 
 
+# A zero-strike European put has no positive payoff.
 def test_black_scholes_zero_strike_put() -> None:
     price = BlackScholesPricer().price(
-        option=PutOption(
-            strike=0.0
-        ),
+        option=PutOption(strike=0.0),
         spot=100.0,
         rate=0.05,
         volatility=0.20,
@@ -119,10 +109,9 @@ def test_black_scholes_zero_strike_put() -> None:
     assert price == 0.0
 
 
+# With zero volatility, the option value is deterministic.
 def test_black_scholes_zero_volatility() -> None:
-    option = CallOption(
-        strike=90.0
-    )
+    option = CallOption(strike=90.0)
 
     price = BlackScholesPricer().price(
         option=option,
@@ -133,9 +122,7 @@ def test_black_scholes_zero_volatility() -> None:
     )
 
     expected_price = max(
-        100.0
-        - 90.0
-        * math.exp(-0.02),
+        100.0 - 90.0 * math.exp(-0.02),
         0.0,
     )
 
@@ -146,6 +133,7 @@ def test_black_scholes_zero_volatility() -> None:
     )
 
 
+# Black-Scholes in this project is restricted to European exercise.
 def test_black_scholes_rejects_american_option() -> None:
     option = PutOption(
         strike=100.0,
