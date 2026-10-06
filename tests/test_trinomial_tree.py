@@ -297,3 +297,30 @@ def test_zero_volatility_uses_middle_branch_only() -> None:
     assert tree.root.up_probability == 0.0
     assert tree.root.mid_probability == 1.0
     assert tree.root.down_probability == 0.0
+
+# No-dividend probabilities must remain stable for very small time steps.
+def test_large_step_count_probabilities_are_admissible() -> None:
+    tree = TrinomialTree(
+        spot=100.0,
+        rate=0.02,
+        volatility=0.20,
+        maturity=1.0,
+        nb_steps=1000,
+    )
+
+    probability_sum = (
+        tree.no_dividend_up_probability
+        + tree.no_dividend_mid_probability
+        + tree.no_dividend_down_probability
+    )
+
+    assert math.isclose(
+        probability_sum,
+        1.0,
+        rel_tol=1e-12,
+        abs_tol=1e-12,
+    )
+
+    assert 0.0 <= tree.no_dividend_up_probability <= 1.0
+    assert 0.0 <= tree.no_dividend_mid_probability <= 1.0
+    assert 0.0 <= tree.no_dividend_down_probability <= 1.0

@@ -52,6 +52,12 @@ class TrinomialTree:
             )
         )
 
+        (
+            self.no_dividend_up_probability,
+            self.no_dividend_mid_probability,
+            self.no_dividend_down_probability,
+        ) = self._compute_no_dividend_probabilities()
+
         self.root: TrunkNode = TrunkNode(
             spot
         )
@@ -98,6 +104,50 @@ class TrinomialTree:
                 raise ValueError(
                     "Dividend must occur before option maturity."
                 )
+
+    def _compute_no_dividend_probabilities(
+        self: Self
+    ) -> tuple[float, float, float]:
+        """Return stable probabilities for a no-dividend transition."""
+        if self.volatility == 0.0:
+            return (
+                0.0,
+                1.0,
+                0.0,
+            )
+
+        variance_ratio = math.expm1(
+            self.volatility ** 2
+            * self.dt
+        )
+
+        down_probability = (
+            variance_ratio
+            / (
+                (1.0 - self.alpha)
+                * (
+                    1.0 / self.alpha ** 2
+                    - 1.0
+                )
+            )
+        )
+
+        up_probability = (
+            down_probability
+            / self.alpha
+        )
+
+        mid_probability = (
+            1.0
+            - up_probability
+            - down_probability
+        )
+
+        return (
+            up_probability,
+            mid_probability,
+            down_probability,
+        )
 
     def build(
         self: Self
@@ -370,15 +420,21 @@ class TrinomialTree:
             -1,
         ):
             if exponent == 0:
-                next_node: Node = TrunkNode(
+                trunk_candidate = TrunkNode(
                     trunk_price
                 )
 
-                next_node.previous_trunk = (
+                trunk_candidate.previous_trunk = (
                     previous_trunk
                 )
 
-                trunk_node = next_node
+                next_node: Node = (
+                    trunk_candidate
+                )
+
+                trunk_node = (
+                    trunk_candidate
+                )
 
             else:
                 next_node = Node(
@@ -421,9 +477,13 @@ class TrinomialTree:
         dividend: CashDividend | None
     ) -> None:
         """Connect adjacent columns with local trinomial transitions."""
-        current_node: Node | None = current_top
+        current_node: Node | None = (
+            current_top
+        )
 
-        upper_candidate: Node = next_top
+        upper_candidate: Node = (
+            next_top
+        )
 
         middle_candidate = (
             next_top.lower_neighbor
@@ -443,7 +503,6 @@ class TrinomialTree:
                 )
             )
 
-            # Dynamic bounds guarantee one node above the best middle.
             if (
                 abs(
                     upper_candidate.price
@@ -469,9 +528,11 @@ class TrinomialTree:
             current_node.next_up = (
                 next_up
             )
+
             current_node.next_mid = (
                 next_mid
             )
+
             current_node.next_down = (
                 next_down
             )
@@ -483,11 +544,17 @@ class TrinomialTree:
                 next_down,
                 expected_value,
                 variance,
+                dividend,
             )
 
             # Expected values decrease while moving down the column.
-            upper_candidate = next_up
-            middle_candidate = next_mid
+            upper_candidate = (
+                next_up
+            )
+
+            middle_candidate = (
+                next_mid
+            )
 
             current_node = (
                 current_node.lower_neighbor
@@ -500,8 +567,13 @@ class TrinomialTree:
         middle_candidate: Node
     ) -> tuple[Node, Node, Node]:
         """Return the closest middle node and its two neighbors."""
-        upper_node = upper_candidate
-        middle_node = middle_candidate
+        upper_node = (
+            upper_candidate
+        )
+
+        middle_node = (
+            middle_candidate
+        )
 
         while True:
             lower_node = (
@@ -528,8 +600,13 @@ class TrinomialTree:
                         "Trinomial grid is too narrow below."
                     )
 
-                upper_node = middle_node
-                middle_node = lower_node
+                upper_node = (
+                    middle_node
+                )
+
+                middle_node = (
+                    lower_node
+                )
 
                 continue
 
@@ -546,7 +623,8 @@ class TrinomialTree:
         next_mid: Node,
         next_down: Node,
         expected_value: float,
-        variance: float
+        variance: float,
+        dividend: CashDividend | None
     ) -> None:
         """Set local probabilities matching the target moments."""
         if self.volatility == 0.0:
@@ -556,6 +634,25 @@ class TrinomialTree:
 
             return
 
+        # Without a dividend, the grid is aligned with the forward.
+        # Stable closed-form probabilities avoid loss of precision
+        # when the time step becomes very small.
+        if dividend is None:
+            current_node.up_probability = (
+                self.no_dividend_up_probability
+            )
+
+            current_node.mid_probability = (
+                self.no_dividend_mid_probability
+            )
+
+            current_node.down_probability = (
+                self.no_dividend_down_probability
+            )
+
+            return
+
+        # Dividend transitions require node-dependent probabilities.
         probabilities = TrinomialProbabilitySolver.solve(
             expected_value=expected_value,
             variance=variance,
