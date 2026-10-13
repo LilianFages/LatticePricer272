@@ -1,0 +1,51 @@
+PHASE 2 — Cross-strike worst-case accuracy versus computational cost
+===================================================================
+
+Financial scope: European calls, no dividends, K=80/100/120.
+Black-Scholes analytic price reference; S0=100, r=0.02, sigma=0.2, T=1.
+Pruning threshold=1e-18.
+Metric: max absolute pricing error across the THREE strikes at same N.
+Cost per valuation: maximum of three separate median runtimes,
+not a measured joint / vectorized batch runtime.
+The sum of three medians estimates the cost to value all three contracts
+separately; it is not a measured batch runtime.
+
+Phase-1 original steps: 20, 40, 60, 100, 150, 200, 300.
+Newly measured steps: 80, 125, 175, 225, 250, 275, 325, 350.
+Phase-1 baseline: C:\Users\Fages\Desktop\dauphine\LatticePricer272\results\data\accuracy_cost_benchmark.csv
+Phase-1 summary: C:\Users\Fages\Desktop\dauphine\LatticePricer272\results\accuracy_cost_summary.txt
+New timed repetitions per configuration: 5.
+An unmeasured warmup and gc.collect() precede timed measurements.
+New runs timed end-to-end (constructor, build, recursive pricing).
+Python=3.14.3; OS=Windows-11-10.0.26200-SP0
+Git HEAD=66430eb744a1
+
+New configurations: 96; success: 96; failures: 0.
+Complete (model, N, three-strike) groups: 60.
+No interpolation between N points and no asymptotic convergence claims.
+Zero-error observations (if any) are excluded from log axes, not modified.
+The worst-case bound applies only to K=80/100/120, not all strikes.
+Baseline and new timings were measured in different runs; CPU-load drift
+can affect frontier membership near ties. Use the original raw timings
+and consider a joint rerun if cost differences are marginal.
+All estimates conditional on this PC and sampled values of N.
+Call results only: do not claim to have remeasured put timings.
+No changes to src/ or original phase-1 CSVs.
+
+Best sampled configuration meeting a uniform error bound:
+  <= 0.02 EUR: binomial N=125 worst error=0.0113945574 worst median latency=16.432 ms
+  <= 0.01 EUR: binomial N=175 worst error=0.00256363366 worst median latency=25.479 ms
+  <= 0.005 EUR: binomial N=175 worst error=0.00256363366 worst median latency=25.479 ms
+  <= 0.002 EUR: trinomial_allocation N=175 worst error=0.000944027471 worst median latency=77.376 ms
+  <= 0.001 EUR: trinomial_allocation N=175 worst error=0.000944027471 worst median latency=77.376 ms
+
+Observed multi-strike Pareto frontier:
+  binomial               N=20  worst_error=0.0396143717 max_median_ms=0.254
+  binomial               N=40  worst_error=0.0367329347 max_median_ms=0.871
+  binomial               N=60  worst_error=0.0300807641 max_median_ms=1.863
+  trinomial_allocation   N=40  worst_error=0.0300227186 max_median_ms=6.655
+  binomial               N=80  worst_error=0.0245470199 max_median_ms=11.132
+  binomial               N=100 worst_error=0.0200994258 max_median_ms=13.378
+  binomial               N=125 worst_error=0.0113945574 max_median_ms=16.432
+  binomial               N=175 worst_error=0.00256363366 max_median_ms=25.479
+  trinomial_allocation   N=175 worst_error=0.000944027471 max_median_ms=77.376
