@@ -1,0 +1,34 @@
+Allocation pruning - independent and cross-option validation (v2)
+===============================================================
+Spot=100.0; rate=0.02; volatility=0.2; maturity=1.0
+Threshold=1e-18; N=(40, 100, 200); strikes=(80.0, 100.0, 120.0)
+Absolute price tolerance=1e-09; relative tolerance=1e-10
+Configurations=108; comparable=96; allocation_only=12; failed=0
+Allocation engine success=108
+Branch engine success=96
+Maximum |price difference| among comparable cases=0.000000000000e+00
+Financial invariant violations=0
+
+IMPORTANT: A case marked allocation_only has NOT been validated against
+the branch price, because that numerical reference failed to build.
+Its independent price, local transition probabilities, and probability
+mass are checked, as are available financial invariants.
+Single-run timings are not formal speed benchmarks.
+
+Unavailable branch references (allocation still succeeded):
+  two_dividends N=200 K=80.0 call european: allocation_price=18.312756642756 branch_error=RuntimeError: Expected stock price must remain positive.
+  two_dividends N=200 K=80.0 call american: allocation_price=20.713478037057 branch_error=RuntimeError: Expected stock price must remain positive.
+  two_dividends N=200 K=80.0 put european: allocation_price=1.674011284490 branch_error=RuntimeError: Expected stock price must remain positive.
+  two_dividends N=200 K=80.0 put american: allocation_price=1.698925927727 branch_error=RuntimeError: Expected stock price must remain positive.
+  two_dividends N=200 K=100.0 call european: allocation_price=6.514698734290 branch_error=RuntimeError: Expected stock price must remain positive.
+  two_dividends N=200 K=100.0 call american: allocation_price=7.078112145674 branch_error=RuntimeError: Expected stock price must remain positive.
+  two_dividends N=200 K=100.0 put european: allocation_price=9.479926842159 branch_error=RuntimeError: Expected stock price must remain positive.
+  two_dividends N=200 K=100.0 put american: allocation_price=9.645320073430 branch_error=RuntimeError: Expected stock price must remain positive.
+  two_dividends N=200 K=120.0 call european: allocation_price=1.680234423780 branch_error=RuntimeError: Expected stock price must remain positive.
+  two_dividends N=200 K=120.0 call american: allocation_price=1.760697117392 branch_error=RuntimeError: Expected stock price must remain positive.
+  two_dividends N=200 K=120.0 put european: allocation_price=24.249435997785 branch_error=RuntimeError: Expected stock price must remain positive.
+  two_dividends N=200 K=120.0 put american: allocation_price=24.657633867292 branch_error=RuntimeError: Expected stock price must remain positive.
+Failed cases:
+  None
+Financial invariant violations:
+  None
