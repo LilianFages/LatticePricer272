@@ -178,12 +178,11 @@ def main() -> None:
         st.markdown("**WORKSPACE**")
         workspace = st.radio(
             "Workspace",
-            ("01 / Pricing terminal", "02 / Model comparison", "03 / Lattice explorer"),
+            ("01 / Pricing terminal", "02 / Model comparison", "03 / Lattice explorer", "04 / Quant analytics"),
             label_visibility="collapsed", key="lattice_workspace",
         )
         st.divider()
         st.markdown("**UPCOMING**")
-        st.caption("04 / Quant analytics")
         st.caption("05 / Research lab")
         st.divider()
         st.caption("Local Python engine · no market-data feed")
@@ -201,6 +200,11 @@ def main() -> None:
     if workspace == "03 / Lattice explorer":
         from frontend.lattice_explorer import render_lattice_explorer_page
         render_lattice_explorer_page()
+        return
+
+    if workspace == "04 / Quant analytics":
+        from frontend.quant_analytics import render_quant_analytics_page
+        render_quant_analytics_page()
         return
 
     st.markdown('<div class="desk-kicker">Pricing terminal / 01</div>', unsafe_allow_html=True)
