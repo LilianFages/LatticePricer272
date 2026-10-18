@@ -175,19 +175,33 @@ def main() -> None:
         st.markdown("### ◈ LATTICE 272")
         st.caption("DERIVATIVES PRICING · QUANT LAB")
         st.divider()
-        st.markdown("**PRICING TERMINAL**")
-        st.caption("01 / Live model valuation")
+        st.markdown("**WORKSPACE**")
+        workspace = st.radio(
+            "Workspace",
+            ("01 / Pricing terminal", "02 / Model comparison", "03 / Lattice explorer"),
+            label_visibility="collapsed", key="lattice_workspace",
+        )
         st.divider()
-        st.markdown("**NEXT MODULES**")
-        st.caption("02 / Model comparison")
-        st.caption("03 / Quant analytics")
-        st.caption("04 / Research lab")
+        st.markdown("**UPCOMING**")
+        st.caption("04 / Quant analytics")
+        st.caption("05 / Research lab")
         st.divider()
         st.caption("Local Python engine · no market-data feed")
         st.caption("Model output is theoretical, not an executable quote.")
-        st.divider()
-        st.button("↺ Reset ticket to defaults", on_click=reset_ticket, width="stretch",
-                  help="Reset inputs and the displayed result; session blotter is retained.")
+        if workspace == "01 / Pricing terminal":
+            st.divider()
+            st.button("↺ Reset ticket to defaults", on_click=reset_ticket, width="stretch",
+                      help="Reset inputs and the displayed result; session blotter is retained.")
+
+    if workspace == "02 / Model comparison":
+        from frontend.model_comparison import render_comparison_page
+        render_comparison_page()
+        return
+
+    if workspace == "03 / Lattice explorer":
+        from frontend.lattice_explorer import render_lattice_explorer_page
+        render_lattice_explorer_page()
+        return
 
     st.markdown('<div class="desk-kicker">Pricing terminal / 01</div>', unsafe_allow_html=True)
     st.markdown('<div class="desk-title">Equity Options · Lattice Pricing</div>', unsafe_allow_html=True)
