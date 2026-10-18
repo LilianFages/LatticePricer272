@@ -1,0 +1,44 @@
+OPTION VALUE AND EXERCISE PROBABILITY BY DATES
+==============================================
+Experiment reproducing professor's three-slide definitions.
+
+S0 cash-dividend scheme=100.0; no-dividend adjusted spot=97.029850498752
+K=100.0, r=0.02, sigma=0.2, T=1.0, N=100
+Cash dividend D=3.0 at t=0.5
+Pruning threshold=1e-18
+A discrete cash dividend of 3 EUR is NOT a continuous 3% dividend yield.
+Matched INITIAL TERMINAL FORWARD, not matched initial spot or dynamics.
+
+Professor metric 1: exp(-r*t) * sum(reach_prob(node) * option_value(node)).
+Professor metric 2: sum(reach_prob(node) over exercise-region nodes).
+In the second metric, earlier exercised paths are NOT removed.
+Supplement: first-exercise probability removes already-exercised paths.
+Exercise ties treated as continuation; terminal exercise iff payoff > 0.
+Exercise-region values at different dates must NOT be added to 100%.
+
+SCENARIO: American put — cash dividend
+  Initial put premium            = 8.606684648407 EUR
+  Mean terminal forward          = 98.989983501423 EUR
+  PV average at maturity         = 8.397367064092 EUR
+  Max |PV mean - initial price| = 2.093175843146e-01 EUR
+  Exercise first time (early)   = 52.9754415194%
+  Exercise first time (all)     = 58.5777898387%
+  Expiry without exercise       = 41.4222101613%
+
+SCENARIO: American put — no dividend
+  Initial put premium            = 8.499703301543 EUR
+  Mean terminal forward          = 98.989983501423 EUR
+  PV average at maturity         = 8.278046020036 EUR
+  Max |PV mean - initial price| = 2.216572815073e-01 EUR
+  Exercise first time (early)   = 53.2503923216%
+  Exercise first time (all)     = 58.8665225158%
+  Expiry without exercise       = 41.1334774842%
+
+SCENARIO: European put — no dividend
+  Initial put premium            = 8.278046020036 EUR
+  Mean terminal forward          = 98.989983501423 EUR
+  PV average at maturity         = 8.278046020036 EUR
+  Max |PV mean - initial price| = 1.065814103640e-14 EUR
+  Exercise first time (early)   = 0.0000000000%
+  Exercise first time (all)     = 57.4105885770%
+  Expiry without exercise       = 42.5894114230%
