@@ -27,6 +27,7 @@ class HybridTree:
             dividends,
         )
 
+        # Preserve contract inputs before deriving the one-step lattice geometry.
         self.spot: float = spot
         self.rate: float = rate
         self.volatility: float = volatility
@@ -100,6 +101,7 @@ class HybridTree:
                 "Number of steps must be a positive integer."
             )
 
+        # Event checks apply only when cash dividends are scheduled.
         if dividends is None:
             return
 
@@ -159,6 +161,7 @@ class HybridTree:
                 dividend,
             )
 
+            # Ordinary dates retain the cheaper recombining binomial transition.
             if dividend is None:
                 current_top = (
                     self._build_binomial_column(
@@ -194,6 +197,7 @@ class HybridTree:
 
         dividend_in_step: CashDividend | None = None
 
+        # Assign each cash event to the unique step containing its ex-date.
         for dividend in self.dividends:
             if (
                 step_start
@@ -301,6 +305,7 @@ class HybridTree:
         current_node: Node | None = current_top
         next_node = next_top
 
+        # Build both successors and reuse shared nodes to preserve recombination.
         while current_node is not None:
             down_node = Node(
                 current_node.price
@@ -382,6 +387,7 @@ class HybridTree:
             * self.level_ratio ** lower_exponent
         )
 
+        # Price both bracketing levels before choosing the closest exponent.
         upper_price = (
             forward_price
             * self.level_ratio ** upper_exponent
@@ -475,6 +481,7 @@ class HybridTree:
                 * self.level_ratio ** exponent
             )
 
+            # The zero exponent anchors each bridge column at the forward.
             if exponent == 0:
                 next_node: Node = TrunkNode(
                     price
@@ -494,6 +501,7 @@ class HybridTree:
 
             current_node = next_node
 
+        # An empty bridge is invalid and cannot support transition calibration.
         if top_node is None:
             raise RuntimeError(
                 "Hybrid bridge column was not created."
@@ -524,6 +532,7 @@ class HybridTree:
             )
         )
 
+        # Allocate the bridge grid before connecting its conditional transitions.
         next_top = self._build_bridge_column(
             next_forward,
             top_exponent,
@@ -569,6 +578,7 @@ class HybridTree:
                     - expected_value
                 )
             ):
+                # A middle successor must have a lower neighbor for a full stencil.
                 if lower_node.lower_neighbor is None:
                     raise RuntimeError(
                         "Hybrid grid is too narrow below."
@@ -615,6 +625,7 @@ class HybridTree:
                 )
             )
 
+            # The upper candidate must bracket the next conditional expectation.
             if (
                 abs(
                     upper_candidate.price
@@ -637,6 +648,7 @@ class HybridTree:
                 )
             )
 
+            # Bind the three bridge successors before solving their probabilities.
             current_node.next_up = (
                 next_up
             )

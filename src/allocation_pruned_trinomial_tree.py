@@ -137,6 +137,7 @@ class AllocationPrunedTrinomialTree(TrinomialTree):
             dividend,
         )
 
+        # Project the significant extremes onto the next-column grid.
         top_middle_exponent = self._closest_exponent(
             top_expected,
             next_trunk_price,
@@ -160,6 +161,34 @@ class AllocationPrunedTrinomialTree(TrinomialTree):
         )
 
         return top_exponent, bottom_exponent
+
+    def _connect_significant_node(
+        self: Self,
+        current_node: Node,
+        upper_candidate: Node | None,
+        middle_candidate: Node,
+        expected_value: float,
+        variance: float,
+        step: int,
+        dividend: CashDividend | None
+    ) -> None:
+        """Connect a significant node within the allocated grid."""
+        next_down = middle_candidate.lower_neighbor
+        if upper_candidate is None or next_down is None:
+            raise RuntimeError(
+                "Allocation-pruned grid is too narrow "
+                f"at step {step}."
+            )
+
+        self._link_full_transition(
+            current_node,
+            upper_candidate,
+            middle_candidate,
+            next_down,
+            expected_value,
+            variance,
+            dividend,
+        )
 
     def _connect_columns(
         self: Self,
@@ -196,6 +225,7 @@ class AllocationPrunedTrinomialTree(TrinomialTree):
                 )
             )
 
+            # Move the candidate monotonically toward the local expectation.
             while middle_candidate.lower_neighbor is not None:
                 lower_candidate = (
                     middle_candidate.lower_neighbor
@@ -218,31 +248,17 @@ class AllocationPrunedTrinomialTree(TrinomialTree):
                 )
 
             else:
-                next_down = middle_candidate.lower_neighbor
-
-                if (
-                    upper_candidate is None
-                    or next_down is None
-                ):
-                    raise RuntimeError(
-                        "Allocation-pruned grid is too narrow "
-                        f"at step {step}."
-                    )
-
-                current_node.next_up = upper_candidate
-                current_node.next_mid = middle_candidate
-                current_node.next_down = next_down
-
-                self._set_probabilities(
+                self._connect_significant_node(
                     current_node,
                     upper_candidate,
                     middle_candidate,
-                    next_down,
                     expected_value,
                     variance,
+                    step,
                     dividend,
                 )
 
+            # Keep the reachability mass consistent with the selected branches.
             self._propagate_reach_probability(
                 current_node
             )

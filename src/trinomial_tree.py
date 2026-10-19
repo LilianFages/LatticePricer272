@@ -29,6 +29,7 @@ class TrinomialTree:
             pruning_threshold,
         )
 
+        # Retain validated contract inputs before computing grid parameters.
         self.spot: float = spot
         self.rate: float = rate
         self.volatility: float = volatility
@@ -99,6 +100,7 @@ class TrinomialTree:
             )
 
         if type(nb_steps) is not int or nb_steps < 1:
+            # A zero or non-integer step count would invalidate the time grid.
             raise ValueError(
                 "Number of steps must be a positive integer."
             )
@@ -115,6 +117,7 @@ class TrinomialTree:
         if dividends is None:
             return
 
+        # Reject cash events outside the option time horizon.
         for dividend in dividends:
             if dividend.time <= 0.0:
                 raise ValueError(
@@ -142,6 +145,7 @@ class TrinomialTree:
             * self.dt
         )
 
+        # Calibrate the down branch from the one-step variance constraint.
         down_probability = (
             variance_ratio
             / (
@@ -158,6 +162,7 @@ class TrinomialTree:
             / self.alpha
         )
 
+        # The middle branch completes the normalized probability triplet.
         mid_probability = (
             1.0
             - up_probability
@@ -194,6 +199,7 @@ class TrinomialTree:
                 dividend,
             )
 
+            # Bound each new column using the extreme conditional expectations.
             top_exponent, bottom_exponent = (
                 self._column_bounds(
                     current_top,
@@ -210,6 +216,7 @@ class TrinomialTree:
                 current_trunk,
             )
 
+            # Connect the newly allocated levels before advancing the time index.
             self._connect_columns(
                 current_top,
                 next_top,
@@ -236,6 +243,7 @@ class TrinomialTree:
 
         dividend_in_step: CashDividend | None = None
 
+        # The ex-date convention assigns a cash payment to its ending step.
         for dividend in self.dividends:
             if (
                 step_start
@@ -335,6 +343,7 @@ class TrinomialTree:
             + 1
         )
 
+        # Compare adjacent exponent levels on the actual geometric grid.
         lower_price = (
             trunk_price
             * self.alpha ** lower_exponent
@@ -345,6 +354,7 @@ class TrinomialTree:
             * self.alpha ** upper_exponent
         )
 
+        # Break equal-distance ties toward the lower geometric level.
         if (
             abs(
                 upper_price
@@ -389,6 +399,7 @@ class TrinomialTree:
             dividend,
         )
 
+        # Locate the upper and lower conditional means on the next trunk grid.
         top_middle_exponent = self._closest_exponent(
             top_expected,
             next_trunk_price,
@@ -444,23 +455,12 @@ class TrinomialTree:
             -1,
         ):
             if exponent == 0:
-                trunk_candidate = TrunkNode(
-                    trunk_price
-                )
-
-                trunk_candidate.previous_trunk = (
-                    previous_trunk
-                )
-
-                next_node: Node = (
-                    trunk_candidate
-                )
-
-                trunk_node = (
-                    trunk_candidate
-                )
-
+                # Trunk levels preserve the reference to the previous time step.
+                trunk_node = TrunkNode(trunk_price)
+                trunk_node.previous_trunk = previous_trunk
+                next_node: Node = trunk_node
             else:
+                # Off-trunk levels use the same multiplicative grid spacing.
                 next_node = Node(
                     self._node_price(
                         trunk_price,
@@ -478,6 +478,7 @@ class TrinomialTree:
 
             current_node = next_node
 
+        # A column must contain both an upper node and the central trunk.
         if top_node is None:
             raise RuntimeError(
                 "Trinomial column was not created."
@@ -569,6 +570,31 @@ class TrinomialTree:
             node.down_probability,
         )
 
+    def _link_full_transition(
+        self: Self,
+        current_node: Node,
+        next_up: Node,
+        next_mid: Node,
+        next_down: Node,
+        expected_value: float,
+        variance: float,
+        dividend: CashDividend | None
+    ) -> None:
+        """Bind three successors and calibrate their transition weights."""
+        current_node.next_up = next_up
+        current_node.next_mid = next_mid
+        current_node.next_down = next_down
+
+        self._set_probabilities(
+            current_node,
+            next_up,
+            next_mid,
+            next_down,
+            expected_value,
+            variance,
+            dividend,
+        )
+
     def _connect_columns(
         self: Self,
         current_top: Node,
@@ -603,6 +629,7 @@ class TrinomialTree:
                 )
             )
 
+            # Verify that the upper bound brackets the conditional expectation.
             if (
                 abs(
                     upper_candidate.price
@@ -625,6 +652,7 @@ class TrinomialTree:
                 )
             )
 
+            # Only negligible probability mass may use a monomial transition.
             if self._should_prune(
                 current_node
             ):
@@ -634,19 +662,8 @@ class TrinomialTree:
                 )
 
             else:
-                current_node.next_up = (
-                    next_up
-                )
-
-                current_node.next_mid = (
-                    next_mid
-                )
-
-                current_node.next_down = (
-                    next_down
-                )
-
-                self._set_probabilities(
+                # Unpruned nodes retain all three calibrated branches.
+                self._link_full_transition(
                     current_node,
                     next_up,
                     next_mid,
@@ -699,6 +716,7 @@ class TrinomialTree:
                     "Trinomial grid is too narrow below."
                 )
 
+            # Move the successor window only when the lower level is closer.
             if (
                 abs(
                     lower_node.price
@@ -718,6 +736,7 @@ class TrinomialTree:
                     middle_node
                 )
 
+                # Move the local three-node stencil down as one ordered group.
                 middle_node = (
                     lower_node
                 )

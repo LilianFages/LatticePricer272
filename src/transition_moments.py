@@ -24,6 +24,7 @@ class TransitionMoments:
             dividend,
         )
 
+        # Use the same time interval for both transition conventions.
         dt = step_end - step_start
 
         if dividend is None:
@@ -98,6 +99,7 @@ class TransitionMoments:
             / dt
         )
 
+        # Only the variance proxy uses the time-weighted cash adjustment.
         adjusted_spot = (
             spot
             - dividend_weight

@@ -63,6 +63,7 @@ class TrinomialProbabilitySolver:
             - mid_price ** 2
         )
 
+        # Form the two columns of the moment-matching linear system.
         up_first_shift = (
             up_price
             - mid_price
@@ -81,6 +82,7 @@ class TrinomialProbabilitySolver:
             - mid_price ** 2
         )
 
+        # Solve the 2x2 system for the up and down probabilities.
         determinant = (
             up_first_shift
             * down_second_shift
@@ -95,6 +97,7 @@ class TrinomialProbabilitySolver:
             * second_moment_target
         ) / determinant
 
+        # The second probability uses the companion Cramer's-rule ratio.
         down_probability = (
             up_first_shift
             * second_moment_target
@@ -102,6 +105,7 @@ class TrinomialProbabilitySolver:
             * up_second_shift
         ) / determinant
 
+        # Normalization determines the residual middle probability.
         mid_probability = (
             1.0
             - up_probability
