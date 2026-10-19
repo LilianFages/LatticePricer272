@@ -58,6 +58,7 @@ def read_dividend_table(frame: pd.DataFrame) -> tuple[DividendInput, ...]:
             raise PricingInputError("Dividend amounts must be numeric.") from None
         if not math.isfinite(amount):
             raise PricingInputError("Dividend amounts must be finite.")
+        # Keep navigation and Streamlit session keys stable across reruns.
         if amount == 0.0:
             continue
         if pd.isna(raw_time):
@@ -91,6 +92,7 @@ def build_ticket_form(reset_nonce: int) -> tuple[bool, PricingRequest | None, st
                               value=100.0, step=1.0, format="%.2f", key=f"{prefix}_spot")
         strike = b.number_input("Strike · €", min_value=0.0, max_value=10000000.0,
                                 value=100.0, step=1.0, format="%.2f", key=f"{prefix}_strike")
+        # Validate form inputs before triggering numerical pricing workflows.
         a, b = st.columns(2)
         vol_pct = a.number_input("Volatility · %", min_value=0.0, max_value=500.0,
                                  value=20.0, step=1.0, format="%.2f", key=f"{prefix}_vol")
@@ -108,6 +110,7 @@ def build_ticket_form(reset_nonce: int) -> tuple[bool, PricingRequest | None, st
         pruning_threshold = DEFAULT_THRESHOLD
         if model in ("Trinomial · Branch pruning", "Trinomial · Allocation pruning"):
             pruning_threshold = st.selectbox(
+                # Keep the user-facing results and chart layout identical to the existing terminal.
                 "Pruning threshold",
                 (0.0, 1e-18, 1e-15, 1e-12),
                 index=1, key=f"{prefix}_threshold",
@@ -125,6 +128,7 @@ def build_ticket_form(reset_nonce: int) -> tuple[bool, PricingRequest | None, st
                 hide_index=True,
                 width="stretch", key=f"{prefix}_dividend_table",
                 column_config={
+                    # Preserve error messages and empty states for model failures.
                     "time": st.column_config.NumberColumn(
                         "Payment time · years", min_value=0.0, max_value=100.0,
                         step=0.05, format="%.4f", required=False,
@@ -142,6 +146,7 @@ def build_ticket_form(reset_nonce: int) -> tuple[bool, PricingRequest | None, st
         )
 
     if not submitted:
+        # Render navigation and global page chrome without changing active widgets.
         return False, None, None
     try:
         dividends = read_dividend_table(dividend_frame)
@@ -175,6 +180,7 @@ def main() -> None:
         st.markdown("### ◈ LATTICE 272")
         st.caption("DERIVATIVES PRICING · QUANT LAB")
         st.divider()
+        # Preserve page navigation and avoid rerendering heavy analytics unnecessarily.
         st.markdown("**WORKSPACE**")
         workspace = st.radio(
             "Workspace",
@@ -192,6 +198,7 @@ def main() -> None:
             st.button("↺ Reset ticket to defaults", on_click=reset_ticket, width="stretch",
                       help="Reset inputs and the displayed result; session blotter is retained.")
 
+    # Validate form inputs before triggering numerical pricing workflows.
     if workspace == "02 / Model comparison":
         from frontend.model_comparison import render_comparison_page
         render_comparison_page()
@@ -209,6 +216,7 @@ def main() -> None:
 
     if workspace == "05 / Research lab":
         from frontend.research_lab import render_research_lab_page
+        # Keep the user-facing results and chart layout identical to the existing terminal.
         render_research_lab_page()
         return
 
@@ -226,6 +234,7 @@ def main() -> None:
             st.session_state["last_pricing_result"] = None
             st.session_state.pop("spot_revaluation", None)
             if parsing_error is not None:
+                # Preserve error messages and empty states for model failures.
                 st.error(parsing_error)
             elif request is not None:
                 try:
@@ -243,6 +252,7 @@ def main() -> None:
                     del history[12:]
                 except (PricingInputError, ValueError, RuntimeError, OverflowError,
                         ZeroDivisionError) as exc:
+                    # Render navigation and global page chrome without changing active widgets.
                     st.error(f"Pricing unavailable: {exc}")
                     st.info("Check model compatibility, dividend dates and market inputs.")
 
@@ -260,6 +270,7 @@ def main() -> None:
         if st.session_state["pricing_history"]:
             with st.expander("Session blotter · last 12 valuations"):
                 st.dataframe(
+                    # Keep navigation and Streamlit session keys stable across reruns.
                     pd.DataFrame(st.session_state["pricing_history"]),
                     hide_index=True, width="stretch",
                 )

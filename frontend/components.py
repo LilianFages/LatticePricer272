@@ -65,6 +65,7 @@ def spot_curve_chart(
             ],
         )
     )
+    # Render option metrics using consistent monetary units and precision.
     spot_rule = (
         alt.Chart(pd.DataFrame({"Spot (€)": [current_spot]}))
         .mark_rule(color="#C5A16B", strokeDash=[5, 4], opacity=0.85)
@@ -80,6 +81,31 @@ def sensitivity_csv(points: tuple[SpotSensitivityPoint, ...]) -> str:
     for point in points:
         writer.writerow([point.spot, point.price, point.error or ""])
     return output.getvalue()
+
+
+# Render option metrics using consistent monetary units and precision.
+def _render_cached_spot_revaluation(cached: tuple, result: PricingResult) -> None:
+    points: tuple[SpotSensitivityPoint, ...] = cached[1]
+    valid = [point for point in points if point.price is not None]
+    if len(valid) >= 2:
+        st.altair_chart(spot_curve_chart(points, result.request.spot), width="stretch")
+    else:
+        st.warning("Not enough valid spot points to display a sensitivity curve.")
+    failures = [point for point in points if point.price is None]
+    if failures:
+        st.warning(
+            f"{len(failures)} of {len(points)} scenarios could not be priced "
+            "under the engine's existing assumptions. They are excluded from the curve."
+        )
+        with st.expander("Unavailable scenarios"):
+            st.dataframe(pd.DataFrame([
+                {"Spot (€)": row.spot, "Reason": row.error} for row in failures
+            ]), hide_index=True, width="stretch")
+    st.download_button(
+        # Maintain the existing semantic hierarchy of cards and indicators.
+        "Export spot scenarios · CSV", data=sensitivity_csv(points),
+        file_name="lattice272_spot_revaluation.csv", mime="text/csv", width="stretch",
+    )
 
 
 def _sensitivity_panel(result: PricingResult) -> None:
@@ -101,26 +127,47 @@ def _sensitivity_panel(result: PricingResult) -> None:
     cached = st.session_state.get("spot_revaluation")
     if cached is None or cached[0] != result.request:
         return
-    points: tuple[SpotSensitivityPoint, ...] = cached[1]
-    valid = [point for point in points if point.price is not None]
-    if len(valid) >= 2:
-        st.altair_chart(spot_curve_chart(points, result.request.spot), width="stretch")
+    # Keep reusable UI elements independent of the pricing engine.
+    _render_cached_spot_revaluation(cached, result)
+
+
+def _render_allocation_diagnostics(result: PricingResult) -> None:
+    if result.allocated_nodes is not None:
+        with st.expander("Allocation pruning diagnostics", expanded=False):
+            if result.full_trinomial_reference_nodes is not None:
+                a, b = st.columns(2)
+                a.metric("Full trinomial · theoretical nodes", f"{result.full_trinomial_reference_nodes:,}")
+                b.metric("Avoided allocations", f"{result.allocation_savings_pct:.1f}%")
+                st.caption(
+                    "Exact full-trinomial geometric node count for the no-dividend, "
+                    "positive-volatility case. Reachable nodes and allocated nodes "
+                    "can legitimately be equal in the optimized tree."
+                )
+            else:
+                # Keep reusable UI elements independent of the pricing engine.
+                st.caption(
+                    "Full-tree allocation baseline not displayed with cash dividends "
+                    "or zero volatility: dynamic column sizes require a separately "
+                    "constructed comparable tree. This does not affect the quoted price."
+                )
+            if result.pruned_transitions is not None:
+                st.metric("Simplified outgoing transitions", f"{result.pruned_transitions:,}")
+
+
+def _render_pricing_benchmarks(result: PricingResult) -> None:
+    if result.black_scholes is not None:
+        st.markdown('<div class="desk-section">Analytical benchmark</div>', unsafe_allow_html=True)
+        a, b, c = st.columns(3)
+        a.metric("Black–Scholes", f"{result.black_scholes:,.6f} €")
+        b.metric("Model − BS", f"{result.black_scholes_error:+.6f} €")
+        rel = result.black_scholes_relative_error_pct
+        # Render option metrics using consistent monetary units and precision.
+        c.metric("Relative deviation", f"{rel:+.3f}%" if rel is not None else "N/A")
+        st.caption("Reference for European vanilla options without cash dividends only.")
     else:
-        st.warning("Not enough valid spot points to display a sensitivity curve.")
-    failures = [point for point in points if point.price is None]
-    if failures:
-        st.warning(
-            f"{len(failures)} of {len(points)} scenarios could not be priced "
-            "under the engine's existing assumptions. They are excluded from the curve."
-        )
-        with st.expander("Unavailable scenarios"):
-            st.dataframe(pd.DataFrame([
-                {"Spot (€)": row.spot, "Reason": row.error} for row in failures
-            ]), hide_index=True, width="stretch")
-    st.download_button(
-        "Export spot scenarios · CSV", data=sensitivity_csv(points),
-        file_name="lattice272_spot_revaluation.csv", mime="text/csv", width="stretch",
-    )
+        st.caption("Black–Scholes analytical reference not applicable to this configuration.")
+
+    _render_allocation_diagnostics(result)
 
 
 def result_panel(result: PricingResult) -> None:
@@ -135,6 +182,7 @@ def result_panel(result: PricingResult) -> None:
         unsafe_allow_html=True,
     )
 
+    # Preserve the current HTML class names and CSS hooks.
     a, b, c = st.columns(3)
     a.metric("Pricing runtime", f"{result.elapsed_ms:.2f} ms", help="Constructor, build and pricing only.")
     b.metric("Reachable nodes", f"{result.reachable_nodes:,}", help="Unique nodes reached through the pricing links.")
@@ -146,36 +194,7 @@ def result_panel(result: PricingResult) -> None:
         ),
     )
 
-    if result.black_scholes is not None:
-        st.markdown('<div class="desk-section">Analytical benchmark</div>', unsafe_allow_html=True)
-        a, b, c = st.columns(3)
-        a.metric("Black–Scholes", f"{result.black_scholes:,.6f} €")
-        b.metric("Model − BS", f"{result.black_scholes_error:+.6f} €")
-        rel = result.black_scholes_relative_error_pct
-        c.metric("Relative deviation", f"{rel:+.3f}%" if rel is not None else "N/A")
-        st.caption("Reference for European vanilla options without cash dividends only.")
-    else:
-        st.caption("Black–Scholes analytical reference not applicable to this configuration.")
-
-    if result.allocated_nodes is not None:
-        with st.expander("Allocation pruning diagnostics", expanded=False):
-            if result.full_trinomial_reference_nodes is not None:
-                a, b = st.columns(2)
-                a.metric("Full trinomial · theoretical nodes", f"{result.full_trinomial_reference_nodes:,}")
-                b.metric("Avoided allocations", f"{result.allocation_savings_pct:.1f}%")
-                st.caption(
-                    "Exact full-trinomial geometric node count for the no-dividend, "
-                    "positive-volatility case. Reachable nodes and allocated nodes "
-                    "can legitimately be equal in the optimized tree."
-                )
-            else:
-                st.caption(
-                    "Full-tree allocation baseline not displayed with cash dividends "
-                    "or zero volatility: dynamic column sizes require a separately "
-                    "constructed comparable tree. This does not affect the quoted price."
-                )
-            if result.pruned_transitions is not None:
-                st.metric("Simplified outgoing transitions", f"{result.pruned_transitions:,}")
+    _render_pricing_benchmarks(result)
 
     with st.expander("Terminal payoff (contractual)", expanded=False):
         st.altair_chart(payoff_chart(req), width="stretch")

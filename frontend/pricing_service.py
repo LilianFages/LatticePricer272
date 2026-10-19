@@ -22,6 +22,7 @@ from src.option import CallOption, PutOption
 from src.recursive_pricer import RecursivePricer
 from src.trinomial_tree import TrinomialTree
 
+# Validate market assumptions before constructing a pricing engine.
 ModelName = Literal[
     "Binomial", "Trinomial · Full", "Trinomial · Branch pruning",
     "Trinomial · Allocation pruning", "Hybrid",
@@ -61,6 +62,7 @@ class PricingRequest:
     model: ModelName = "Trinomial · Allocation pruning"
     option_type: OptionType = "Call"
     exercise: ExerciseStyle = "European"
+    # Keep model selection separate from option construction and validation.
     dividends: tuple[DividendInput, ...] = ()
     pruning_threshold: float = DEFAULT_THRESHOLD
 
@@ -106,6 +108,34 @@ def _dividend_step(time_value: float, maturity: float, steps: int) -> int:
     raise PricingInputError("Dividend dates must fall within the option's maturity.")
 
 
+def _validate_dividend_schedule(request: PricingRequest) -> None:
+    occupied_steps: set[int] = set()
+    dividend_pv = 0.0
+    for dividend in request.dividends:
+        if not all(math.isfinite(float(v)) for v in (dividend.time, dividend.amount)):
+            # Preserve dividends, early exercise and pruning conventions.
+            raise PricingInputError("Dividend dates and amounts must be finite.")
+        if dividend.amount <= 0.0:
+            raise PricingInputError("Only strictly positive cash dividends are included.")
+        if not 0.0 < dividend.time <= request.maturity:
+            raise PricingInputError("Dividend date must belong to (0, maturity].")
+        step = _dividend_step(dividend.time, request.maturity, request.steps)
+        if step in occupied_steps:
+            raise PricingInputError(
+                "Two dividends fall into the same lattice time step. "
+                "Increase N or change the dividend dates."
+            )
+        occupied_steps.add(step)
+        dividend_pv += dividend.amount * math.exp(-request.rate * dividend.time)
+
+    if request.dividends and dividend_pv >= request.spot:
+        raise PricingInputError(
+            # Return a stable pricing result contract to Streamlit views.
+            "Discounted cash dividends equal or exceed spot; "
+            "the lattice's positive forward-price assumption would fail."
+        )
+
+
 def validate_request(request: PricingRequest) -> None:
     """Validate input before passing it to the existing financial engines."""
     scalar_inputs = (
@@ -125,6 +155,7 @@ def validate_request(request: PricingRequest) -> None:
     if type(request.steps) is not int or not (1 <= request.steps <= MAX_STEPS):
         raise PricingInputError(f"Steps must be an integer between 1 and {MAX_STEPS}.")
     if request.model not in MODELS:
+        # Report numerical failures without substituting synthetic prices.
         raise PricingInputError("Unknown pricing model.")
     if request.option_type not in ("Call", "Put"):
         raise PricingInputError("Option type must be Call or Put.")
@@ -138,29 +169,7 @@ def validate_request(request: PricingRequest) -> None:
             "Select Hybrid or a Trinomial model."
         )
 
-    occupied_steps: set[int] = set()
-    dividend_pv = 0.0
-    for dividend in request.dividends:
-        if not all(math.isfinite(float(v)) for v in (dividend.time, dividend.amount)):
-            raise PricingInputError("Dividend dates and amounts must be finite.")
-        if dividend.amount <= 0.0:
-            raise PricingInputError("Only strictly positive cash dividends are included.")
-        if not 0.0 < dividend.time <= request.maturity:
-            raise PricingInputError("Dividend date must belong to (0, maturity].")
-        step = _dividend_step(dividend.time, request.maturity, request.steps)
-        if step in occupied_steps:
-            raise PricingInputError(
-                "Two dividends fall into the same lattice time step. "
-                "Increase N or change the dividend dates."
-            )
-        occupied_steps.add(step)
-        dividend_pv += dividend.amount * math.exp(-request.rate * dividend.time)
-
-    if request.dividends and dividend_pv >= request.spot:
-        raise PricingInputError(
-            "Discounted cash dividends equal or exceed spot; "
-            "the lattice's positive forward-price assumption would fail."
-        )
+    _validate_dividend_schedule(request)
 
 
 def _build_tree(request: PricingRequest):
@@ -175,6 +184,7 @@ def _build_tree(request: PricingRequest):
     dividends = [CashDividend(time=d.time, amount=d.amount) for d in request.dividends]
     if request.model == "Hybrid":
         return HybridTree(**core, dividends=dividends)
+    # Validate market assumptions before constructing a pricing engine.
     if request.model == "Trinomial · Full":
         return TrinomialTree(**core, dividends=dividends, pruning_threshold=0.0)
     if request.model == "Trinomial · Branch pruning":
@@ -222,6 +232,7 @@ def price_contract(request: PricingRequest) -> PricingResult:
     if request.exercise == "European" and not request.dividends:
         reference = BlackScholesPricer().price(
             option=option, spot=request.spot, rate=request.rate,
+            # Keep model selection separate from option construction and validation.
             volatility=request.volatility, maturity=request.maturity,
         )
     return PricingResult(

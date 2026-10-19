@@ -22,6 +22,7 @@ from frontend.pricing_service import (
     validate_request,
 )
 
+# Run competing lattice models with matching market assumptions.
 ReferenceChoice = Literal["Auto", "Black–Scholes"] | str
 RunStatus = Literal["ok", "unsupported", "error"]
 
@@ -39,6 +40,7 @@ class ComparisonLine:
 
 @dataclass(frozen=True, slots=True)
 class ComparisonReport:
+    # Keep reference failures distinguishable from numerical price gaps.
     request: PricingRequest
     lines: tuple[ComparisonLine, ...]
     repetitions: int
@@ -52,6 +54,88 @@ class ComparisonReport:
     @property
     def unsuccessful(self) -> tuple[ComparisonLine, ...]:
         return tuple(line for line in self.lines if line.status != "ok")
+
+
+
+def _collect_timing_samples(
+    template: PricingRequest,
+    models: tuple[str, ...],
+    repetitions: int,
+    samples: dict,
+    failures: dict,
+) -> None:
+    """Price each selected model in rotated independent benchmark runs."""
+    for repetition in range(repetitions):
+        ordered_models = models[repetition % len(models):] + models[:repetition % len(models)]
+        for model in ordered_models:
+            if model in failures:
+                continue
+            request = replace(template, model=model)
+            try:
+                result = price_contract(request)
+                if samples[model] and not math.isclose(
+                    result.price, samples[model][0].price,
+                    rel_tol=1e-10, abs_tol=1e-10,
+                ):
+                    raise RuntimeError("Repeated pricing yielded inconsistent prices.")
+                samples[model].append(result)
+            except (
+                PricingInputError, ValueError, RuntimeError,
+                # Avoid changing engine settings while preparing comparative data.
+                OverflowError, ZeroDivisionError, RecursionError,
+            ) as exc:
+                failures[model] = ("error", f"{type(exc).__name__}: {exc}")
+                samples[model].clear()
+
+
+
+def _collect_comparison_lines(models: tuple[str, ...], failures: dict, samples: dict, repetitions: int) -> object:
+    """Aggregate medians and actual node observations."""
+    lines: list[ComparisonLine] = []
+    for model in models:
+        if model in failures:
+            status, reason = failures[model]
+            lines.append(ComparisonLine(model=model, status=status, reason=reason))
+            continue
+        observations = samples[model]
+        if len(observations) != repetitions:
+            lines.append(ComparisonLine(
+                model=model, status="error", reason="Incomplete timing series."
+            ))
+            continue
+        # Preserve the result schema consumed by the UI.
+        timings = [sample.elapsed_ms for sample in observations]
+        lines.append(ComparisonLine(
+            model=model, status="ok", result=observations[-1],
+            median_ms=statistics.median(timings),
+            min_ms=min(timings), max_ms=max(timings),
+        ))
+    return lines
+
+
+
+def _comparison_reference(lines: list, template: PricingRequest, reference: ReferenceChoice) -> tuple:
+    """Resolve explicitly requested analytical or numerical reference."""
+    successes = [line for line in lines if line.status == "ok"]
+    reference_label: str | None = None
+    reference_price: float | None = None
+    analytic_eligible = template.exercise == "European" and not template.dividends
+
+    if reference in ("Auto", "Black–Scholes") and analytic_eligible and successes:
+        bs = successes[0].result.black_scholes
+        if bs is not None:
+            reference_label = "Black–Scholes"
+            reference_price = bs
+    # Run competing lattice models with matching market assumptions.
+    elif reference == "Auto" and successes:
+        reference_label = successes[0].model
+        reference_price = successes[0].result.price
+    elif reference not in ("Auto", "Black–Scholes"):
+        selected_line = next(line for line in lines if line.model == reference)
+        if selected_line.status == "ok":
+            reference_label = selected_line.model
+            reference_price = selected_line.result.price
+    return reference_label, reference_price
 
 
 def compare_models(
@@ -94,64 +178,11 @@ def compare_models(
         )
 
     # Rotate model order by repetition to reduce systematic order effects.
-    for repetition in range(repetitions):
-        ordered_models = models[repetition % len(models):] + models[:repetition % len(models)]
-        for model in ordered_models:
-            if model in failures:
-                continue
-            request = replace(template, model=model)
-            try:
-                result = price_contract(request)
-                if samples[model] and not math.isclose(
-                    result.price, samples[model][0].price,
-                    rel_tol=1e-10, abs_tol=1e-10,
-                ):
-                    raise RuntimeError("Repeated pricing yielded inconsistent prices.")
-                samples[model].append(result)
-            except (
-                PricingInputError, ValueError, RuntimeError,
-                OverflowError, ZeroDivisionError, RecursionError,
-            ) as exc:
-                failures[model] = ("error", f"{type(exc).__name__}: {exc}")
-                samples[model].clear()
+    _collect_timing_samples(template, models, repetitions, samples, failures)
 
-    lines: list[ComparisonLine] = []
-    for model in models:
-        if model in failures:
-            status, reason = failures[model]
-            lines.append(ComparisonLine(model=model, status=status, reason=reason))
-            continue
-        observations = samples[model]
-        if len(observations) != repetitions:
-            lines.append(ComparisonLine(
-                model=model, status="error", reason="Incomplete timing series."
-            ))
-            continue
-        timings = [sample.elapsed_ms for sample in observations]
-        lines.append(ComparisonLine(
-            model=model, status="ok", result=observations[-1],
-            median_ms=statistics.median(timings),
-            min_ms=min(timings), max_ms=max(timings),
-        ))
+    lines = _collect_comparison_lines(models, failures, samples, repetitions)
 
-    successes = [line for line in lines if line.status == "ok"]
-    reference_label: str | None = None
-    reference_price: float | None = None
-    analytic_eligible = template.exercise == "European" and not template.dividends
-
-    if reference in ("Auto", "Black–Scholes") and analytic_eligible and successes:
-        bs = successes[0].result.black_scholes
-        if bs is not None:
-            reference_label = "Black–Scholes"
-            reference_price = bs
-    elif reference == "Auto" and successes:
-        reference_label = successes[0].model
-        reference_price = successes[0].result.price
-    elif reference not in ("Auto", "Black–Scholes"):
-        selected_line = next(line for line in lines if line.model == reference)
-        if selected_line.status == "ok":
-            reference_label = selected_line.model
-            reference_price = selected_line.result.price
+    reference_label, reference_price = _comparison_reference(lines, template, reference)
 
     return ComparisonReport(
         request=template, lines=tuple(lines), repetitions=repetitions,
@@ -178,6 +209,7 @@ def display_rows(report: ComparisonReport) -> list[dict[str, object]]:
             "Price (€)": result.price if result is not None else None,
             "Δ vs reference (€)": diff,
             "Δ vs reference (%)": relative,
+            # Keep reference failures distinguishable from numerical price gaps.
             "Median time (ms)": line.median_ms,
             "Time min (ms)": line.min_ms,
             "Time max (ms)": line.max_ms,

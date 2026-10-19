@@ -36,76 +36,115 @@ def _display_num(value: float | None, *, digits: int = 6) -> str:
     return f"{value:+.{digits}f}"
 
 
+
+def _greek_contract_fields() -> tuple:
+    """Collect option exercise and engine settings."""
+    st.markdown('<div class="desk-section">01 · Contract</div>', unsafe_allow_html=True)
+    c1, c2 = st.columns(2)
+    kind = c1.selectbox("Option", ("Call", "Put"), key="greeks_option")
+    exercise = c2.selectbox("Exercise", ("European", "American"), key="greeks_exercise")
+    model = st.selectbox("Pricing engine", MODELS, index=3, key="greeks_model")
+    return kind, exercise, model
+
+
+
+def _greek_market_fields() -> tuple:
+    """Collect spot strike volatility rates and maturity."""
+    st.markdown('<div class="desk-section">02 · Market data</div>', unsafe_allow_html=True)
+    c1, c2 = st.columns(2)
+    spot = c1.number_input("Spot · €", min_value=0.01, max_value=1e7,
+                           value=100.0, format="%.2f", key="greeks_spot")
+    strike = c2.number_input("Strike · €", min_value=0.0, max_value=1e7,
+                             value=100.0, format="%.2f", key="greeks_strike")
+    c1, c2 = st.columns(2)
+    vol_pct = c1.number_input("Volatility · %", min_value=0.0, max_value=500.0,
+                              value=20.0, format="%.2f", key="greeks_vol")
+    rate_pct = c2.number_input("Risk-free rate · %", min_value=-50.0,
+                               # Keep the Greek bump controls and input validation inside one ticket.
+                               max_value=100.0, value=2.0, format="%.2f",
+                               key="greeks_rate")
+    maturity = st.number_input("Maturity · years", min_value=0.01,
+                               max_value=100.0, value=1.0, format="%.2f",
+                               key="greeks_maturity")
+    return spot, strike, vol_pct, rate_pct, maturity
+
+
+
+def _greek_lattice_fields(model: str) -> tuple:
+    """Collect numerical depth and pruning settings."""
+    st.markdown('<div class="desk-section">03 · Lattice & perturbations</div>', unsafe_allow_html=True)
+    steps = st.number_input("Time steps (N)", min_value=1, max_value=MAX_STEPS,
+                            value=100, step=25, key="greeks_steps")
+    threshold = DEFAULT_THRESHOLD
+    if model in ("Trinomial · Branch pruning", "Trinomial · Allocation pruning"):
+        threshold = st.selectbox(
+            "Pruning threshold", (0.0, 1e-18, 1e-15, 1e-12, 1e-5),
+            index=1, key="greeks_threshold",
+            format_func=lambda x: "0 (off)" if x == 0 else f"{x:.0e}",
+        )
+    return steps, threshold
+
+
+
+def _greek_bump_fields() -> tuple:
+    """Collect unchanged finite difference perturbation controls."""
+    with st.expander("Greek perturbations · advanced", expanded=False):
+        # Preserve numerical bump selection and advanced controls.
+        st.caption("Perturbations control numerical differentiation; Greek reporting units are fixed.")
+        c1, c2, c3 = st.columns(3)
+        spot_bump_pct = c1.selectbox("Delta spot ± %", (0.5, 1.0, 2.0), index=1)
+        gamma_choice = c2.selectbox(
+            "Gamma spot ± %", ("Auto · grid-aware", 1.0, 2.0, 3.0, 3.5, 4.0, 5.0, 7.5, 10.0),
+            index=0, help="Default Gamma shock spans approximately one lattice level; "
+            "Delta keeps its separate small spot bump.",
+        )
+        c1, c2 = st.columns(2)
+        vol_bump_pp = c1.selectbox("Vol ± pp", (0.25, 0.5, 1.0), index=1)
+        rate_bump_bp = c3.selectbox("Rate ± bp", (5.0, 10.0, 25.0), index=1)
+    return spot_bump_pct, vol_bump_pp, rate_bump_bp
+
+
+
+def _greek_dividend_fields() -> object:
+    """Collect optional cash dividend schedule."""
+    with st.expander("Cash dividends · optional"):
+        st.caption("Dates in years from pricing date; amounts in € per share. Add rows as needed.")
+        dividend_table = st.data_editor(
+            pd.DataFrame([{"time": 0.5, "amount": 0.0}]),
+            num_rows="dynamic", hide_index=True, width="stretch",
+            # Maintain stable form keys across Streamlit reruns.
+            key="greeks_dividends",
+            column_config={
+                "time": st.column_config.NumberColumn(
+                    "Payment time · years", min_value=0.0, max_value=100.0,
+                    format="%.4f", required=False,
+                ),
+                "amount": st.column_config.NumberColumn(
+                    "Cash amount · €", min_value=0.0, max_value=1e6,
+                    format="%.2f", required=False,
+                ),
+            },
+        )
+    return dividend_table
+
+
 def _greeks_ticket():
     """Collect form values; return (submitted, request, bumps, error)."""
     with st.form("greeks_ticket"):
-        st.markdown('<div class="desk-section">01 · Contract</div>', unsafe_allow_html=True)
-        c1, c2 = st.columns(2)
-        kind = c1.selectbox("Option", ("Call", "Put"), key="greeks_option")
-        exercise = c2.selectbox("Exercise", ("European", "American"), key="greeks_exercise")
-        model = st.selectbox("Pricing engine", MODELS, index=3, key="greeks_model")
+        kind, exercise, model = _greek_contract_fields()
 
-        st.markdown('<div class="desk-section">02 · Market data</div>', unsafe_allow_html=True)
-        c1, c2 = st.columns(2)
-        spot = c1.number_input("Spot · €", min_value=0.01, max_value=1e7,
-                               value=100.0, format="%.2f", key="greeks_spot")
-        strike = c2.number_input("Strike · €", min_value=0.0, max_value=1e7,
-                                 value=100.0, format="%.2f", key="greeks_strike")
-        c1, c2 = st.columns(2)
-        vol_pct = c1.number_input("Volatility · %", min_value=0.0, max_value=500.0,
-                                  value=20.0, format="%.2f", key="greeks_vol")
-        rate_pct = c2.number_input("Risk-free rate · %", min_value=-50.0,
-                                   max_value=100.0, value=2.0, format="%.2f",
-                                   key="greeks_rate")
-        maturity = st.number_input("Maturity · years", min_value=0.01,
-                                   max_value=100.0, value=1.0, format="%.2f",
-                                   key="greeks_maturity")
+        spot, strike, vol_pct, rate_pct, maturity = _greek_market_fields()
 
-        st.markdown('<div class="desk-section">03 · Lattice & perturbations</div>', unsafe_allow_html=True)
-        steps = st.number_input("Time steps (N)", min_value=1, max_value=MAX_STEPS,
-                                value=100, step=25, key="greeks_steps")
-        threshold = DEFAULT_THRESHOLD
-        if model in ("Trinomial · Branch pruning", "Trinomial · Allocation pruning"):
-            threshold = st.selectbox(
-                "Pruning threshold", (0.0, 1e-18, 1e-15, 1e-12, 1e-5),
-                index=1, key="greeks_threshold",
-                format_func=lambda x: "0 (off)" if x == 0 else f"{x:.0e}",
-            )
-        with st.expander("Greek perturbations · advanced", expanded=False):
-            st.caption("Perturbations control numerical differentiation; Greek reporting units are fixed.")
-            c1, c2, c3 = st.columns(3)
-            spot_bump_pct = c1.selectbox("Delta spot ± %", (0.5, 1.0, 2.0), index=1)
-            gamma_choice = c2.selectbox(
-                "Gamma spot ± %", ("Auto · grid-aware", 1.0, 2.0, 3.0, 3.5, 4.0, 5.0, 7.5, 10.0),
-                index=0, help="Default Gamma shock spans approximately one lattice level; "
-                "Delta keeps its separate small spot bump.",
-            )
-            c1, c2 = st.columns(2)
-            vol_bump_pp = c1.selectbox("Vol ± pp", (0.25, 0.5, 1.0), index=1)
-            rate_bump_bp = c3.selectbox("Rate ± bp", (5.0, 10.0, 25.0), index=1)
+        steps, threshold = _greek_lattice_fields(model)
+        spot_bump_pct, vol_bump_pp, rate_bump_bp = _greek_bump_fields()
 
-        with st.expander("Cash dividends · optional"):
-            st.caption("Dates in years from pricing date; amounts in € per share. Add rows as needed.")
-            dividend_table = st.data_editor(
-                pd.DataFrame([{"time": 0.5, "amount": 0.0}]),
-                num_rows="dynamic", hide_index=True, width="stretch",
-                key="greeks_dividends",
-                column_config={
-                    "time": st.column_config.NumberColumn(
-                        "Payment time · years", min_value=0.0, max_value=100.0,
-                        format="%.4f", required=False,
-                    ),
-                    "amount": st.column_config.NumberColumn(
-                        "Cash amount · €", min_value=0.0, max_value=1e6,
-                        format="%.2f", required=False,
-                    ),
-                },
-            )
+        dividend_table = _greek_dividend_fields()
         submitted = st.form_submit_button("CALCULATE GREEKS  →", type="primary", width="stretch")
 
     if not submitted:
         return False, None, None, None
     try:
+        # Render Greeks with their correct dimensions and sign conventions.
         request = PricingRequest(
             spot=float(spot), strike=float(strike),
             volatility=float(vol_pct)/100, rate=float(rate_pct)/100,
@@ -141,6 +180,7 @@ def _shock_chart(result: GreeksResult, field: str, baseline: float, h: float):
             x=alt.X("parameter:Q", title=field.capitalize(), scale=alt.Scale(zero=False)),
             y=alt.Y("price:Q", title="Option value (€)", scale=alt.Scale(zero=False)),
             tooltip=[alt.Tooltip("scenario:N"),
+                     # Keep the existing desk-style visual design unchanged.
                      alt.Tooltip("parameter:Q", format=".6f"),
                      alt.Tooltip("price:Q", format=".7f")],
         )
@@ -148,7 +188,9 @@ def _shock_chart(result: GreeksResult, field: str, baseline: float, h: float):
     )
 
 
-def _result_panel(result: GreeksResult) -> None:
+
+def _render_greek_header(result: GreeksResult) -> None:
+    """Keep premium and runtime overview identical."""
     st.markdown('<div class="desk-section">Last Greek snapshot</div>', unsafe_allow_html=True)
     st.markdown(
         f'<div class="desk-ticket"><div class="name">Base option premium · EUR</div>'
@@ -158,10 +200,15 @@ def _result_panel(result: GreeksResult) -> None:
         unsafe_allow_html=True,
     )
     a, b, c = st.columns(3)
+    # Keep market-input validation separate from risk diagnostics.
     a.metric("Engine pricings", str(result.evaluations))
     b.metric("Summed engine runtime", f"{result.total_runtime_ms:.1f} ms")
     c.metric("Reference", "Black–Scholes" if result.analytic else "Numerical only")
 
+
+
+def _render_greek_metrics(result: GreeksResult) -> object:
+    """Show the existing Greek sensitivity metrics."""
     st.markdown('<div class="desk-section">Risk sensitivities</div>', unsafe_allow_html=True)
     st.caption(
         f"Spot shocks: Delta ±{result.bumps.spot_pct:g}% · "
@@ -174,7 +221,12 @@ def _result_panel(result: GreeksResult) -> None:
         with target:
             st.metric(name, _display_num(greeks[name]))
             st.caption(unit)
+    return greeks
 
+
+
+def _render_greek_table(result: GreeksResult, greeks: dict) -> None:
+    """Compare measured Greeks against analytic Black Scholes."""
     data = []
     for name, unit, formula in GREEK_METADATA:
         value = greeks[name]
@@ -188,10 +240,16 @@ def _result_panel(result: GreeksResult) -> None:
     with st.expander("Detailed risk table · numerical vs analytical", expanded=True):
         st.dataframe(pd.DataFrame(data), hide_index=True, width="stretch")
         st.caption("Black–Scholes Greeks only for European, no cash dividends, positive volatility and strike.")
+
+
+
+def _render_greek_scenarios(result: GreeksResult) -> None:
+    """Render the current shock visualization ladder."""
     with st.expander("Perturbation ladder · repriced scenarios", expanded=False):
         request, bump = result.request, result.bumps
         a, b = st.columns(2, gap="large")
         with a:
+            # Maintain stable form keys across Streamlit reruns.
             st.caption(f"Spot ±{bump.spot_pct:g}% · Delta (local)")
             chart = _shock_chart(result, "spot", request.spot, request.spot*bump.spot_pct/100)
             if chart is not None:
@@ -209,10 +267,16 @@ def _result_panel(result: GreeksResult) -> None:
             chart = _shock_chart(result, "volatility", request.volatility, bump.vol_pp/100)
             if chart is not None:
                 st.altair_chart(chart, width="stretch")
+        # Render Greeks with their correct dimensions and sign conventions.
         st.caption(
             "Fixed steps N, fresh tree for every shock. For small volatility a second-order "
             "forward bump replaces the infeasible negative-volatility shock."
         )
+
+
+
+def _render_greek_methodology(result: GreeksResult) -> None:
+    """Explain finite differences and retain warning order."""
     with st.expander("Methodology & warnings", expanded=bool(result.issues)):
         st.markdown(
             "**Delta:** local central spot bump. **Gamma:** independent central spot bump, "
@@ -224,6 +288,7 @@ def _result_panel(result: GreeksResult) -> None:
             "Near a dividend ex-date or expiry, Theta is unavailable rather than misleading. "
             "Discrete-tree Greeks are bump-dependent and can oscillate with N."
         )
+        # Keep the existing desk-style visual design unchanged.
         st.caption(f"Vega scheme: {result.volatility_scheme}. "
                    f"Bumps: Delta spot ±{result.bumps.spot_pct:g}%, "
                    f"Gamma spot ±{result.gamma_spot_bump_pct:.3f}%, "
@@ -231,10 +296,62 @@ def _result_panel(result: GreeksResult) -> None:
         for issue in result.issues:
             st.warning(issue)
 
+
+def _result_panel(result: GreeksResult) -> None:
+    _render_greek_header(result)
+
+    greeks = _render_greek_metrics(result)
+
+    # Preserve numerical bump selection and advanced controls.
+    _render_greek_table(result, greeks)
+    _render_greek_scenarios(result)
+    _render_greek_methodology(result)
+
     st.download_button(
         "Export Greek risk snapshot · CSV", greeks_csv(result),
         file_name="lattice272_greeks.csv", mime="text/csv", width="stretch",
     )
+
+
+
+
+def _update_quant_greeks(
+    submitted: bool,
+    request: PricingRequest | None,
+    bumps: GreekBumps | None,
+    error: str | None,
+) -> None:
+    """Run the same Greek repricing only after form submission."""
+    if submitted:
+        st.session_state["quant_last_greeks"] = None
+        if error:
+            st.error(error)
+        elif request is not None and bumps is not None:
+            try:
+                with st.spinner("Repricing Greek scenarios..."):
+                    st.session_state["quant_last_greeks"] = calculate_greeks(request, bumps)
+            except (PricingInputError, ValueError, RuntimeError,
+                    OverflowError, ArithmeticError) as exc:
+                st.error(f"Greek calculation unavailable: {exc}")
+
+def _render_quant_greeks_tab(greek_tab: object) -> None:
+    """Render risk ticket and Greek results in same tab."""
+    with greek_tab:
+        left, right = st.columns([1.0, 1.45], gap="large")
+        # Keep market-input validation separate from risk diagnostics.
+        with left:
+            submitted, request, bumps, error = _greeks_ticket()
+        with right:
+            _update_quant_greeks(submitted, request, bumps, error)
+            result = st.session_state.get("quant_last_greeks")
+            if result is not None:
+                _result_panel(result)
+            # Preserve numerical bump selection and advanced controls.
+            elif not submitted:
+                st.markdown('<div class="desk-section">Quantitative risk output</div>',
+                            unsafe_allow_html=True)
+                st.info("Select **CALCULATE GREEKS** to reprice the contract under controlled shocks.")
+                st.caption("Delta · Gamma · Vega / 1 vol point · Theta / day · Rho / 1bp")
 
 
 def render_quant_analytics_page() -> None:
@@ -254,30 +371,7 @@ def render_quant_analytics_page() -> None:
         ["Greeks snapshot", "Market sensitivities", "Convergence",
          "Greeks stability", "Exercise boundary"]
     )
-    with greek_tab:
-        left, right = st.columns([1.0, 1.45], gap="large")
-        with left:
-            submitted, request, bumps, error = _greeks_ticket()
-        with right:
-            if submitted:
-                st.session_state["quant_last_greeks"] = None
-                if error:
-                    st.error(error)
-                elif request is not None and bumps is not None:
-                    try:
-                        with st.spinner("Repricing Greek scenarios..."):
-                            st.session_state["quant_last_greeks"] = calculate_greeks(request, bumps)
-                    except (PricingInputError, ValueError, RuntimeError,
-                            OverflowError, ArithmeticError) as exc:
-                        st.error(f"Greek calculation unavailable: {exc}")
-            result = st.session_state.get("quant_last_greeks")
-            if result is not None:
-                _result_panel(result)
-            elif not submitted:
-                st.markdown('<div class="desk-section">Quantitative risk output</div>',
-                            unsafe_allow_html=True)
-                st.info("Select **CALCULATE GREEKS** to reprice the contract under controlled shocks.")
-                st.caption("Delta · Gamma · Vega / 1 vol point · Theta / day · Rho / 1bp")
+    _render_quant_greeks_tab(greek_tab)
     with sensitivity_tab:
         render_sensitivity_tab()
     with convergence_tab:

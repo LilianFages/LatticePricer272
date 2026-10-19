@@ -26,6 +26,7 @@ from src.recursive_pricer import RecursivePricer
 
 MAX_BOUNDARY_STEPS = 200
 PROB_TOL = 2e-10
+# Distinguish optimal exercise decisions from path probabilities.
 EXERCISE_TOL = 1e-10
 
 
@@ -43,6 +44,7 @@ class ExerciseDate:
     boundary_spot: float | None
     exercise_node_count: int
     non_contiguous: bool
+    # Keep node states, dividends and early-exercise values consistent.
     total_mass: float
 
 
@@ -89,6 +91,7 @@ def _successors(node: Any) -> tuple[tuple[Any, float], ...]:
     return tuple(transitions)
 
 
+# Preserve the selected exercise convention and observation date.
 def _advance(masses: dict[Any, float]) -> dict[Any, float]:
     successor_mass: dict[Any, float] = defaultdict(float)
     for node, mass in masses.items():
@@ -106,6 +109,7 @@ def _value(node: Any) -> float:
     return float(value)
 
 
+# Return stable chart and table inputs for the exercise boundary panel.
 def _payoff(price: float, strike: float, kind: str) -> float:
     return max(price - strike, 0.0) if kind == "Call" else max(strike - price, 0.0)
 
@@ -126,6 +130,73 @@ def _exercise(node: Any, request: PricingRequest, step: int,
     return intrinsic > hold + EXERCISE_TOL * scale
 
 
+
+def _validate_exercise_layer(
+    full: dict,
+    worst_mass_error: float,
+    step: int,
+    dt: float,
+) -> tuple:
+    """Verify unconditional probability conservation at each date."""
+    time = step * dt
+    full_total = math.fsum(full.values())
+    worst_mass_error = max(worst_mass_error, abs(full_total - 1.0))
+    if not math.isclose(full_total, 1.0, rel_tol=0, abs_tol=PROB_TOL):
+        raise RuntimeError(f"Unconditional probability mass is {full_total:.12g} at N={step}.")
+    if any(not math.isfinite(p) or p < -PROB_TOL for p in full.values()):
+        raise RuntimeError("Invalid unconditional node probability.")
+    return time, full_total, worst_mass_error
+
+
+
+def _measure_exercise_flows(
+    full: dict,
+    alive: dict,
+    request: PricingRequest,
+    step: int,
+    dt: float,
+    cumulative: float,
+    time: float,
+) -> tuple:
+    """Measure stopping mass survival and discounted expected value."""
+    candidates = {node for node in full if _exercise(node, request, step, dt)}
+    region = math.fsum(full[n] for n in candidates)
+    first = math.fsum(alive.get(n, 0.0) for n in candidates)
+    cumulative += first
+    remaining = {node: p for node, p in alive.items() if node not in candidates}
+    survival = math.fsum(remaining.values())
+    if not math.isclose(survival + cumulative, 1.0, rel_tol=0, abs_tol=PROB_TOL):
+        raise RuntimeError("Survival plus cumulative first exercise must sum to 1.")
+    mean_pv = math.exp(-request.rate * time) * math.fsum(
+        mass * _value(node) for node, mass in full.items()
+    )
+    return candidates, region, first, cumulative, remaining, survival, mean_pv
+
+
+
+def _find_exercise_envelope(
+    full: dict,
+    candidates: set,
+    request: PricingRequest,
+    step: int,
+) -> tuple:
+    """Identify exercise frontier and flag noncontiguous regions."""
+    exercised_spots = [float(n.price) for n in candidates]
+    bottom = min(exercised_spots) if exercised_spots else None
+    top = max(exercised_spots) if exercised_spots else None
+    boundary = (top if request.option_type == "Put" else bottom)
+    # Mark any non-contiguous exercise set; boundary is only its envelope.
+    non_contiguous = False
+    if step < request.steps and boundary is not None:
+        if request.option_type == "Put":
+            non_contiguous = any(float(n.price) < boundary - 1e-10
+                                 for n in full if n not in candidates)
+        else:
+            non_contiguous = any(float(n.price) > boundary + 1e-10
+                                 for n in full if n not in candidates)
+    return bottom, top, boundary, non_contiguous
+
+
 def analyze_priced_tree(root: Any, request: PricingRequest) -> tuple[
     tuple[ExerciseDate, ...], tuple[ExercisePoint, ...], float
 ]:
@@ -139,39 +210,20 @@ def analyze_priced_tree(root: Any, request: PricingRequest) -> tuple[
     worst_mass_error = 0.0
 
     for step in range(request.steps + 1):
-        time = step * dt
-        full_total = math.fsum(full.values())
-        worst_mass_error = max(worst_mass_error, abs(full_total - 1.0))
-        if not math.isclose(full_total, 1.0, rel_tol=0, abs_tol=PROB_TOL):
-            raise RuntimeError(f"Unconditional probability mass is {full_total:.12g} at N={step}.")
-        if any(not math.isfinite(p) or p < -PROB_TOL for p in full.values()):
-            raise RuntimeError("Invalid unconditional node probability.")
+        time, full_total, worst_mass_error = _validate_exercise_layer(full, worst_mass_error, step, dt)
 
-        candidates = {node for node in full if _exercise(node, request, step, dt)}
-        region = math.fsum(full[n] for n in candidates)
-        first = math.fsum(alive.get(n, 0.0) for n in candidates)
-        cumulative += first
-        remaining = {node: p for node, p in alive.items() if node not in candidates}
-        survival = math.fsum(remaining.values())
-        if not math.isclose(survival + cumulative, 1.0, rel_tol=0, abs_tol=PROB_TOL):
-            raise RuntimeError("Survival plus cumulative first exercise must sum to 1.")
-        mean_pv = math.exp(-request.rate * time) * math.fsum(
-            mass * _value(node) for node, mass in full.items()
+        # Distinguish optimal exercise decisions from path probabilities.
+        candidates, region, first, cumulative, remaining, survival, mean_pv = _measure_exercise_flows(
+            full,
+            alive,
+            request,
+            step,
+            dt,
+            cumulative,
+            time,
         )
 
-        exercised_spots = [float(n.price) for n in candidates]
-        bottom = min(exercised_spots) if exercised_spots else None
-        top = max(exercised_spots) if exercised_spots else None
-        boundary = (top if request.option_type == "Put" else bottom)
-        # Mark any non-contiguous exercise set; boundary is only its envelope.
-        non_contiguous = False
-        if step < request.steps and boundary is not None:
-            if request.option_type == "Put":
-                non_contiguous = any(float(n.price) < boundary - 1e-10
-                                     for n in full if n not in candidates)
-            else:
-                non_contiguous = any(float(n.price) > boundary + 1e-10
-                                     for n in full if n not in candidates)
+        bottom, top, boundary, non_contiguous = _find_exercise_envelope(full, candidates, request, step)
         output_dates.append(ExerciseDate(
             step=step, time=time, discounted_mean_value=mean_pv,
             region_probability=region, first_exercise_probability=first,
@@ -181,6 +233,7 @@ def analyze_priced_tree(root: Any, request: PricingRequest) -> tuple[
             exercise_node_count=len(candidates), non_contiguous=non_contiguous,
             total_mass=full_total,
         ))
+        # Keep node states, dividends and early-exercise values consistent.
         for node, mass in full.items():
             state = ("Maturity · ITM" if node in candidates and step == request.steps else
                      "Early exercise" if node in candidates else
@@ -198,6 +251,7 @@ def run_exercise_study(request: PricingRequest) -> ExerciseStudy:
     validate_request(request)
     if request.steps > MAX_BOUNDARY_STEPS:
         raise PricingInputError(
+            # Preserve the selected exercise convention and observation date.
             f"Exercise Boundary supports at most {MAX_BOUNDARY_STEPS} steps for interactive use."
         )
     tree = _build_tree(request)
@@ -215,6 +269,7 @@ def run_exercise_study(request: PricingRequest) -> ExerciseStudy:
     worthless = dates[-1].survival_probability
     if not math.isclose(total + worthless, 1.0, rel_tol=0, abs_tol=PROB_TOL):
         raise RuntimeError("Exercise plus expiry probability is not one.")
+    # Return stable chart and table inputs for the exercise boundary panel.
     return ExerciseStudy(
         request=request, premium=premium, dates=dates, points=points,
         early_exercise_probability=dates[-2].cumulative_exercise_probability,
@@ -244,6 +299,7 @@ def dates_csv(study: ExerciseStudy) -> str:
                          d.step, d.time, d.discounted_mean_value,
                          d.region_probability, d.first_exercise_probability,
                          d.cumulative_exercise_probability, d.survival_probability,
+                         # Distinguish optimal exercise decisions from path probabilities.
                          "" if d.lower_exercise_spot is None else d.lower_exercise_spot,
                          "" if d.upper_exercise_spot is None else d.upper_exercise_spot,
                          "" if d.boundary_spot is None else d.boundary_spot,

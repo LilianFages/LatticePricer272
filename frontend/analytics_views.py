@@ -38,6 +38,7 @@ def _contract_fields(prefix: str) -> dict:
     maturity = st.number_input("Maturity · years", min_value=0.01, value=1.0,
                                key=f"{prefix}_maturity")
     with st.expander("Cash dividends · optional"):
+        # Collect model-sensitivity inputs through the current Streamlit form.
         st.caption("Discrete cash payments from today, expressed in years and € per share.")
         data = st.data_editor(
             pd.DataFrame([{"time": 0.5, "amount": 0.0}]),
@@ -55,6 +56,7 @@ def _contract_fields(prefix: str) -> dict:
 
 def _get_request(values: dict, model: str, n: int, threshold: float) -> PricingRequest:
     return PricingRequest(
+        # Preserve on-demand execution to avoid unnecessary valuations.
         spot=float(values["spot"]), strike=float(values["strike"]),
         rate=float(values["rate"]), volatility=float(values["volatility"]),
         maturity=float(values["maturity"]), option_type=values["option_type"],
@@ -71,6 +73,7 @@ def _model_select(key: str, *, default: tuple[str, ...]) -> tuple[str, ...]:
 def _threshold(key: str) -> float:
     return st.selectbox("Pruning threshold", (0.0, 1e-18, 1e-15, 1e-12, 1e-5),
                         index=1, key=key,
+                        # Keep chart axes, tooltips and color grouping consistent.
                         format_func=lambda x: "off" if not x else f"{x:.0e}")
 
 
@@ -88,6 +91,7 @@ def _line_chart(data: pd.DataFrame, *, x: str, y: str, group: str,
 
 
 def _pricing_frame(points: tuple[PricingObservation, ...]) -> pd.DataFrame:
+    # Separate statistical results from the rendering of warning states.
     return pd.DataFrame([{
         "model": p.model, "x": p.coordinate, "price": p.price,
         "runtime_ms": p.runtime_ms, "status": p.status,
@@ -104,76 +108,147 @@ def _status(data: pd.DataFrame):
                          width="stretch")
 
 
+def _render_sensitivity_results(saved: tuple) -> None:
+    # Collect model-sensitivity inputs through the current Streamlit form.
+    parameter, rows = saved
+    frame = _pricing_frame(rows)
+    successful = frame.dropna(subset=["price"])
+    st.metric("Successful valuations", f"{len(successful)} / {len(frame)}")
+    _status(frame)
+    if not successful.empty:
+        st.altair_chart(_line_chart(successful, x="x", y="price", group="model",
+                                   x_label=parameter.capitalize(), y_label="Premium (€)"),
+                        width="stretch")
+        st.caption('Each point is a fresh model valuation. Changes in maturity keep '
+            'ex-dividend dates fixed relative to today; invalid shortened contracts are reported separately.')
+    st.dataframe(frame, hide_index=True, width="stretch")
+    st.download_button("Export sensitivity · CSV", observations_csv(rows),
+                       file_name="lattice272_sensitivity.csv", mime="text/csv", width="stretch")
+
+
+def _sensitivity_input_form() -> tuple:
+    # Preserve on-demand execution to avoid unnecessary valuations.
+    with st.form("analytics_sensitivity_form"):
+        fields = _contract_fields("qa_sens")
+        st.markdown('<div class="desk-section">02 · Sweep setup</div>', unsafe_allow_html=True)
+        models = _model_select("qa_sens_models", default=("Binomial", "Trinomial · Allocation pruning"))
+        c1, c2 = st.columns(2)
+        parameter = c1.selectbox("Variable", ("spot", "volatility", "rate", "maturity"),
+                                 key="qa_sens_parameter")
+        n = c2.number_input("Steps N", min_value=1, max_value=MAX_STEPS, value=100,
+                            key="qa_sens_n")
+        c1, c2 = st.columns(2)
+        multiplier = c1.selectbox("Sweep range multiplier", (0.5, 1.0, 1.5),
+                                   index=1, key="qa_sens_multiplier")
+        count = c2.selectbox("Grid points", (5,9,13), index=1, key="qa_sens_count")
+        st.caption("Base half-widths (× range multiplier): spot ±20%, vol ±5 pp, "
+                   "rate ±2 pp, maturity ±25%.")
+        # Preserve on-demand execution to avoid unnecessary valuations.
+        threshold = _threshold("qa_sens_threshold")
+        submitted = st.form_submit_button("RUN SENSITIVITY  →", type="primary", width="stretch")
+    return (fields, models, parameter, n, multiplier, count, threshold, submitted)
+
+
+def _run_sensitivity_on_submit(submitted: bool, fields: dict, models: tuple, n: int,
+    threshold: float, parameter: str, multiplier: float, count: int) -> None:
+    if submitted:
+        st.session_state.pop("qa_sens_result", None)
+        try:
+            request = _get_request(fields, models[0] if models else MODELS[0], int(n), threshold)
+            from frontend.analytics_service import DEFAULT_AMPLITUDE
+            width = DEFAULT_AMPLITUDE[parameter]*float(multiplier)
+            with st.spinner("Repricing independent market scenarios..."):
+                rows = sensitivity_sweep(request, parameter, models, count=count,
+                                         amplitude=width)
+            st.session_state["qa_sens_result"] = (parameter, rows)
+        except (PricingInputError, ValueError, RuntimeError, OverflowError) as exc:
+            st.error(f"Sensitivity unavailable: {exc}")
+
+
 def render_sensitivity_tab() -> None:
+    # Execute sensitivity pricing only after the user submits the form.
     left, right = st.columns([1.0, 1.45], gap="large")
     with left:
-        with st.form("analytics_sensitivity_form"):
-            fields = _contract_fields("qa_sens")
-            st.markdown('<div class="desk-section">02 · Sweep setup</div>', unsafe_allow_html=True)
-            models = _model_select("qa_sens_models", default=("Binomial", "Trinomial · Allocation pruning"))
-            c1, c2 = st.columns(2)
-            parameter = c1.selectbox("Variable", ("spot", "volatility", "rate", "maturity"),
-                                     key="qa_sens_parameter")
-            n = c2.number_input("Steps N", min_value=1, max_value=MAX_STEPS, value=100,
-                                key="qa_sens_n")
-            c1, c2 = st.columns(2)
-            multiplier = c1.selectbox("Sweep range multiplier", (0.5, 1.0, 1.5),
-                                       index=1, key="qa_sens_multiplier")
-            count = c2.selectbox("Grid points", (5,9,13), index=1, key="qa_sens_count")
-            st.caption("Base half-widths (× range multiplier): spot ±20%, vol ±5 pp, "
-                       "rate ±2 pp, maturity ±25%.")
-            threshold = _threshold("qa_sens_threshold")
-            submitted = st.form_submit_button("RUN SENSITIVITY  →", type="primary", width="stretch")
+        fields, models, parameter, n, multiplier, count, threshold, submitted = _sensitivity_input_form()
     with right:
         st.markdown('<div class="desk-section">Repricing sweep</div>', unsafe_allow_html=True)
-        if submitted:
-            st.session_state.pop("qa_sens_result", None)
-            try:
-                request = _get_request(fields, models[0] if models else MODELS[0], int(n), threshold)
-                from frontend.analytics_service import DEFAULT_AMPLITUDE
-                width = DEFAULT_AMPLITUDE[parameter]*float(multiplier)
-                with st.spinner("Repricing independent market scenarios..."):
-                    rows = sensitivity_sweep(request, parameter, models, count=count,
-                                             amplitude=width)
-                st.session_state["qa_sens_result"] = (parameter, rows)
-            except (PricingInputError, ValueError, RuntimeError, OverflowError) as exc:
-                st.error(f"Sensitivity unavailable: {exc}")
+        _run_sensitivity_on_submit(submitted, fields, models, n, threshold, parameter, multiplier, count)
         saved = st.session_state.get("qa_sens_result")
+        # Keep chart axes, tooltips and color grouping consistent.
         if saved is None:
             st.info("Choose a market variable and run independent repricings. No background calculations.")
             return
-        parameter, rows = saved
-        frame = _pricing_frame(rows)
-        successful = frame.dropna(subset=["price"])
-        st.metric("Successful valuations", f"{len(successful)} / {len(frame)}")
-        _status(frame)
-        if not successful.empty:
-            st.altair_chart(_line_chart(successful, x="x", y="price", group="model",
-                                       x_label=parameter.capitalize(), y_label="Premium (€)"),
-                            width="stretch")
-            st.caption("Each point is a fresh model valuation. Changes in maturity keep ex-dividend dates fixed relative to today; invalid shortened contracts are reported separately.")
-        st.dataframe(frame, hide_index=True, width="stretch")
-        st.download_button("Export sensitivity · CSV", observations_csv(rows),
-                           file_name="lattice272_sensitivity.csv", mime="text/csv", width="stretch")
+        _render_sensitivity_results(saved)
+
+
+# Compare pricing curves with a fixed analytic benchmark.
+def _render_convergence_charts(successful: pd.DataFrame, outcome: ConvergenceResult) -> None:
+    if not successful.empty:
+        st.altair_chart(_line_chart(successful, x="x", y="price", group="model",
+                                   x_label="Time steps N", y_label="Premium (€)"),
+                        width="stretch")
+        if outcome.reference_price is not None:
+            errors = successful.copy()
+            errors["gap"] = (errors["price"] - outcome.reference_price).abs()
+            positive = errors[errors["gap"] > 0]
+            if not positive.empty:
+                name = ("Absolute Black–Scholes error (€)" if outcome.reference_type == "analytic"
+                        else "Absolute gap to finite-N reference (€)")
+                st.altair_chart(_line_chart(positive, x="x", y="gap", group="model",
+                                           x_label="Time steps N", y_label=name, log_y=True),
+                                # Keep chart axes, tooltips and color grouping consistent.
+                                width="stretch")
+                st.caption("Zero gaps are omitted from the log plot and retained in the CSV.")
+        st.altair_chart(_line_chart(successful, x="x", y="runtime_ms", group="model",
+                                   x_label="Time steps N", y_label="Single-run runtime (ms)"),
+                        width="stretch")
+        st.caption('Runtime is a single end-to-end valuation per point, not a replicated '
+            'benchmark. For robust latency comparison, use Model Comparison or the research experiments.')
+
+
+def _render_convergence_results(outcome: ConvergenceResult) -> None:
+    frame = _pricing_frame(outcome.points)
+    successful = frame.dropna(subset=["price"])
+    _status(frame)
+    st.caption(f"Reference: {outcome.reference_label} ({outcome.reference_type}).")
+    # Preserve on-demand execution to avoid unnecessary valuations.
+    if outcome.reference_type == "numerical":
+        st.warning('The numerical reference is a selected finite-N price, NOT an exact '
+            'option value. Deviations below are price gaps, not accuracy guarantees.')
+    elif outcome.reference_error:
+        st.warning(f"Reference unavailable: {outcome.reference_error}")
+    _render_convergence_charts(successful, outcome)
+    st.dataframe(frame, hide_index=True, width="stretch")
+    st.download_button("Export convergence · CSV",
+                       observations_csv(outcome.points, reference=outcome.reference_price,
+                                        label=outcome.reference_label),
+                       file_name="lattice272_convergence.csv", mime="text/csv", width="stretch")
+
+
+def _convergence_input_form() -> tuple:
+    with st.form("analytics_convergence_form"):
+        fields = _contract_fields("qa_conv")
+        st.markdown('<div class="desk-section">02 · Discretization</div>', unsafe_allow_html=True)
+        # Keep chart axes, tooltips and color grouping consistent.
+        models = _model_select("qa_conv_models", default=("Binomial", "Trinomial · Allocation pruning"))
+        options = (10,20,40,60,80,100,125,150,175,200,250,300,350)
+        ns = st.multiselect("Time-step grid N", options,
+                            default=(20,40,80,100,150,200), key="qa_conv_grid")
+        reference = st.selectbox("Numerical reference for non-BS cases", MODELS,
+                                 index=3, key="qa_conv_reference")
+        threshold = _threshold("qa_conv_threshold")
+        submitted = st.form_submit_button("RUN CONVERGENCE  →", type="primary", width="stretch")
+    return (fields, models, ns, reference, threshold, submitted)
 
 
 def render_convergence_tab() -> None:
     left, right = st.columns([1.0, 1.45], gap="large")
     with left:
-        with st.form("analytics_convergence_form"):
-            fields = _contract_fields("qa_conv")
-            st.markdown('<div class="desk-section">02 · Discretization</div>', unsafe_allow_html=True)
-            models = _model_select("qa_conv_models", default=("Binomial", "Trinomial · Allocation pruning"))
-            options = (10,20,40,60,80,100,125,150,175,200,250,300,350)
-            ns = st.multiselect("Time-step grid N", options,
-                                default=(20,40,80,100,150,200), key="qa_conv_grid")
-            reference = st.selectbox("Numerical reference for non-BS cases", MODELS,
-                                     index=3, key="qa_conv_reference")
-            threshold = _threshold("qa_conv_threshold")
-            submitted = st.form_submit_button("RUN CONVERGENCE  →", type="primary", width="stretch")
+        fields, models, ns, reference, threshold, submitted = _convergence_input_form()
     with right:
         st.markdown('<div class="desk-section">Discretization & computational cost</div>', unsafe_allow_html=True)
         if submitted:
+            # Collect model-sensitivity inputs through the current Streamlit form.
             st.session_state.pop("qa_conv_result", None)
             try:
                 request = _get_request(fields, models[0] if models else MODELS[0], 100, threshold)
@@ -187,61 +262,83 @@ def render_convergence_tab() -> None:
         if outcome is None:
             st.info("Select a discretization grid; errors are measured against Black–Scholes only when applicable.")
             return
-        frame = _pricing_frame(outcome.points)
-        successful = frame.dropna(subset=["price"])
-        _status(frame)
-        st.caption(f"Reference: {outcome.reference_label} ({outcome.reference_type}).")
-        if outcome.reference_type == "numerical":
-            st.warning("The numerical reference is a selected finite-N price, NOT an exact option value. Deviations below are price gaps, not accuracy guarantees.")
-        elif outcome.reference_error:
-            st.warning(f"Reference unavailable: {outcome.reference_error}")
-        if not successful.empty:
-            st.altair_chart(_line_chart(successful, x="x", y="price", group="model",
-                                       x_label="Time steps N", y_label="Premium (€)"),
-                            width="stretch")
-            if outcome.reference_price is not None:
-                errors = successful.copy()
-                errors["gap"] = (errors["price"] - outcome.reference_price).abs()
-                positive = errors[errors["gap"] > 0]
-                if not positive.empty:
-                    name = ("Absolute Black–Scholes error (€)" if outcome.reference_type == "analytic"
-                            else "Absolute gap to finite-N reference (€)")
-                    st.altair_chart(_line_chart(positive, x="x", y="gap", group="model",
-                                               x_label="Time steps N", y_label=name, log_y=True),
-                                    width="stretch")
-                    st.caption("Zero gaps are omitted from the log plot and retained in the CSV.")
-            st.altair_chart(_line_chart(successful, x="x", y="runtime_ms", group="model",
-                                       x_label="Time steps N", y_label="Single-run runtime (ms)"),
-                            width="stretch")
-            st.caption("Runtime is a single end-to-end valuation per point, not a replicated benchmark. For robust latency comparison, use Model Comparison or the research experiments.")
-        st.dataframe(frame, hide_index=True, width="stretch")
-        st.download_button("Export convergence · CSV",
-                           observations_csv(outcome.points, reference=outcome.reference_price,
-                                            label=outcome.reference_label),
-                           file_name="lattice272_convergence.csv", mime="text/csv", width="stretch")
+        _render_convergence_results(outcome)
+
+
+def _render_stability_charts(successes: pd.DataFrame, analytic: object, request: PricingRequest) -> None:
+    for dimension, title in (("spot bump", "Spot-bump sensitivity"),
+                             ("steps", "Stability with N")):
+        subset = successes[successes["dimension"] == dimension]
+        if subset.empty:
+            continue
+        st.markdown(f'<div class="desk-section">{title}</div>', unsafe_allow_html=True)
+        # Keep chart axes, tooltips and color grouping consistent.
+        for greek in ("Delta", "Gamma"):
+            st.altair_chart(_line_chart(subset.assign(series=greek), x="x", y=greek,
+                                       group="series", x_label=("Spot bump (%)" if dimension=="spot bump" else "N"),
+                                       y_label=greek, height=190), width="stretch")
+            if analytic:
+                st.caption(f"Black–Scholes {greek}: {analytic[greek]:.6f} (analytic comparator, not used for bumps).")
+
+
+def _render_stability_results(saved: tuple) -> None:
+    rows, request = saved
+    frame = pd.DataFrame([{
+        "dimension": r.dimension, "x": r.coordinate, "N": r.steps,
+        "Delta": r.delta, "Gamma": r.gamma, "Gamma bump %": r.gamma_bump_pct,
+        "status": r.status,
+    } for r in rows])
+    successes = frame[frame["status"] == "ok"]
+    st.metric("Successful risk configurations", f"{len(successes)} / {len(frame)}")
+    # Preserve on-demand execution to avoid unnecessary valuations.
+    failures = frame[frame["status"] != "ok"]
+    if not failures.empty:
+        st.warning("Some risk stencils could not be priced; failures remain explicit in CSV.")
+        with st.expander("Failed stencils"):
+            st.dataframe(failures, hide_index=True, width="stretch")
+    analytic = None
+    try:
+        from frontend.greeks_service import analytic_bs_greeks
+        analytic = analytic_bs_greeks(request)
+    except (ValueError, OverflowError, ZeroDivisionError):
+        pass
+    _render_stability_charts(successes, analytic, request)
+    st.caption('N-dependent Gamma uses a new grid-aware bump at each N; the two dimensions '
+        'vary together. To isolate N, rerun the analysis with a fixed manual Gamma bump in the Greeks snapshot.')
+    st.dataframe(frame, hide_index=True, width="stretch")
+    st.download_button("Export Greek stability · CSV", stability_csv(rows),
+                       file_name="lattice272_greek_stability.csv", mime="text/csv", width="stretch")
+
+
+def _greeks_stability_input_form() -> tuple:
+    with st.form("analytics_greeks_stability_form"):
+        # Preserve Greek labels and numerical perturbation units.
+        fields = _contract_fields("qa_stab")
+        st.markdown('<div class="desk-section">02 · Differencing & grid study</div>', unsafe_allow_html=True)
+        model = st.selectbox("Pricing engine", MODELS, index=3, key="qa_stab_model")
+        bump_grid = st.multiselect("Spot shocks · % (Delta and Gamma)",
+                                   (0.5,1.0,2.0,3.5,5.0,7.5,10.0),
+                                   default=(0.5,1.0,3.5,5.0), key="qa_stab_bumps")
+        n_grid = st.multiselect("Discretization steps N", (20,40,60,80,100,125,150,175,200,250),
+                                default=(40,80,100,150), key="qa_stab_grid")
+        threshold = _threshold("qa_stab_threshold")
+        st.caption('Bump sweep: same spot bump for Delta and Gamma. N sweep: Delta ±1%; '
+            'Gamma grid-aware. Repeated repricings can take time.')
+        submitted = st.form_submit_button("RUN GREEKS STABILITY  →", type="primary", width="stretch")
+    return (fields, model, bump_grid, n_grid, threshold, submitted)
 
 
 def render_greeks_stability_tab() -> None:
     left, right = st.columns([1.0,1.45], gap="large")
     with left:
-        with st.form("analytics_greeks_stability_form"):
-            fields = _contract_fields("qa_stab")
-            st.markdown('<div class="desk-section">02 · Differencing & grid study</div>', unsafe_allow_html=True)
-            model = st.selectbox("Pricing engine", MODELS, index=3, key="qa_stab_model")
-            bump_grid = st.multiselect("Spot shocks · % (Delta and Gamma)",
-                                       (0.5,1.0,2.0,3.5,5.0,7.5,10.0),
-                                       default=(0.5,1.0,3.5,5.0), key="qa_stab_bumps")
-            n_grid = st.multiselect("Discretization steps N", (20,40,60,80,100,125,150,175,200,250),
-                                    default=(40,80,100,150), key="qa_stab_grid")
-            threshold = _threshold("qa_stab_threshold")
-            st.caption("Bump sweep: same spot bump for Delta and Gamma. N sweep: Delta ±1%; Gamma grid-aware. Repeated repricings can take time.")
-            submitted = st.form_submit_button("RUN GREEKS STABILITY  →", type="primary", width="stretch")
+        fields, model, bump_grid, n_grid, threshold, submitted = _greeks_stability_input_form()
     with right:
         st.markdown('<div class="desk-section">Risk stability / numerical diagnostics</div>', unsafe_allow_html=True)
         if submitted:
             st.session_state.pop("qa_stab_result", None)
             try:
                 request = _get_request(fields, model, 100, threshold)
+                # Collect model-sensitivity inputs through the current Streamlit form.
                 with st.spinner("Repricing spot shocks across bumps and lattice sizes..."):
                     rows = greeks_stability(request, tuple(sorted(bump_grid)), tuple(sorted(n_grid)))
                 st.session_state["qa_stab_result"] = (rows, request)
@@ -249,40 +346,7 @@ def render_greeks_stability_tab() -> None:
                 st.error(f"Greek stability unavailable: {exc}")
         saved = st.session_state.get("qa_stab_result")
         if saved is None:
-            st.info("Run this diagnostic to inspect the dependence of Delta and Gamma on the spot bump and the lattice discretization.")
+            st.info('Run this diagnostic to inspect the dependence of Delta and Gamma on '
+                'the spot bump and the lattice discretization.')
             return
-        rows, request = saved
-        frame = pd.DataFrame([{
-            "dimension": r.dimension, "x": r.coordinate, "N": r.steps,
-            "Delta": r.delta, "Gamma": r.gamma, "Gamma bump %": r.gamma_bump_pct,
-            "status": r.status,
-        } for r in rows])
-        successes = frame[frame["status"] == "ok"]
-        st.metric("Successful risk configurations", f"{len(successes)} / {len(frame)}")
-        failures = frame[frame["status"] != "ok"]
-        if not failures.empty:
-            st.warning("Some risk stencils could not be priced; failures remain explicit in CSV.")
-            with st.expander("Failed stencils"):
-                st.dataframe(failures, hide_index=True, width="stretch")
-        analytic = None
-        try:
-            from frontend.greeks_service import analytic_bs_greeks
-            analytic = analytic_bs_greeks(request)
-        except (ValueError, OverflowError, ZeroDivisionError):
-            pass
-        for dimension, title in (("spot bump", "Spot-bump sensitivity"),
-                                 ("steps", "Stability with N")):
-            subset = successes[successes["dimension"] == dimension]
-            if subset.empty:
-                continue
-            st.markdown(f'<div class="desk-section">{title}</div>', unsafe_allow_html=True)
-            for greek in ("Delta", "Gamma"):
-                st.altair_chart(_line_chart(subset.assign(series=greek), x="x", y=greek,
-                                           group="series", x_label=("Spot bump (%)" if dimension=="spot bump" else "N"),
-                                           y_label=greek, height=190), width="stretch")
-                if analytic:
-                    st.caption(f"Black–Scholes {greek}: {analytic[greek]:.6f} (analytic comparator, not used for bumps).")
-        st.caption("N-dependent Gamma uses a new grid-aware bump at each N; the two dimensions vary together. To isolate N, rerun the analysis with a fixed manual Gamma bump in the Greeks snapshot.")
-        st.dataframe(frame, hide_index=True, width="stretch")
-        st.download_button("Export Greek stability · CSV", stability_csv(rows),
-                           file_name="lattice272_greek_stability.csv", mime="text/csv", width="stretch")
+        _render_stability_results(saved)

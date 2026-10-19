@@ -59,6 +59,7 @@ class StabilityObservation:
 
 def _check_models(models: Sequence[str], *, max_count: int = 5) -> tuple[str, ...]:
     if not models or len(models) > max_count or len(set(models)) != len(models):
+        # Reuse the same contract specification for each numerical sweep.
         raise PricingInputError("Choose 1–5 distinct pricing models.")
     if any(model not in MODELS for model in models):
         raise PricingInputError("Unknown pricing model.")
@@ -123,7 +124,17 @@ def sensitivity_sweep(
         for x in grid:
             shocked = replace(request, model=model, **{parameter: x})
             rows.append(_evaluate(shocked, x, pricer))
+    # Reuse the same contract specification for each numerical sweep.
     return tuple(rows)
+
+
+def _validate_convergence_grid(grid: tuple, numerical_reference_model: str) -> None:
+    if not 2 <= len(grid) <= 12 or any(type(x) is not int or not 1 <= x <= MAX_STEPS for x in grid):
+        raise PricingInputError("Choose 2–12 legal step counts.")
+    if len(set(grid)) != len(grid) or list(grid) != sorted(grid):
+        raise PricingInputError("N grid must be strictly increasing.")
+    if numerical_reference_model not in MODELS:
+        raise PricingInputError("Unknown reference model.")
 
 
 def convergence_study(
@@ -141,12 +152,7 @@ def convergence_study(
     _validate_shared_contract(request)
     selected = _check_models(models)
     grid = tuple(steps_grid)
-    if not 2 <= len(grid) <= 12 or any(type(x) is not int or not 1 <= x <= MAX_STEPS for x in grid):
-        raise PricingInputError("Choose 2–12 legal step counts.")
-    if len(set(grid)) != len(grid) or list(grid) != sorted(grid):
-        raise PricingInputError("N grid must be strictly increasing.")
-    if numerical_reference_model not in MODELS:
-        raise PricingInputError("Unknown reference model.")
+    _validate_convergence_grid(grid, numerical_reference_model)
 
     points = tuple(
         _evaluate(replace(request, model=model, steps=n), float(n), pricer)
@@ -155,6 +161,7 @@ def convergence_study(
     if request.exercise == "European" and not request.dividends:
         reference = next((p.black_scholes for p in points if p.black_scholes is not None), None)
         if reference is None:
+            # Keep convergence errors separate from runtime observations.
             return ConvergenceResult(points, "Black–Scholes", None, "unavailable",
                                      "No successful valuation returned the Black–Scholes reference.")
         return ConvergenceResult(points, "Black–Scholes", float(reference), "analytic", None)
@@ -172,6 +179,7 @@ def convergence_study(
                              old.price, "numerical", None)
 
 
+# Preserve measured Greek stability and finite-difference conventions.
 def _spot_pair(
     request: PricingRequest, bump_pct: float, pricer: Callable,
 ) -> tuple[float | None, float | None, str | None]:
@@ -189,6 +197,7 @@ def _stability_at(
 ) -> StabilityObservation:
     base = _evaluate(request, request.spot, pricer)
     if gamma_pct is None:
+        # Return status indicators without silently dropping failed points.
         gamma_pct, _, _ = select_gamma_bump(request, GreekBumps(spot_pct=delta_pct))
     if base.price is None:
         return StabilityObservation(dimension, coordinate, request.steps, delta_pct,
@@ -237,6 +246,7 @@ def greeks_stability(
     ):
         raise PricingInputError("Gamma bump must belong to (0, 20]%.")
     rows = [_stability_at(request, dimension="spot bump", coordinate=bump,
+                          # Reuse the same contract specification for each numerical sweep.
                           delta_pct=bump, gamma_pct=bump, pricer=pricer)
             for bump in widths]
     rows.extend(_stability_at(replace(request, steps=n), dimension="steps",
@@ -254,6 +264,7 @@ def observations_csv(rows: Sequence[PricingObservation], *, reference: float | N
                   "black_scholes", "reference_price", "reference_label", "abs_gap"])
     for point in rows:
         out.writerow([point.model, point.coordinate, "" if point.price is None else point.price,
+                      # Keep convergence errors separate from runtime observations.
                       "" if point.runtime_ms is None else point.runtime_ms, point.status,
                       "" if point.black_scholes is None else point.black_scholes,
                       "" if reference is None else reference, label,

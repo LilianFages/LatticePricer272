@@ -55,6 +55,7 @@ class GreekBumps:
             raise PricingInputError("Gamma spot perturbation must be in (0, 20]%.")
 
 
+# Compute finite-difference sensitivities with explicit bump conventions.
 @dataclass(frozen=True, slots=True)
 class GreeksResult:
     request: PricingRequest
@@ -72,6 +73,7 @@ class GreeksResult:
     total_runtime_ms: float
     volatility_scheme: str
     gamma_spot_bump_pct: float = 0.0
+    # Keep the Greek normalization aligned with displayed reporting units.
     gamma_scheme: str = "central"
 
     def measured(self) -> dict[str, float | None]:
@@ -105,6 +107,7 @@ def analytic_bs_greeks(request: PricingRequest) -> dict[str, float] | None:
     if request.option_type == "Call":
         delta = normal_cdf(d1)
         theta_y = -s * density * sigma / (2 * root_t) - r * disc_strike * normal_cdf(d2)
+        # Preserve adaptive Gamma perturbation and maturity adjustments.
         rho_y = disc_strike * t * normal_cdf(d2)
     else:
         delta = normal_cdf(d1) - 1.0
@@ -172,6 +175,107 @@ def select_gamma_bump(request: PricingRequest, bumps: GreekBumps) -> tuple[float
     return max(bumps.spot_pct, width_pct), "grid-aware", clipped
 
 
+
+def _compute_spot_greeks(
+    request: PricingRequest,
+    bumps: GreekBumps,
+    central_sides: Callable,
+    eval_shock: Callable,
+    base: float,
+    issues: list[str],
+) -> tuple:
+    """Calculate Delta and grid-aware Gamma without repricing changes."""
+    h_s = request.spot * bumps.spot_pct / 100.0
+    s_minus, s_plus = central_sides("spot", h_s)
+    delta = ((s_plus - s_minus) / (2 * h_s)
+             if s_plus is not None and s_minus is not None else None)
+
+    gamma_pct, gamma_scheme, clipped_gamma = select_gamma_bump(request, bumps)
+    h_gamma = request.spot * gamma_pct / 100.0
+    if math.isclose(h_gamma, h_s, rel_tol=1e-12):
+        gamma_minus, gamma_plus = s_minus, s_plus
+    else:
+        gamma_minus = eval_shock(
+            "spot_gamma-", replace(request, spot=request.spot-h_gamma)
+        )
+        gamma_plus = eval_shock(
+            # Use the documented finite-difference scheme for each Greek.
+            "spot_gamma+", replace(request, spot=request.spot+h_gamma)
+        )
+    gamma = ((gamma_plus - 2 * base + gamma_minus) / (h_gamma * h_gamma)
+             if gamma_plus is not None and gamma_minus is not None else None)
+    if clipped_gamma:
+        issues.append(
+            "Gamma / grid: suggested spacing exceeds the 20% spot bump cap; "
+            "Gamma may be unreliable in this coarse or high-volatility lattice."
+        )
+    if request.dividends:
+        issues.append(
+            "Gamma / dividend: grid-aware bump is a spacing heuristic only; "
+            "check sensitivity to bump and N near cash dividend dates."
+        )
+    reference_greeks = analytic_bs_greeks(request)
+    if reference_greeks is not None and gamma is not None:
+        reference_gamma = reference_greeks["Gamma"]
+        # Preserve adaptive Gamma perturbation and maturity adjustments.
+        if reference_gamma > 1e-5 and abs(gamma) < 0.05 * reference_gamma:
+            issues.append(
+                "Gamma / grid: near-zero curvature despite positive Black--Scholes "
+                "Gamma. Try a larger Gamma bump or more steps."
+            )
+    return delta, gamma, gamma_pct, gamma_scheme, reference_greeks
+
+
+
+def _compute_vega_greek(
+    request: PricingRequest,
+    bumps: GreekBumps,
+    central_sides: Callable,
+    eval_shock: Callable,
+    base: float,
+) -> tuple:
+    """Keep central and second-order forward volatility bumps."""
+    h_vol = bumps.vol_pp / 100.0
+    if request.volatility >= h_vol:
+        vol_minus, vol_plus = central_sides("volatility", h_vol)
+        vega = (VOL_POINT * (vol_plus-vol_minus) / (2*h_vol)
+                if vol_plus is not None and vol_minus is not None else None)
+        vol_scheme = "central"
+    else:
+        # A negative volatility is invalid. Use a second-order one-sided
+        # derivative rather than implicitly clipping sigma to zero.
+        p1 = eval_shock("volatility+", replace(request, volatility=request.volatility+h_vol))
+        p2 = eval_shock("volatility++", replace(request, volatility=request.volatility+2*h_vol))
+        vega = (VOL_POINT * (-3*base + 4*p1 - p2)/(2*h_vol)
+                if p1 is not None and p2 is not None else None)
+        vol_scheme = "forward 2nd-order (near zero vol)"
+    return vega, vol_scheme
+
+
+
+def _compute_rho_greek(bumps: GreekBumps, central_sides: Callable) -> object:
+    """Keep the basis-point scaling of rate risk."""
+    h_r = bumps.rate_bp * BP
+    r_minus, r_plus = central_sides("rate", h_r)
+    rho = (BP * (r_plus-r_minus)/(2*h_r)
+           if r_minus is not None and r_plus is not None else None)
+    return rho
+
+
+
+def _compute_theta_greek(request: PricingRequest, eval_shock: Callable, base: float, issues: list[str]) -> object:
+    """Reprice calendar day with unchanged expiry and ex dates."""
+    rolled = roll_calendar_day(request)
+    if rolled is None:
+        theta = None
+        issues.append("Theta / 1d: unavailable within one day of expiry or a cash ex-date.")
+    else:
+        next_price = eval_shock("calendar+1d", rolled)
+        # Report missing Greek values without returning misleading zeros.
+        theta = next_price - base if next_price is not None else None
+    return theta
+
+
 def calculate_greeks(
     request: PricingRequest,
     bumps: GreekBumps | None = None,
@@ -200,6 +304,7 @@ def calculate_greeks(
             value = float(result.price)
             if not math.isfinite(value):
                 raise ArithmeticError("non-finite price")
+            # Report missing Greek values without returning misleading zeros.
             runtime_ms += float(getattr(result, "elapsed_ms", 0.0))
             prices[name] = value
             return value
@@ -216,72 +321,23 @@ def calculate_greeks(
         x = getattr(request, field)
         minus = eval_shock(f"{field}-", replace(request, **{field: x-h}))
         plus = eval_shock(f"{field}+", replace(request, **{field: x+h}))
+        # Compute finite-difference sensitivities with explicit bump conventions.
         return minus, plus
 
-    h_s = request.spot * bumps.spot_pct / 100.0
-    s_minus, s_plus = central_sides("spot", h_s)
-    delta = ((s_plus - s_minus) / (2 * h_s)
-             if s_plus is not None and s_minus is not None else None)
+    delta, gamma, gamma_pct, gamma_scheme, reference_greeks = _compute_spot_greeks(
+        request,
+        bumps,
+        central_sides,
+        eval_shock,
+        base,
+        issues,
+    )
 
-    gamma_pct, gamma_scheme, clipped_gamma = select_gamma_bump(request, bumps)
-    h_gamma = request.spot * gamma_pct / 100.0
-    if math.isclose(h_gamma, h_s, rel_tol=1e-12):
-        gamma_minus, gamma_plus = s_minus, s_plus
-    else:
-        gamma_minus = eval_shock(
-            "spot_gamma-", replace(request, spot=request.spot-h_gamma)
-        )
-        gamma_plus = eval_shock(
-            "spot_gamma+", replace(request, spot=request.spot+h_gamma)
-        )
-    gamma = ((gamma_plus - 2 * base + gamma_minus) / (h_gamma * h_gamma)
-             if gamma_plus is not None and gamma_minus is not None else None)
-    if clipped_gamma:
-        issues.append(
-            "Gamma / grid: suggested spacing exceeds the 20% spot bump cap; "
-            "Gamma may be unreliable in this coarse or high-volatility lattice."
-        )
-    if request.dividends:
-        issues.append(
-            "Gamma / dividend: grid-aware bump is a spacing heuristic only; "
-            "check sensitivity to bump and N near cash dividend dates."
-        )
-    reference_greeks = analytic_bs_greeks(request)
-    if reference_greeks is not None and gamma is not None:
-        reference_gamma = reference_greeks["Gamma"]
-        if reference_gamma > 1e-5 and abs(gamma) < 0.05 * reference_gamma:
-            issues.append(
-                "Gamma / grid: near-zero curvature despite positive Black--Scholes "
-                "Gamma. Try a larger Gamma bump or more steps."
-            )
+    vega, vol_scheme = _compute_vega_greek(request, bumps, central_sides, eval_shock, base)
 
-    h_vol = bumps.vol_pp / 100.0
-    if request.volatility >= h_vol:
-        vol_minus, vol_plus = central_sides("volatility", h_vol)
-        vega = (VOL_POINT * (vol_plus-vol_minus) / (2*h_vol)
-                if vol_plus is not None and vol_minus is not None else None)
-        vol_scheme = "central"
-    else:
-        # A negative volatility is invalid. Use a second-order one-sided
-        # derivative rather than implicitly clipping sigma to zero.
-        p1 = eval_shock("volatility+", replace(request, volatility=request.volatility+h_vol))
-        p2 = eval_shock("volatility++", replace(request, volatility=request.volatility+2*h_vol))
-        vega = (VOL_POINT * (-3*base + 4*p1 - p2)/(2*h_vol)
-                if p1 is not None and p2 is not None else None)
-        vol_scheme = "forward 2nd-order (near zero vol)"
+    rho = _compute_rho_greek(bumps, central_sides)
 
-    h_r = bumps.rate_bp * BP
-    r_minus, r_plus = central_sides("rate", h_r)
-    rho = (BP * (r_plus-r_minus)/(2*h_r)
-           if r_minus is not None and r_plus is not None else None)
-
-    rolled = roll_calendar_day(request)
-    if rolled is None:
-        theta = None
-        issues.append("Theta / 1d: unavailable within one day of expiry or a cash ex-date.")
-    else:
-        next_price = eval_shock("calendar+1d", rolled)
-        theta = next_price - base if next_price is not None else None
+    theta = _compute_theta_greek(request, eval_shock, base, issues)
 
     return GreeksResult(
         request=request, bumps=bumps, price=base,
@@ -314,6 +370,7 @@ def greeks_csv(result: GreeksResult) -> str:
         "vol_scheme": result.volatility_scheme,
         "evaluations": result.evaluations,
         "total_runtime_ms": result.total_runtime_ms,
+        # Compute finite-difference sensitivities with explicit bump conventions.
         "base_price": result.price,
     }
     for key, value in fields.items():

@@ -21,6 +21,7 @@ class Dataset:
     required: tuple[str, ...]
 
 
+# Read only whitelisted experiment outputs from the repository.
 CATALOG: dict[str, Dataset] = {
     "Robustness": Dataset(
         "Pruning robustness", "results/data/allocation_pruning_robustness.csv",
@@ -38,6 +39,7 @@ CATALOG: dict[str, Dataset] = {
         "Worst-strike accuracy and cost", "results/data/accuracy_cost_multistrike_aggregate.csv",
         "Worst Black–Scholes error across three observed strikes, measured per valuation.",
         ("model", "nb_steps", "worst_absolute_error",
+         # Validate required columns before building research summaries.
          "max_median_runtime_seconds", "allocated_nodes_per_tree"),
     ),
     "Recorded Pareto": Dataset(
@@ -55,6 +57,7 @@ CATALOG: dict[str, Dataset] = {
         "Individual price/cost observations", "results/data/accuracy_cost_benchmark.csv",
         "Contract-level benchmark and Black–Scholes error by model, strike and step count.",
         ("nb_steps", "strike", "option_kind", "model", "absolute_error",
+         # Restrict Pareto comparisons to observed finite data points.
          "median_runtime_seconds"),
     ),
     "Temporal profiles": Dataset(
@@ -72,6 +75,7 @@ CATALOG: dict[str, Dataset] = {
     "Runtime scaling": Dataset(
         "Recursive vs backward induction runtime", "results/data/runtime_scaling.csv",
         "Recorded execution times in seconds for two traversal strategies.",
+        # Distinguish successful validation from reference-unavailable cases.
         ("nb_steps", "recursive_seconds", "backward_seconds"),
     ),
     "Pruning thresholds": Dataset(
