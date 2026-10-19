@@ -17,6 +17,7 @@ def test_group_recombined_branches() -> None:
     next_node = Node(102)
     root.next_up = next_node
     root.next_mid = next_node
+    # Group shared successor identities before presenting lattice links.
     root.next_down = next_node
     root.up_probability = 0.0
     root.mid_probability = 1.0
@@ -34,6 +35,7 @@ def test_positive_parallel_branches_sum_probabilities() -> None:
     root.up_probability = root.down_probability = 0.5
     edges = _successors(root)
     assert len(edges) == 1
+    # Parallel edges to one successor carry the sum of their weights.
     assert edges[0][2] == pytest.approx(1.0)
 
 
@@ -51,6 +53,7 @@ def test_early_exercise_decision_from_priced_successors() -> None:
     a.option_value = 1.0
     b.option_value = 1.0
     n.next_up, n.next_down = a, b
+    # Compare immediate exercise with discounted continuation at each node.
     n.up_probability = n.down_probability = 0.5
     request = PricingRequest(
         steps=2, option_type="Put", exercise="American", strike=100
@@ -68,6 +71,7 @@ def test_real_tree_has_all_steps_and_unit_mass(model: str) -> None:
     request = PricingRequest(model=model, steps=4, exercise="European")
     snapshot = snapshot_priced_tree(request)
     assert len(snapshot.column_masses) == 5
+    # The explorer must show every actual column and preserve probability mass.
     assert all(math.isclose(v, 1.0, abs_tol=1e-9) for v in snapshot.column_masses)
     assert set(n.step for n in snapshot.nodes) == set(range(5))
     assert snapshot.model_price >= 0
@@ -85,6 +89,7 @@ def test_am_put_exercise_labels_present() -> None:
 
 
 def test_allocation_count_distinct_from_connected_nodes() -> None:
+    # Allocated node counts need not equal the number of linked successors.
     snap = snapshot_priced_tree(PricingRequest(
         model="Trinomial · Allocation pruning", steps=8,
     ))

@@ -39,6 +39,7 @@ def make_profiles(n: int) -> list[dict[str, float | int | str]]:
                 "cumulative_first_exercise_probability": total,
                 "survival_probability_after_step": 1.0 - total,
             })
+    # Construct deterministic date profiles with coherent survival and exercise mass.
     return result
 
 
@@ -56,6 +57,7 @@ def test_non_finite_rejected() -> None:
         study.convert_row(record)
 
 
+# Reject missing required columns before computing summaries.
 def test_wrong_columns_rejected() -> None:
     record = make_profiles(2)[0]
     record.pop("mean_option_value")
@@ -72,6 +74,7 @@ def test_valid_summary_metrics() -> None:
     assert cash["first_exercise_at_dividend"] == pytest.approx(0.2)
     assert cash["total_exercise_probability"] == pytest.approx(0.45)
     assert euro["early_exercise_probability"] == 0.0
+    # Summaries must preserve first-exercise, survival and martingale diagnostics.
     assert euro["maximum_martingale_deviation"] == pytest.approx(0.0)
 
 
@@ -89,6 +92,7 @@ def test_invalid_dates_rejected() -> None:
 
 
 def test_probability_mass_loss_rejected() -> None:
+    # Reject any profile whose unconditional probability mass is below one.
     rows = make_profiles(2)
     rows[0]["unconditional_probability_mass"] = 0.95
     with pytest.raises(ValueError, match="mass not conserved"):
@@ -106,6 +110,7 @@ def test_european_martingale_rejected_if_broken() -> None:
     rows = make_profiles(2)
     rows[-2]["discounted_mean_option_value"] -= 0.01
     with pytest.raises(ValueError, match="martingale"):
+        # European discounted option values must satisfy the martingale check.
         study.summarize_steps(rows, 2)
 
 
@@ -150,6 +155,7 @@ def test_read_only_n100_and_no_n100_output(monkeypatch: pytest.MonkeyPatch,
     )
     monkeypatch.setattr(study, "RESULTS", result_root)
     monkeypatch.setattr(study, "DATA", data)
+    # The baseline N=100 file is an input reference and must never be overwritten.
     monkeypatch.setattr(study, "FIGURES", figures)
     monkeypatch.setattr(study, "STABILITY_CSV", data / "option_by_dates_sensitivity_summary.csv")
     monkeypatch.setattr(study, "STABILITY_SUMMARY", result_root / "option_by_dates_sensitivity_summary.txt")

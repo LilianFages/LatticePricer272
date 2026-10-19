@@ -70,6 +70,7 @@ def test_hybrid_without_dividend_matches_binomial() -> None:
     hybrid_tree.build()
     binomial_tree.build()
 
+    # Every non-dividend hybrid step should match the pure binomial geometry.
     hybrid_node: Node | None = (
         _terminal_top(hybrid_tree)
     )
@@ -143,6 +144,7 @@ def test_dividend_bridge_uses_binomial_column_spacing() -> None:
 
     assert first_up is not None
     assert first_up.next_up is not None
+    # Check the bridge level ratio against the model's binomial spacing.
     assert first_up.next_mid is not None
 
     bridge_ratio = (
@@ -181,6 +183,7 @@ def test_dividend_step_probabilities_are_local() -> None:
     lower_node = tree.root.next_down
 
     assert upper_node is not None
+    # Dividend transitions must match node-specific forward moments.
     assert lower_node is not None
 
     for node in [

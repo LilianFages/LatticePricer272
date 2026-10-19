@@ -28,6 +28,7 @@ def test_dividend_changes_trunk_forward() -> None:
         ],
     )
 
+    # Subtract the cash payment from the forward trunk on its ex-date step.
     tree.build()
 
     first_trunk = tree.root.next_mid
@@ -80,6 +81,7 @@ def test_dividend_transition_matches_target_moments() -> None:
         ],
     )
 
+    # A dividend node's three successors must reproduce both target moments.
     tree.build()
 
     up_node = tree.root.next_up
@@ -94,6 +96,7 @@ def test_dividend_transition_matches_target_moments() -> None:
     assert tree.root.mid_probability is not None
     assert tree.root.down_probability is not None
 
+    # A dividend node's three successors must reproduce both target moments.
     expected_value, variance = TransitionMoments.compute(
         spot=100.0,
         rate=0.02,
@@ -109,6 +112,7 @@ def test_dividend_transition_matches_target_moments() -> None:
         + tree.root.down_probability * down_node.price
     )
 
+    # A dividend node's three successors must reproduce both target moments.
     second_moment = (
         tree.root.up_probability * up_node.price ** 2
         + tree.root.mid_probability * mid_node.price ** 2
@@ -152,6 +156,7 @@ def test_dividend_probabilities_are_local() -> None:
         ],
     )
 
+    # Cash dividends introduce node-dependent transition probabilities.
     tree.build()
 
     upper_node = tree.root.next_up
@@ -169,6 +174,7 @@ def test_dividend_probabilities_are_local() -> None:
     ]
 
     for node in nodes:
+        # Cash dividends introduce node-dependent transition probabilities.
         assert node.up_probability is not None
         assert node.mid_probability is not None
         assert node.down_probability is not None
@@ -210,6 +216,7 @@ def test_dividend_reduces_call_price_at_zero_rate() -> None:
         option,
     )
 
+    # At zero rates, cash dividends reduce European calls.
     dividend_price = RecursivePricer().price(
         TrinomialTree(
             spot=100.0,
@@ -247,6 +254,7 @@ def test_dividend_increases_put_price_at_zero_rate() -> None:
         option,
     )
 
+    # At zero rates, cash dividends increase European puts.
     dividend_price = RecursivePricer().price(
         TrinomialTree(
             spot=100.0,
@@ -285,6 +293,7 @@ def test_dividend_can_expand_trinomial_column() -> None:
 
     tree.build()
 
+    # The adaptive grid can extend beyond the dividend-free 2N+1 bound.
     terminal_top: Node = tree.root
 
     for _ in range(
@@ -327,6 +336,7 @@ def test_multiple_dividends_change_trunk() -> None:
         ],
     )
 
+    # The trunk forward reflects every discrete cash dividend in sequence.
     tree.build()
 
     first_trunk = tree.root.next_mid
@@ -374,6 +384,7 @@ def test_multiple_dividends_reduce_call_price() -> None:
         option,
     )
 
+    # Several positive cash dividends must reduce a European call at zero rates.
     dividend_price = RecursivePricer().price(
         TrinomialTree(
             spot=100.0,

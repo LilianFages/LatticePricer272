@@ -14,7 +14,8 @@ from frontend.research_lab_service import (
 from install_research_lab import PatchError, apply_patch
 
 
-def sample_robustness():
+# This mixed fixture distinguishes comparable runs from allocation-only outcomes.
+def _sample_robustness() -> pd.DataFrame:
     return pd.DataFrame([
         {"scenario": "none", "nb_steps": 100, "kind": "call", "status": "passed",
          "allocation_status": "success", "branch_status": "success", "node_savings_pct": 34.4,
@@ -28,28 +29,33 @@ def sample_robustness():
     ])
 
 
+# Only successful two-sided runs constitute direct accuracy comparisons.
 def test_coverage_separates_comparisons_from_allocation_only():
-    assert coverage_summary(sample_robustness()) == {
+    assert coverage_summary(_sample_robustness()) == {
         "total": 3, "compared": 2, "allocation_only": 1, "failed": 0}
 
 
+# Exclude rows with an unavailable branch-side reference from price-gap statistics.
 def test_comparable_cases_excludes_unavailable_reference():
-    comp = comparable_cases(sample_robustness())
+    comp = comparable_cases(_sample_robustness())
     assert len(comp) == 2
     assert comp["absolute_gap"].notna().all()
 
 
+# Average node savings must use only rows with comparable node counts.
 def test_savings_only_uses_comparable_cases():
-    result = robustness_by_step(sample_robustness())
+    result = robustness_by_step(_sample_robustness())
     assert len(result) == 1
     assert result.iloc[0]["mean_savings_pct"] == pytest.approx(35.2)
 
 
+# Status metadata is mandatory to interpret missing numerical fields.
 def test_missing_status_fields_fails():
     with pytest.raises(DatasetError):
         coverage_summary(pd.DataFrame({"status": ["passed"]}))
 
 
+# Pareto membership requires joint non-domination in error and elapsed time.
 def test_pareto_filters_dominated_and_keeps_tradeoff():
     data = pd.DataFrame({"model": ["A", "B", "C", "D"],
                          "max_median_runtime_seconds": [.010, .020, .030, .040],
@@ -58,6 +64,7 @@ def test_pareto_filters_dominated_and_keeps_tradeoff():
     assert set(result["model"]) == {"A", "B", "D"}
 
 
+# Equal observations and exact-zero errors remain legitimate frontier data.
 def test_pareto_retains_equivalent_points_and_zero_error():
     data = pd.DataFrame({"model": ["A", "B", "C"],
                          "max_median_runtime_seconds": [.01, .01, .02],
@@ -65,12 +72,14 @@ def test_pareto_retains_equivalent_points_and_zero_error():
     assert set(observed_pareto(data)["model"]) == {"A", "B"}
 
 
+# Nonpositive timing or invalid errors cannot define a feasible frontier.
 def test_pareto_rejects_bad_values():
     frame = pd.DataFrame({"max_median_runtime_seconds": [0.0, -.01, .01],
                           "worst_absolute_error": [.1, .01, -.01]})
     assert observed_pareto(frame).empty
 
 
+# Target selection uses observed feasible timing, not an extrapolated optimum.
 def test_threshold_best_observed_fastest():
     frame = pd.DataFrame({"model": ["A", "B", "C"], "nb_steps": [20, 50, 100],
                           "worst_absolute_error": [.012, .004, .001],
@@ -82,16 +91,19 @@ def test_threshold_best_observed_fastest():
     assert result.iloc[2]["status"] == "not reached"
 
 
+# Probability-mass diagnostics must preserve the observed numerical residual.
 def test_mass_consistency_small_errors():
     assert mass_consistency(pd.DataFrame({"unconditional_probability_mass":
                                           [1.0, 1.0 + 1e-12, 1.0 - 1e-12]})) == pytest.approx(1e-12)
 
 
+# Do not fabricate missing probability conservation measurements.
 def test_mass_missing_column_rejected():
     with pytest.raises(DatasetError):
         mass_consistency(pd.DataFrame({"probability": [1.0]}))
 
 
+# A known experiment must load with its expected scientific schema.
 def test_catalogue_can_load_known_schema(tmp_path: Path):
     spec = CATALOG["Runtime scaling"]
     p = tmp_path / spec.path
@@ -101,6 +113,7 @@ def test_catalogue_can_load_known_schema(tmp_path: Path):
     assert result.iloc[0]["nb_steps"] == 100
 
 
+# Schema drift must fail visibly rather than mislabel numerical series.
 def test_catalogue_rejects_schema_drift(tmp_path: Path):
     spec = CATALOG["Robustness"]
     p = tmp_path / spec.path
@@ -110,11 +123,13 @@ def test_catalogue_rejects_schema_drift(tmp_path: Path):
         load_dataset("Robustness", root=tmp_path)
 
 
+# Dataset selection is confined to the declared experiment catalogue.
 def test_catalogue_rejects_unknown_file_name():
     with pytest.raises(DatasetError, match="Unknown research dataset"):
         load_dataset("../../src/trinomial_tree.py")
 
 
+# CSV export must preserve Unicode and spreadsheet-readable encoding.
 def test_csv_export_utf8_with_excel_bom():
     value = as_csv(pd.DataFrame({"label": ["européen"], "n": [4]}))
     assert value.startswith(b"\xef\xbb\xbf")
@@ -129,6 +144,7 @@ APP_ROUTE = ('    if workspace == "04 / Quant analytics":\n'
              '        return\n')
 
 
+# Registration of the research page must be safely repeatable.
 def test_app_patch_safely_registers_and_idempotent():
     # Valid snippet preserving sidebar and route indentation.
     text = ('def main():\n    workspace = "04 / Quant analytics"\n'
@@ -142,16 +158,19 @@ def test_app_patch_safely_registers_and_idempotent():
     assert not changed2 and second == patched
 
 
+# The installer must reject layouts it cannot modify reliably.
 def test_app_patch_refuses_unknown_app_layout():
     with pytest.raises(PatchError):
         apply_patch("def main(): pass\n")
 
 
+# Missing files must raise an explicit data-availability error.
 def test_dataset_missing_is_explicit(tmp_path: Path):
     with pytest.raises(DatasetError, match="Missing experiment export"):
         load_dataset("Pruning benchmark", root=tmp_path)
 
 
+# Integration assertions apply to actual exports when present.
 def test_repository_exports_when_available():
     """Schema smoke test when run inside the real Git checkout."""
     from frontend.research_lab_service import ROOT

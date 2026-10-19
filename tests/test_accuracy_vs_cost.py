@@ -20,6 +20,7 @@ from experiments.accuracy_vs_cost import (
 from src.recursive_pricer import RecursivePricer
 
 
+# Build synthetic error/runtime points without invoking the numerical engines.
 def _fake_result(model: str, steps: int, runtime: float, error: float) -> Result:
     return Result(
         nb_steps=steps,
@@ -39,6 +40,7 @@ def _fake_result(model: str, steps: int, runtime: float, error: float) -> Result
     )
 
 
+# The protocol must include all four pricing implementations.
 def test_all_four_models_available() -> None:
     assert len(MODELS) == 4
     assert len(set(MODELS)) == 4
@@ -80,6 +82,7 @@ def test_target_selects_fastest_observed_feasible_point() -> None:
     assert selected is not None
     assert selected.model == "trinomial_allocation"
     assert selected.nb_steps == 40
+    # The selected configuration must be the fastest actually observed feasible run.
     assert fastest_at_error_target(points, 1e-5) is None
 
 
@@ -96,6 +99,7 @@ def test_exact_zero_error_not_put_on_log_axis() -> None:
 def test_contract_selection_excludes_other_options() -> None:
     points = [_fake_result("binomial", 20, 0.01, 0.1)]
     assert len(contract_results(points, "call", 100.0)) == 1
+    # A model comparison must not mix different option contracts.
     assert contract_results(points, "put", 100.0) == []
 
 
@@ -113,6 +117,7 @@ def test_no_dividend_atm_prices_and_node_counts(model: str) -> None:
     elif model in ("trinomial_full", "trinomial_branch"):
         assert node_count == (steps + 1) ** 2
     else:
+        # Use the same at-the-money contract when comparing prices and lattice sizes.
         assert node_count <= (steps + 1) ** 2
 
 

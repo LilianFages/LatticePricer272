@@ -35,6 +35,7 @@ def test_greek_stencils_and_reporting_units():
     assert result.gamma == pytest.approx(0.02, abs=1e-10)
     assert result.vega_1pp == pytest.approx(0.035, abs=1e-10)
     assert result.rho_1bp == pytest.approx(0.0014, abs=1e-10)
+    # Greek values must respect the market-reporting units of each shock.
     assert result.theta_1day == pytest.approx(-5*DAY, abs=1e-10)
     assert result.evaluations == 10
     assert result.total_runtime_ms == pytest.approx(20.0)
@@ -52,6 +53,7 @@ def test_near_zero_volatility_uses_forward_second_order():
 def test_zero_volatility_remains_valid_for_mocked_engine():
     result = calculate_greeks(_request(volatility=0.0), pricer=_polynomial_pricer)
     assert result.vega_1pp == pytest.approx(0.035, abs=1e-10)
+    # The mocked pricing engine supports the zero-volatility limit.
     assert result.analytic is None
 
 
@@ -99,6 +101,7 @@ def test_one_failed_shock_does_not_zero_out_other_greeks():
     assert "rate+" in result.issues[0]
 
 
+# Failure of the unshocked base price must remain explicit.
 def test_base_failure_is_not_silenced():
     def fail(_):
         raise RuntimeError("Synthetic base failure")
@@ -116,6 +119,7 @@ def test_perturbation_input_validation():
         GreekBumps(rate_bp=101).validate()
 
 
+# Analytical Greeks are unavailable for unsupported exercise or dividend terms.
 def test_black_scholes_reference_restricted_to_applicable_contracts():
     assert analytic_bs_greeks(_request()) is not None
     assert analytic_bs_greeks(_request(exercise="American")) is None
@@ -134,6 +138,7 @@ def test_black_scholes_put_call_greeks_obey_parity():
     assert call["Rho / 1bp"] - put["Rho / 1bp"] == pytest.approx(
         100.0 * 1.0 * __import__("math").exp(-0.02) * 0.0001
     )
+    # Analytic put and call Greeks must obey their parity identities.
     assert call["Theta / 1d"] - put["Theta / 1d"] == pytest.approx(
         -(0.02 * 100.0 * __import__("math").exp(-0.02))/365
     )
@@ -168,6 +173,7 @@ def test_fd_greeks_against_independent_black_scholes_repricing():
             value = s*n(d1)-k*math.exp(-r*t)*n(d2)
         else:
             value = k*math.exp(-r*t)*n(-d2)-s*n(-d1)
+        # Compare finite-difference sensitivities to analytic model identities.
         return SimpleNamespace(price=value, elapsed_ms=1.0)
 
     for kind in ("Call", "Put"):

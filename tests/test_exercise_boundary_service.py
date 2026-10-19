@@ -31,14 +31,16 @@ class Node:
         self.down_probability = None
 
 
-def link_binomial(node, up, down, p=0.5):
+# Set both transition probabilities on the controlled binomial toy tree.
+def _link_binomial(node: Node, up: Node, down: Node, p: float = 0.5) -> None:
     node.next_up = up
     node.next_down = down
     node.up_probability = p
     node.down_probability = 1.0 - p
 
 
-def basic_american():
+# Use a two-step toy tree to isolate stopping decisions from pricing accuracy.
+def _basic_american() -> tuple[Node, PricingRequest]:
     request = PricingRequest(
         spot=100., strike=100., rate=.02, maturity=1., steps=2,
         model="Trinomial · Allocation pruning", option_type="Put",
@@ -49,14 +51,15 @@ def basic_american():
     right = Node(120, 0)
     dt = request.maturity / request.steps
     root = Node(100, math.exp(-.02 * dt)*10)
-    link_binomial(root, right, left)
-    link_binomial(left, terminal, terminal)
-    link_binomial(right, terminal, terminal)
+    _link_binomial(root, right, left)
+    _link_binomial(left, terminal, terminal)
+    _link_binomial(right, terminal, terminal)
     return root, request
 
 
+# First-exercise mass and continuation survival form a stopping partition.
 def test_american_stopping_not_double_counted():
-    root, request = basic_american()
+    root, request = _basic_american()
     dates, points, err = analyze_priced_tree(root, request)
     assert err < 1e-14
     assert len(dates) == 3
@@ -71,12 +74,13 @@ def test_american_stopping_not_double_counted():
     assert any(p.state == "Early exercise" for p in points)
 
 
+# European exercise cannot occur before contractual maturity.
 def test_european_only_itm_expiry_exercises():
     request = PricingRequest(spot=100, strike=100, rate=0., steps=1,
                              exercise="European", option_type="Put")
     left, right = Node(90, 10), Node(110, 0)
     root = Node(100, 5)
-    link_binomial(root, right, left)
+    _link_binomial(root, right, left)
     dates, points, _ = analyze_priced_tree(root, request)
     assert dates[0].first_exercise_probability == 0
     assert dates[0].boundary_spot is None
@@ -88,6 +92,7 @@ def test_european_only_itm_expiry_exercises():
     assert sum(p.state == "Maturity · ITM" for p in points) == 1
 
 
+# Recombining successor links must not manufacture probability mass.
 def test_duplicate_branches_preserve_mass():
     request = PricingRequest(spot=100, strike=100, rate=0., steps=1,
                              exercise="European", option_type="Put")
@@ -105,6 +110,7 @@ def test_duplicate_branches_preserve_mass():
     assert dates[1].first_exercise_probability == pytest.approx(1.)
 
 
+# Reject transitions violating probability axioms.
 def test_invalid_transition_probability_rejected():
     root = Node(100, 0)
     child = Node(90, 0)
@@ -114,6 +120,7 @@ def test_invalid_transition_probability_rejected():
         _successors(root)
 
 
+# Positive transition mass must have a reachable successor.
 def test_nonzero_prob_without_successor_rejected():
     root = Node(100, 0)
     root.up_probability = 1.
@@ -121,15 +128,17 @@ def test_nonzero_prob_without_successor_rejected():
         _successors(root)
 
 
+# Define a deterministic convention for exact exercise/hold ties.
 def test_tie_means_continuation():
     request = PricingRequest(strike=100, rate=0., steps=1,
                              exercise="American", option_type="Put")
     root = Node(90, 10)
     terminal = Node(90, 10)
-    link_binomial(root, terminal, terminal)
+    _link_binomial(root, terminal, terminal)
     assert _exercise(root, request, 0, 1.) is False
 
 
+# A zero-payoff maturity state does not represent positive exercise value.
 def test_worthless_maturity_is_not_exercised():
     req = PricingRequest(strike=100, rate=0., steps=1,
                          exercise="American", option_type="Call")
@@ -137,6 +146,7 @@ def test_worthless_maturity_is_not_exercised():
     assert _exercise(node, req, 1, 1.) is False
 
 
+# Boundary extrema must respect the chosen payoff direction.
 def test_put_and_call_boundary_extrema():
     # Each case has a real early-exercise node at the chosen price.
     for kind, spot in (("Put", 70.), ("Call", 130.)):
@@ -144,12 +154,13 @@ def test_put_and_call_boundary_extrema():
                              option_type=kind, exercise="American")
         node = Node(spot, 30)
         terminal = Node(100., 0)
-        link_binomial(node, terminal, terminal)
+        _link_binomial(node, terminal, terminal)
         assert _exercise(node, req, 0, 1.)
 
 
+# CSV labels must distinguish region occupancy and first exercise.
 def test_csv_provides_clearly_named_probability_conventions():
-    root, request = basic_american()
+    root, request = _basic_american()
     dates, points, err = analyze_priced_tree(root, request)
     from frontend.exercise_boundary_service import ExerciseStudy
     study = ExerciseStudy(request, root.option_value, dates, points, .5, .5, .5,
@@ -163,26 +174,29 @@ def test_csv_provides_clearly_named_probability_conventions():
     assert "risk_neutral_unconditional_reach_probability" in node_rows[0]
 
 
+# Absence of early exercise must not create a fictitious boundary.
 def test_not_misleading_when_no_early_exercise():
     req = PricingRequest(strike=100., rate=0., steps=1,
                          option_type="Call", exercise="European")
     itm = Node(110, 10)
     otm = Node(90, 0)
     root = Node(100, 5)
-    link_binomial(root, itm, otm)
+    _link_binomial(root, itm, otm)
     dates, _, _ = analyze_priced_tree(root, req)
     assert dates[0].boundary_spot is None
     assert dates[-1].first_exercise_probability == pytest.approx(.5)
     assert dates[-1].boundary_spot == 110
 
 
+# Zero probability of exercise is not evidence of a boundary location.
 def test_zero_early_mass_does_not_invent_boundary():
-    root, request = basic_american()
+    root, request = _basic_american()
     request = replace(request, exercise="European")
     dates, _, _ = analyze_priced_tree(root, request)
     assert all(x.boundary_spot is None for x in dates[:-1])
 
 
+# Guard costly lattice construction against out-of-range requests.
 def test_build_service_limit(monkeypatch):
     request = PricingRequest(steps=201)
     import frontend.exercise_boundary_service as service
@@ -191,6 +205,7 @@ def test_build_service_limit(monkeypatch):
         run_exercise_study(request)
 
 
+# Cash-dividend exercise profiles are checked against real engine outputs.
 def test_live_engine_cash_dividend_scenario_matches_course_results():
     """Actual engine integration; do not confuse with the synthetic checks above."""
     from frontend.pricing_service import DividendInput
@@ -208,6 +223,7 @@ def test_live_engine_cash_dividend_scenario_matches_course_results():
     assert study.total_exercise_probability + study.expired_without_exercise_probability == pytest.approx(1.)
 
 
+# Discounted European option value obeys the martingale consistency check.
 def test_live_engine_european_martingale_no_dividends():
     request = PricingRequest(spot=100., strike=100., rate=.02,
                              volatility=.2, maturity=1., steps=40,

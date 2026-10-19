@@ -25,6 +25,7 @@ def test_hybrid_without_dividend_matches_binomial_price() -> None:
         option,
     )
 
+    # Without dividends, the hybrid tree reduces to binomial pricing.
     hybrid_price = RecursivePricer().price(
         HybridTree(
             spot=100.0,
@@ -61,6 +62,7 @@ def test_hybrid_dividend_reduces_call_price() -> None:
         option,
     )
 
+    # At zero rates, a positive cash dividend lowers the European call.
     dividend_price = RecursivePricer().price(
         HybridTree(
             spot=100.0,
@@ -98,6 +100,7 @@ def test_hybrid_dividend_increases_put_price() -> None:
         option,
     )
 
+    # At zero rates, a cash dividend raises the European put.
     dividend_price = RecursivePricer().price(
         HybridTree(
             spot=100.0,
@@ -131,6 +134,7 @@ def test_hybrid_put_call_parity_with_dividend() -> None:
         )
     ]
 
+    # The present value of cash dividends enters put-call parity explicitly.
     call_price = RecursivePricer().price(
         HybridTree(
             spot=spot,
@@ -145,6 +149,7 @@ def test_hybrid_put_call_parity_with_dividend() -> None:
         ),
     )
 
+    # The present value of cash dividends enters put-call parity explicitly.
     put_price = RecursivePricer().price(
         HybridTree(
             spot=spot,
@@ -186,6 +191,7 @@ def test_hybrid_price_is_close_to_full_trinomial() -> None:
         )
     ]
 
+    # Price differences must stay within tolerance for matched dividend inputs.
     hybrid_price = RecursivePricer().price(
         HybridTree(
             spot=100.0,
@@ -198,6 +204,7 @@ def test_hybrid_price_is_close_to_full_trinomial() -> None:
         option,
     )
 
+    # Price differences must stay within tolerance for matched dividend inputs.
     trinomial_price = RecursivePricer().price(
         TrinomialTree(
             spot=100.0,
@@ -240,6 +247,7 @@ def test_hybrid_prices_multiple_dividends() -> None:
         option,
     )
 
+    # Several ex-dates must be handled without losing a dividend payment.
     two_dividend_price = RecursivePricer().price(
         HybridTree(
             spot=100.0,

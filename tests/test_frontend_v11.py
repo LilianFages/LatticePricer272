@@ -17,6 +17,7 @@ from frontend.pricing_service import (
 
 
 def test_relative_price_gap_against_black_scholes() -> None:
+    # Compute the signed model/reference deviation with a consistent convention.
     result = price_contract(PricingRequest(steps=40, model="Binomial"))
     assert result.black_scholes is not None
     assert result.black_scholes_relative_error_pct == pytest.approx(
@@ -34,6 +35,7 @@ def test_no_dividend_trinomial_allocation_reference() -> None:
     )
 
 
+# Do not invent node counts for a reference tree that did not run.
 def test_cash_dividend_has_no_unverified_full_tree_node_baseline() -> None:
     result = price_contract(PricingRequest(
         steps=25,
@@ -51,6 +53,7 @@ def test_binomial_does_not_claim_trinomial_allocation_reference() -> None:
 
 def test_spot_revaluation_matches_direct_engine_run() -> None:
     req = PricingRequest(steps=20, model="Binomial", option_type="Call")
+    # An adjusted spot request must reprice consistently with the core engine.
     points = compute_spot_sensitivity(req, points=5, span=0.20)
     assert [round(p.spot, 10) for p in points] == [80, 90, 100, 110, 120]
     assert all(point.error is None for point in points)
@@ -68,6 +71,7 @@ def test_spot_sensitivity_uses_existing_american_logic() -> None:
     assert points[0].price >= points[1].price >= points[2].price
 
 
+# Retain the reference-price convention chosen by the pricing terminal.
 @pytest.mark.parametrize("points, span", [(2, .2), (22, .2), (9, 0.), (9, 1.), (9, float('nan'))])
 def test_spot_sensitivity_rejects_invalid_grid(points: int, span: float) -> None:
     with pytest.raises(PricingInputError):

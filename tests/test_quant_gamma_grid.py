@@ -47,6 +47,7 @@ def test_default_gamma_stencil_spans_fixed_trinomial_payoff_kink():
     request=PricingRequest()
     narrow=calculate_greeks(request, GreekBumps(gamma_spot_pct=1),pricer=price_on_grid)
     fixed=calculate_greeks(request, GreekBumps(),pricer=price_on_grid)
+    # Check the Gamma bump against trinomial payoff-grid spacing.
     assert abs(narrow.gamma) < 1e-8
     assert fixed.gamma is not None and fixed.analytic is not None
     assert fixed.gamma == pytest.approx(fixed.analytic["Gamma"], abs=.003)

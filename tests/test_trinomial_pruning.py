@@ -24,6 +24,7 @@ def _terminal_top(
 
 
 def test_root_reach_probability_is_one() -> None:
+    # The initial tree state carries the entire unconditional mass.
     tree = TrinomialTree(
         spot=100.0,
         rate=0.02,
@@ -40,6 +41,7 @@ def test_root_reach_probability_is_one() -> None:
 
 
 def test_terminal_reach_probabilities_sum_to_one() -> None:
+    # Terminal reach probabilities must sum to one even after recombination.
     tree = TrinomialTree(
         spot=100.0,
         rate=0.02,
@@ -57,6 +59,7 @@ def test_terminal_reach_probabilities_sum_to_one() -> None:
         )
     )
 
+    # Terminal reach probabilities must sum to one even after recombination.
     total_probability = 0.0
 
     while current_node is not None:
@@ -76,6 +79,7 @@ def test_terminal_reach_probabilities_sum_to_one() -> None:
     )
 
 
+# Negligible-probability nodes use a single surviving successor.
 def test_low_probability_node_uses_monomial_branching() -> None:
     tree = TrinomialTree(
         spot=100.0,
@@ -92,6 +96,7 @@ def test_low_probability_node_uses_monomial_branching() -> None:
 
     assert upper_node is not None
 
+    # Negligible-probability nodes use a single surviving successor.
     assert (
         upper_node.reach_probability
         < tree.pruning_threshold
@@ -109,6 +114,7 @@ def test_low_probability_node_uses_monomial_branching() -> None:
         is upper_node.next_mid
     )
 
+    # Negligible-probability nodes use a single surviving successor.
     assert upper_node.up_probability == 0.0
     assert upper_node.mid_probability == 1.0
     assert upper_node.down_probability == 0.0
@@ -126,6 +132,7 @@ def test_pruning_preserves_total_probability() -> None:
         pruning_threshold=0.20,
     )
 
+    # Monomial pruning must not lose the probability mass of truncated paths.
     tree.build()
 
     current_node: Node | None = (
@@ -141,6 +148,7 @@ def test_pruning_preserves_total_probability() -> None:
             current_node.reach_probability
         )
 
+        # Monomial pruning must not lose the probability mass of truncated paths.
         current_node = (
             current_node.lower_neighbor
         )
@@ -154,6 +162,7 @@ def test_pruning_preserves_total_probability() -> None:
 
 
 def test_pruning_allows_large_dividend_tree_to_build() -> None:
+    # Pruning must keep a large cash-dividend lattice constructible.
     tree = TrinomialTree(
         spot=100.0,
         rate=0.02,

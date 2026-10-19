@@ -46,6 +46,7 @@ def assert_mass_conserved(tree: TrinomialTree) -> None:
             for successor, probability in edges:
                 assert successor is not None
                 assert probability is not None
+                # Measure terminal probability mass over distinct linked nodes.
                 assert -1e-12 <= probability <= 1.0 + 1e-12
                 local_total += probability
                 following[id(successor)] = successor
@@ -84,6 +85,7 @@ def test_allocation_pruning_preserves_prices_and_mass(
         dividends=dividends_from_specs(specs),
     )
 
+    # Use matched full and pruned scenarios to check mass and price independently.
     option_type = CallOption if option_kind == "call" else PutOption
     full_price = RecursivePricer().price(
         full,

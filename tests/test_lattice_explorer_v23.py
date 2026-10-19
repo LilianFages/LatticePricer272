@@ -10,6 +10,7 @@ from frontend.lattice_explorer_service import snapshot_priced_tree
 from frontend.pricing_service import PricingRequest
 
 
+# Column traversal must deduplicate identities and reject linked-list cycles.
 def test_column_reader_keeps_distinct_nodes_and_detects_cycle() -> None:
     a, b = Node(110), Node(90)
     a.lower_neighbor = b
@@ -19,6 +20,7 @@ def test_column_reader_keeps_distinct_nodes_and_detects_cycle() -> None:
         _column_nodes(a)
 
 
+# Allocation tracing measures actual constructor calls rather than estimates.
 @pytest.mark.parametrize("model,expected", [
     ("Binomial", 21),
     ("Hybrid", 21),
@@ -39,6 +41,7 @@ def test_actual_allocation_trace_on_five_step_engines(
         assert snap.engine_allocated_nodes == expected
 
 
+# Pruning changes allocated geometry even when prices agree numerically.
 def test_branch_and_allocation_are_geometrically_distinct_at_n10() -> None:
     req = PricingRequest(
         model="Trinomial · Branch pruning", steps=10,
@@ -62,6 +65,7 @@ def test_branch_and_allocation_are_geometrically_distinct_at_n10() -> None:
     assert any(not item.connected for item in branch.allocated_geometry)
 
 
+# A tracing wrapper must be restored even when tree construction fails.
 def test_wrapper_is_restored_after_success_and_failure() -> None:
     from src.trinomial_tree import TrinomialTree
 
@@ -79,6 +83,7 @@ def test_wrapper_is_restored_after_success_and_failure() -> None:
     assert "_build_column" not in vars(other)
 
 
+# The UI must never invent allocation counts for unsupported sources.
 def test_no_synthetic_allocations_present() -> None:
     for model in ("Trinomial · Branch pruning", "Trinomial · Allocation pruning"):
         snap = snapshot_priced_tree(PricingRequest(

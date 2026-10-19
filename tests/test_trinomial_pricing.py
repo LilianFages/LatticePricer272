@@ -24,6 +24,7 @@ def test_recursive_one_step_trinomial_call() -> None:
         option,
     )
 
+    # The one-step call price equals the discounted expected terminal payoff.
     up_node = tree.root.next_up
     mid_node = tree.root.next_mid
     down_node = tree.root.next_down
@@ -68,6 +69,7 @@ def test_recursive_trinomial_put_call_parity() -> None:
         maturity=maturity,
         nb_steps=10,
     )
+    # Trinomial European prices must satisfy discounted put-call parity.
     put_tree = TrinomialTree(
         spot=spot,
         rate=rate,
@@ -85,6 +87,7 @@ def test_recursive_trinomial_put_call_parity() -> None:
         PutOption(strike=strike),
     )
 
+    # Trinomial European prices must satisfy discounted put-call parity.
     expected_difference = (
         spot
         - strike
@@ -122,6 +125,7 @@ def test_recursive_trinomial_converges_to_black_scholes() -> None:
         option,
     )
 
+    # Increase the lattice resolution when assessing Black-Scholes convergence.
     black_scholes_price = BlackScholesPricer().price(
         option=option,
         spot=spot,

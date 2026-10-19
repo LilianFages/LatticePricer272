@@ -104,6 +104,7 @@ def test_probabilities_match_expected_value() -> None:
 
     assert tree.root.up_probability is not None
     assert tree.root.mid_probability is not None
+    # The local first moment must match the model's risk-neutral forward.
     assert tree.root.down_probability is not None
 
     reconstructed_mean = (
@@ -144,6 +145,7 @@ def test_probabilities_match_variance() -> None:
 
     assert tree.root.up_probability is not None
     assert tree.root.mid_probability is not None
+    # The second central moment must match the prescribed diffusion variance.
     assert tree.root.down_probability is not None
 
     expected_value, variance = TransitionMoments.compute(
@@ -265,6 +267,7 @@ def test_trunk_nodes_match_forward_prices() -> None:
             current_trunk.next_mid
         )
 
+        # The trunk nodes must lie on the discrete risk-neutral forward curve.
         assert isinstance(
             current_trunk,
             TrunkNode,

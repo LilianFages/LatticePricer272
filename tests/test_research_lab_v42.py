@@ -33,6 +33,7 @@ def _sample_csv() -> pd.DataFrame:
     return pd.DataFrame([passed, passed, allocation_only])
 
 
+# Each missing cell must be assigned to exactly one cause.
 def test_missingness_categories_are_disjoint():
     frame = _sample_csv()
     result = missingness_diagnostics("Robustness", frame)
@@ -42,6 +43,7 @@ def test_missingness_categories_are_disjoint():
     }
 
 
+# The 108-case reference contains 96 comparisons and 12 allocation-only runs.
 def test_missingness_known_108_case_profile():
     baseline = dict(status="passed", branch_error=None, allocation_error=None,
                     error=None, **{key: 1.0 for key in COMPARISON_FIELDS})
@@ -56,6 +58,7 @@ def test_missingness_known_108_case_profile():
     assert result["unclassified"] == 0
 
 
+# Unexpected null fields must remain visible as unclassified data loss.
 def test_unknown_missingness_is_not_explained_away():
     frame = _sample_csv()
     frame["new_metric"] = [None, None, 1.0]
@@ -64,6 +67,7 @@ def test_unknown_missingness_is_not_explained_away():
     assert report["total"] == 16
 
 
+# A missing value in another experiment has no automatic branch-failure cause.
 def test_other_catalogue_blanks_not_assumed_to_be_baseline_failures():
     data = pd.DataFrame({"price": [1.0, None]})
     assert missingness_diagnostics("Accuracy/cost", data) == {
@@ -72,6 +76,7 @@ def test_other_catalogue_blanks_not_assumed_to_be_baseline_failures():
     }
 
 
+# Column diagnostics must not mutate the original measurements.
 def test_missingness_by_column_counts_only_nonzero_and_preserves_source():
     frame = _sample_csv()
     original = frame.copy(deep=True)
@@ -82,11 +87,13 @@ def test_missingness_by_column_counts_only_nonzero_and_preserves_source():
     pd.testing.assert_frame_equal(frame, original)
 
 
+# Missing status fields prevent valid robustness provenance analysis.
 def test_missingness_requires_status_for_robustness():
     with pytest.raises(DatasetError, match="status"):
         missingness_diagnostics("Robustness", pd.DataFrame({"gap": [None]}))
 
 
+# Diagnostics must leave the original CSV values unchanged.
 def test_csv_remains_unimputed_after_provenance_check():
     frame = _sample_csv()
     missingness_diagnostics("Robustness", frame)
@@ -97,6 +104,7 @@ def test_csv_remains_unimputed_after_provenance_check():
     assert pd.isna(frame.loc[2, "absolute_gap"])
 
 
+# Only observed trade-off points are eligible for Pareto filtering.
 def test_frontier_still_computed_from_observed_points():
     data = pd.DataFrame({
         "model": ["A", "B", "C"],
@@ -106,12 +114,14 @@ def test_frontier_still_computed_from_observed_points():
     assert set(observed_pareto(data)["model"]) == {"A", "B"}
 
 
+# Catalogue registration must preserve dataset names and locations.
 def test_catalogue_schema_and_source_paths_unchanged():
     assert CATALOG["Robustness"].path == "results/data/allocation_pruning_robustness.csv"
     assert CATALOG["Temporal profiles"].path == "results/data/option_by_dates_profiles.csv"
     assert CATALOG["Accuracy/cost"].path == "results/data/accuracy_cost_multistrike_aggregate.csv"
 
 
+# Check empirical exports without treating optional datasets as required.
 def test_real_datasets_when_available():
     # This runs on the user's checkout, and skips only in standalone archive QA.
     from frontend.research_lab_service import ROOT

@@ -20,6 +20,7 @@ def assert_probability_mass(tree: AllocationPrunedTrinomialTree) -> None:
     for step in range(tree.nb_steps + 1):
         total = math.fsum(node.reach_probability for node in frontier.values())
         assert math.isclose(total, 1.0, rel_tol=0.0, abs_tol=1e-10)
+        # Conserve probability when branches are redirected to surviving nodes.
         if step == tree.nb_steps:
             break
         new_frontier: dict[int, Node] = {}
@@ -36,6 +37,7 @@ def assert_probability_mass(tree: AllocationPrunedTrinomialTree) -> None:
                 transition_total += prob
                 new_frontier[id(successor)] = successor
             assert math.isclose(transition_total, 1.0, rel_tol=0.0, abs_tol=1e-12)
+        # Conserve probability when branches are redirected to surviving nodes.
         frontier = new_frontier
 
 
@@ -57,6 +59,7 @@ def test_allocation_only_two_dividends_200(
         ],
         pruning_threshold=1e-18,
     )
+    # The two-dividend N=200 case must complete without fabricating a baseline.
     option_class = CallOption if kind == "call" else PutOption
     price = RecursivePricer().price(
         tree, option_class(strike=strike, is_american=american),

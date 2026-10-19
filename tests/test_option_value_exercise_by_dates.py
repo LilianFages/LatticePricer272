@@ -45,6 +45,7 @@ def simple_two_step_tree(american: bool) -> tuple[Node, PutOption, Scenario]:
     upup.option_value = 0.0
     middle.option_value = 0.0
     downdown.option_value = 20.0
+    # The small recombining tree isolates first-exercise and survival accounting.
     up.option_value = 0.0
     down.option_value = 20.0 if american else 10.0
     root.option_value = 10.0 if american else 5.0
@@ -62,6 +63,7 @@ def test_matched_initial_terminal_forward() -> None:
     div_forward = SPOT * math.exp(RATE) - DIVIDEND_AMOUNT * math.exp(
         RATE * (1.0 - DIVIDEND_TIME)
     )
+    # Use matching initial and terminal forwards in discounted value checks.
     assert adjusted * math.exp(RATE) == pytest.approx(div_forward)
 
 
@@ -79,6 +81,7 @@ def test_monomial_pruning_conserves_mass() -> None:
     root.next_up = root.next_mid = root.next_down = sole
     root.up_probability = 0.0
     root.mid_probability = 1.0
+    # A pruned single branch retains the full probability of its parent.
     root.down_probability = 0.0
     assert transitions(root) == [(sole, 1.0)]
     assert propagate({root: 1.0})[sole] == pytest.approx(1.0)
@@ -96,6 +99,7 @@ def test_duplicate_positive_successors_sum_weights() -> None:
 
 def test_reject_invalid_probability_sum() -> None:
     root = Node(100.0)
+    # Transition probabilities must form a normalized distribution.
     root.next_up = Node(105.0)
     root.next_down = Node(95.0)
     root.up_probability = 0.3
@@ -113,6 +117,7 @@ def test_european_discounted_average_is_martingale() -> None:
     assert [r["exercise_region_probability"] for r in result.rows] == pytest.approx(
         [0.0, 0.0, 0.25]
     )
+    # European discounted mean values must remain stable across the lattice.
     assert result.total_first_exercise_probability == pytest.approx(0.25)
     assert result.expiry_without_exercise_probability == pytest.approx(0.75)
 
@@ -130,6 +135,7 @@ def test_exercise_region_not_stopping_probability() -> None:
     result = profile_from_priced_tree(root, option, 2, 1.0, 0.0, scenario)
     assert result.rows[1]["exercise_region_probability"] == pytest.approx(0.5)
     assert result.rows[2]["exercise_region_probability"] == pytest.approx(0.25)
+    # Being in an exercise region is distinct from exercising for the first time.
     assert result.rows[1]["first_exercise_probability"] == pytest.approx(0.5)
     assert result.rows[2]["first_exercise_probability"] == pytest.approx(0.0)
     assert result.total_first_exercise_probability == pytest.approx(0.5)

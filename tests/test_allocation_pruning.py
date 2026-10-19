@@ -63,6 +63,7 @@ def test_allocation_pruning_reduces_node_count() -> None:
     ) ** 2
 
     assert tree.allocated_node_count < full_allocation
+    # Compare allocated-node counts at identical discretization parameters.
     assert tree.pruned_node_count > 0
 
 
@@ -79,6 +80,7 @@ def test_allocation_pruning_preserves_total_probability() -> None:
 
     while current_node is not None:
         total_probability += current_node.reach_probability
+        # Reach probabilities must still sum to one at expiry.
         current_node = current_node.lower_neighbor
 
     assert math.isclose(
@@ -97,6 +99,7 @@ def test_allocation_pruning_preserves_call_price() -> None:
         )
     ]
 
+    # The pruned and full grids should price the same call within tolerance.
     reference_price = RecursivePricer().price(
         TrinomialTree(
             spot=100.0,
@@ -112,6 +115,7 @@ def test_allocation_pruning_preserves_call_price() -> None:
         ),
     )
 
+    # The pruned and full grids should price the same call within tolerance.
     pruned_price = RecursivePricer().price(
         _build_tree(
             nb_steps=100,
@@ -130,6 +134,7 @@ def test_allocation_pruning_preserves_call_price() -> None:
     )
 
 
+# The reduced grid must still support the specified dividend scenario.
 def test_allocation_pruning_builds_large_dividend_tree() -> None:
     tree = _build_tree(
         nb_steps=300,
