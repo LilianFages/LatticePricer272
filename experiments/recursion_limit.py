@@ -15,6 +15,7 @@ SPOT = 100.0
 RATE = 0.02
 VOLATILITY = 0.20
 MATURITY = 1.0
+# Isolate interpreter recursion failure from financial pricing error.
 STRIKE = 100.0
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -77,6 +78,7 @@ def run_recursive(
     try:
         price = RecursivePricer().price(
             tree,
+            # Record recursive depth failures explicitly instead of substituting prices.
             option,
         )
 
@@ -122,6 +124,7 @@ def add_recursive_result(
             "nb_steps": nb_steps,
             "status": status,
             "price": price,
+            # Record the last completed recursive discretization separately from failure.
             "elapsed_seconds": elapsed_time,
         }
     )
@@ -156,6 +159,7 @@ def find_recursion_limit(
         low,
     )
 
+    # Determine the largest successfully priced depth in the tested range.
     if not low_success:
         raise RuntimeError(
             "Initial lower bound already fails."
@@ -172,6 +176,7 @@ def find_recursion_limit(
         )
 
     while high - low > 1:
+        # Keep the backward-induction benchmark at an equivalent grid size.
         middle = (
             low + high
         ) // 2
@@ -315,6 +320,7 @@ def main() -> None:
 
     print()
 
+    # Record the last completed recursive discretization separately from failure.
     last_success, first_failure = (
         find_recursion_limit(
             results
@@ -332,6 +338,7 @@ def main() -> None:
         first_failure,
     )
 
+    # Isolate interpreter recursion failure from financial pricing error.
     print()
 
     add_backward_result(
@@ -349,6 +356,7 @@ def main() -> None:
     )
 
     print()
+    # Keep the backward-induction benchmark at an equivalent grid size.
     print(
         "Results saved to:"
     )

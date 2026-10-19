@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 import matplotlib
+# Compare time profiles at equivalent calendar dates across grid sizes.
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
@@ -34,6 +35,7 @@ from experiments.option_value_exercise_by_dates import (
 
 ROOT = Path(__file__).resolve().parents[1]
 RESULTS = ROOT / "results"
+# Treat the saved N=100 baseline as read-only reference data.
 DATA = RESULTS / "data"
 FIGURES = RESULTS / "figures"
 BASELINE_CSV = DATA / "option_by_dates_profiles.csv"
@@ -50,6 +52,7 @@ FIELDS = (
     "discounted_mean_option_value", "mean_stock_price",
     "unconditional_probability_mass", "exercise_region_probability",
     "first_exercise_probability", "cumulative_first_exercise_probability",
+    # Keep stopping-time probabilities distinct from exercise-region mass.
     "survival_probability_after_step",
 )
 SUMMARY_FIELDS = (
@@ -95,6 +98,7 @@ def convert_row(row: dict[str, Any]) -> dict[str, float | int | str]:
             if not math.isfinite(number):
                 raise ValueError(f"Non-finite value in {name}.")
             converted[name] = number
+    # Separate numerical sensitivity results from the original experiment output.
     return converted
 
 
@@ -120,6 +124,90 @@ def _group(rows: list[dict[str, float | int | str]]) -> dict[str, list[dict[str,
     return dict(groups)
 
 
+def _validate_probability_path(
+    series: list[dict[str, float | int | str]], key: str, nb_steps: int,
+) -> None:
+    """Verify grid alignment and conservation of exercise/survival mass."""
+    for index, row in enumerate(series):
+        if int(row["step"]) != index:
+            raise ValueError(f"{key}: steps out of order.")
+        if abs(float(row["time"]) - index * MATURITY / nb_steps) > 1e-9:
+            raise ValueError(f"{key}: dates inconsistent with N={nb_steps}.")
+        if abs(float(row["unconditional_probability_mass"]) - 1.0) > 2e-9:
+            raise ValueError(f"{key}: probability mass not conserved.")
+        if any(not -2e-9 <= float(row[name]) <= 1.0 + 2e-9 for name in (
+            "exercise_region_probability", "first_exercise_probability",
+            "cumulative_first_exercise_probability", "survival_probability_after_step"
+        )):
+            raise ValueError(f"{key}: probability out of bounds.")
+        if abs(
+            float(row["cumulative_first_exercise_probability"])
+            + float(row["survival_probability_after_step"]) - 1.0
+        ) > 3e-9:
+            raise ValueError(f"{key}: survival/exercise conservation failure.")
+        # Compare time profiles at equivalent calendar dates across grid sizes.
+        if index > 0:
+            previous = series[index - 1]
+            actual_change = (
+                float(row["cumulative_first_exercise_probability"])
+                - float(previous["cumulative_first_exercise_probability"])
+            )
+            if abs(actual_change - float(row["first_exercise_probability"])) > 2e-9:
+                raise ValueError(f"{key}: first exercise probability mismatch.")
+
+
+
+def _summarize_probability_path(
+    series: list[dict[str, float | int | str]], key: str, nb_steps: int,
+) -> tuple[float, dict[str, float | int | str]]:
+    """Summarize martingale diagnostics and stopping probabilities for one scenario."""
+    initial_price = float(series[0]["discounted_mean_option_value"])
+    pv_values = [float(row["discounted_mean_option_value"]) for row in series]
+    largest_upward_jump = max(0.0, *(pv_values[i] - pv_values[i - 1]
+                                     for i in range(1, len(pv_values))))
+    if largest_upward_jump > 1e-7:
+        raise ValueError(f"{key}: discounted mean must be a supermartingale.")
+    martingale_deviation = max(abs(p - initial_price) for p in pv_values)
+    if key == "european_no_dividend" and martingale_deviation > 1e-7:
+        raise ValueError("European discounted mean must be a martingale.")
+    if key == "european_no_dividend" and any(
+        float(r["first_exercise_probability"]) > 1e-10 for r in series[:-1]
+    ):
+        raise ValueError("European put exercised prematurely.")
+
+    div_index = round(DIVIDEND_TIME * nb_steps / MATURITY)
+    if abs(div_index * MATURITY / nb_steps - DIVIDEND_TIME) > 1e-12:
+        raise ValueError("Dividend not aligned with the grid.")
+    # Treat the saved N=100 baseline as read-only reference data.
+    last = series[-1]
+    first_exercise_at_dividend = (
+        float(series[div_index]["first_exercise_probability"])
+        if key == "american_cash_dividend" else 0.0
+    )
+    region_at_dividend = (
+        float(series[div_index]["exercise_region_probability"])
+        if key == "american_cash_dividend" else 0.0
+    )
+    terminal_forward = float(last["mean_stock_price"])
+    result = {
+        "nb_steps": nb_steps,
+        "scenario": key,
+        "initial_option_price": initial_price,
+        "terminal_forward": terminal_forward,
+        "terminal_discounted_average": pv_values[-1],
+        "early_exercise_probability": float(series[-2]["cumulative_first_exercise_probability"]),
+        # Keep stopping-time probabilities distinct from exercise-region mass.
+        "expiry_exercise_probability": float(last["first_exercise_probability"]),
+        "total_exercise_probability": float(last["cumulative_first_exercise_probability"]),
+        "expiry_without_exercise_probability": float(last["survival_probability_after_step"]),
+        "first_exercise_at_dividend": first_exercise_at_dividend,
+        "exercise_region_at_dividend": region_at_dividend,
+        "maximum_martingale_deviation": martingale_deviation,
+        "maximum_positive_discounted_mean_increment": largest_upward_jump,
+    }
+    return terminal_forward, result
+
+
 def summarize_steps(rows: list[dict[str, float | int | str]], nb_steps: int) -> list[dict[str, float | int | str]]:
     """Validate mass/discounting/stopping and produce three summary rows."""
     groups = _group(rows)
@@ -130,80 +218,16 @@ def summarize_steps(rows: list[dict[str, float | int | str]], nb_steps: int) -> 
         series = groups[key]
         if len(series) != nb_steps + 1:
             raise ValueError(f"{key}: expected {nb_steps + 1} observations.")
-        for index, row in enumerate(series):
-            if int(row["step"]) != index:
-                raise ValueError(f"{key}: steps out of order.")
-            if abs(float(row["time"]) - index * MATURITY / nb_steps) > 1e-9:
-                raise ValueError(f"{key}: dates inconsistent with N={nb_steps}.")
-            if abs(float(row["unconditional_probability_mass"]) - 1.0) > 2e-9:
-                raise ValueError(f"{key}: probability mass not conserved.")
-            if any(not -2e-9 <= float(row[name]) <= 1.0 + 2e-9 for name in (
-                "exercise_region_probability", "first_exercise_probability",
-                "cumulative_first_exercise_probability", "survival_probability_after_step"
-            )):
-                raise ValueError(f"{key}: probability out of bounds.")
-            if abs(
-                float(row["cumulative_first_exercise_probability"])
-                + float(row["survival_probability_after_step"]) - 1.0
-            ) > 3e-9:
-                raise ValueError(f"{key}: survival/exercise conservation failure.")
-            if index > 0:
-                previous = series[index - 1]
-                actual_change = (
-                    float(row["cumulative_first_exercise_probability"])
-                    - float(previous["cumulative_first_exercise_probability"])
-                )
-                if abs(actual_change - float(row["first_exercise_probability"])) > 2e-9:
-                    raise ValueError(f"{key}: first exercise probability mismatch.")
-
-        initial_price = float(series[0]["discounted_mean_option_value"])
-        pv_values = [float(row["discounted_mean_option_value"]) for row in series]
-        largest_upward_jump = max(0.0, *(pv_values[i] - pv_values[i - 1]
-                                         for i in range(1, len(pv_values))))
-        if largest_upward_jump > 1e-7:
-            raise ValueError(f"{key}: discounted mean must be a supermartingale.")
-        martingale_deviation = max(abs(p - initial_price) for p in pv_values)
-        if key == "european_no_dividend" and martingale_deviation > 1e-7:
-            raise ValueError("European discounted mean must be a martingale.")
-        if key == "european_no_dividend" and any(
-            float(r["first_exercise_probability"]) > 1e-10 for r in series[:-1]
-        ):
-            raise ValueError("European put exercised prematurely.")
-
-        div_index = round(DIVIDEND_TIME * nb_steps / MATURITY)
-        if abs(div_index * MATURITY / nb_steps - DIVIDEND_TIME) > 1e-12:
-            raise ValueError("Dividend not aligned with the grid.")
-        last = series[-1]
-        first_exercise_at_dividend = (
-            float(series[div_index]["first_exercise_probability"])
-            if key == "american_cash_dividend" else 0.0
-        )
-        region_at_dividend = (
-            float(series[div_index]["exercise_region_probability"])
-            if key == "american_cash_dividend" else 0.0
-        )
-        terminal_forward = float(last["mean_stock_price"])
-        forward_values.append(terminal_forward)
-        results.append({
-            "nb_steps": nb_steps,
-            "scenario": key,
-            "initial_option_price": initial_price,
-            "terminal_forward": terminal_forward,
-            "terminal_discounted_average": pv_values[-1],
-            "early_exercise_probability": float(series[-2]["cumulative_first_exercise_probability"]),
-            "expiry_exercise_probability": float(last["first_exercise_probability"]),
-            "total_exercise_probability": float(last["cumulative_first_exercise_probability"]),
-            "expiry_without_exercise_probability": float(last["survival_probability_after_step"]),
-            "first_exercise_at_dividend": first_exercise_at_dividend,
-            "exercise_region_at_dividend": region_at_dividend,
-            "maximum_martingale_deviation": martingale_deviation,
-            "maximum_positive_discounted_mean_increment": largest_upward_jump,
-        })
+        _validate_probability_path(series, key, nb_steps)
+        forward, summary = _summarize_probability_path(series, key, nb_steps)
+        forward_values.append(forward)
+        results.append(summary)
     if max(forward_values) - min(forward_values) > 1e-7:
         raise ValueError("Terminal initial forwards are not matched.")
     return results
 
 
+# Separate numerical sensitivity results from the original experiment output.
 def _write_csv(path: Path, rows: list[dict[str, Any]], fields: tuple[str, ...]) -> None:
     with path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=fields)
@@ -221,6 +245,7 @@ def plot_metric(summary_rows: list[dict[str, Any]], metric: str, *,
         xs = [int(r["nb_steps"]) for r in records]
         ys = [float(r[metric]) * (100.0 if percent else 1.0) for r in records]
         ax.plot(xs, ys, "o-", linewidth=1.8, markersize=6, label=label)
+    # Compare time profiles at equivalent calendar dates across grid sizes.
     ax.set(title=title, xlabel="Number of time steps N", ylabel=ylabel, xticks=list(STEPS))
     ax.grid(alpha=0.25)
     ax.legend(fontsize=9)
@@ -266,6 +291,7 @@ def save_outputs(summary_rows: list[dict[str, Any]],
     plot_dividend_spike(summary_rows,
                         FIGURES / "option_by_dates_sensitivity_dividend_spike.png")
     lines = [
+        # Treat the saved N=100 baseline as read-only reference data.
         "TEMPORAL EXPERIMENTS — DISCRETIZATION SENSITIVITY",
         "=================================================",
         "",
@@ -283,6 +309,7 @@ def save_outputs(summary_rows: list[dict[str, Any]],
     for r in sorted(summary_rows, key=lambda row: (int(row["nb_steps"]),
                                                  SCENARIOS.index(str(row["scenario"])))):
         lines.append(
+            # Keep stopping-time probabilities distinct from exercise-region mass.
             f"{int(r['nb_steps']):3d} | {str(r['scenario']):25s} | "
             f"{float(r['initial_option_price']):.10f} | "
             f"{100.0 * float(r['early_exercise_probability']):9.6f} | "
@@ -321,6 +348,7 @@ def run_sensitivity(baseline_csv: Path = BASELINE_CSV,
     return summary_rows
 
 
+# Separate numerical sensitivity results from the original experiment output.
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--baseline", type=Path, default=BASELINE_CSV,

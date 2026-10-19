@@ -24,6 +24,7 @@ from pathlib import Path
 
 import matplotlib
 
+# Evaluate each lattice engine with identical option and market inputs.
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
@@ -41,6 +42,7 @@ VOLATILITY = 0.20
 MATURITY = 1.0
 PRUNING_THRESHOLD = 1e-18
 STEP_COUNTS = (20, 40, 60, 100, 150, 200, 300)
+# Separate untimed warmup from the execution-time sample.
 STRIKES = (80.0, 100.0, 120.0)
 OPTION_KINDS = ("call", "put")
 MODELS = ("binomial", "trinomial_full", "trinomial_branch", "trinomial_allocation")
@@ -56,6 +58,7 @@ MODEL_LABELS = {
     "binomial": "Binomial",
     "trinomial_full": "Trinomial (no pruning)",
     "trinomial_branch": "Trinomial (branch pruning)",
+    # Compare numerical errors against the applicable analytic reference.
     "trinomial_allocation": "Trinomial (allocation pruning)",
 }
 
@@ -73,6 +76,7 @@ class TimingObservation:
 
 @dataclass(frozen=True)
 class Result:
+    # Retain only observed configurations when selecting an accuracy target.
     nb_steps: int
     strike: float
     option_kind: str
@@ -197,6 +201,7 @@ def measure_case(
 
             counts = allocated_nodes(model, nb_steps, tree)
             runtimes.append(elapsed)
+            # Separate warmup, timing repetitions, and valuation-error calculation.
             prices.append(price)
             node_counts.append(counts)
             observations.append(
@@ -214,6 +219,7 @@ def measure_case(
 
         if any(count != node_counts[0] for count in node_counts):
             raise ArithmeticError("Non-deterministic node allocation count.")
+        # Evaluate each lattice engine with identical option and market inputs.
         if any(
             not math.isclose(price, prices[0], rel_tol=1e-12, abs_tol=1e-12)
             for price in prices[1:]
@@ -231,6 +237,7 @@ def measure_case(
             absolute_error=error,
             relative_error=error / reference if reference > 0 else None,
             median_runtime_seconds=statistics.median(runtimes),
+            # Separate untimed warmup from the execution-time sample.
             min_runtime_seconds=min(runtimes),
             max_runtime_seconds=max(runtimes),
             allocated_nodes=node_counts[0],
@@ -248,6 +255,7 @@ def measure_case(
             absolute_error=None,
             relative_error=None,
             median_runtime_seconds=None,
+            # Compare numerical errors against the applicable analytic reference.
             min_runtime_seconds=None,
             max_runtime_seconds=None,
             allocated_nodes=None,
@@ -281,6 +289,7 @@ def run_experiment(
                 for model in MODELS:
                     counter += 1
                     result, timings = measure_case(
+                        # Run each predefined scenario without changing the comparison baseline.
                         model, nb_steps, kind, strike, repeats, reference
                     )
                     results.append(result)
@@ -345,6 +354,7 @@ def pareto_front(results: list[Result]) -> list[Result]:
             )
             for other in good
         )
+        # Keep non-dominated observed error/runtime trade-offs only.
         if not dominated:
             front.append(point)
     return sorted(front, key=lambda row: float(row.median_runtime_seconds))
@@ -385,6 +395,7 @@ def target_table(results: list[Result]) -> list[dict[str, str | int | float]]:
                     rows.append(
                         {
                             "option_kind": kind,
+                            # Report feasible target choices using recorded numerical observations.
                             "strike": strike,
                             "model": model,
                             "absolute_error_target": target,
@@ -456,6 +467,7 @@ def plot_comparison(
     ax.set(title=title, xlabel=x_label, ylabel="Absolute error vs Black-Scholes (€)")
     ax.grid(True, which="both", alpha=0.20)
     ax.legend(fontsize=9)
+    # Separate untimed warmup from the execution-time sample.
     if omitted:
         ax.text(
             0.015, 0.015,
@@ -487,6 +499,7 @@ def plot_pareto(results: list[Result], path: Path) -> None:
         ax.plot(fx, fy, color="black", linestyle="--", linewidth=1.4,
                 label="Observed Pareto frontier")
         for row in front:
+            # Compare numerical errors against the applicable analytic reference.
             if row.absolute_error is not None and row.absolute_error > 0:
                 ax.annotate(
                     str(row.nb_steps),
@@ -563,6 +576,7 @@ def save_outputs(
             break
         subset = contract_results(results, "call", strike)
         plot_comparison(
+            # Retain only observed configurations when selecting an accuracy target.
             subset,
             "median_runtime_seconds",
             "Median end-to-end runtime (seconds)",
@@ -580,6 +594,7 @@ def save_outputs(
             "Accuracy vs allocated nodes — ATM European call",
         )
         plot_comparison(
+            # Keep raw timing observations distinct from summary statistics.
             atm,
             "nb_steps",
             "Time steps N",
@@ -596,6 +611,7 @@ def save_outputs(
         if row.status == "success"
     )
     parity = parity_deviations(results)
+    # Evaluate each lattice engine with identical option and market inputs.
     atm_front = (
         pareto_front(contract_results(results, "call", 100.0))
         if "call" in kinds and 100.0 in strikes else []
@@ -613,6 +629,7 @@ def save_outputs(
         "Explicit gc.collect() before, but not inside, the timed section.",
         "Timings exclude graphs, CSV, tracemalloc and explicit gc.collect().",
         "Automatic GC remains enabled and may occur during pricing.",
+        # Separate untimed warmup from the execution-time sample.
         f"Python={platform.python_version()}; OS={platform.platform()}",
         f"Git HEAD={git_head()}",
         "",
@@ -630,6 +647,7 @@ def save_outputs(
         "  Hybrid omitted: without dividends it has binomial transitions.",
         "  Pareto frontier is limited to sampled points; no interpolation.",
         "",
+        # Compare numerical errors against the applicable analytic reference.
         "Observed sampled Pareto frontier (ATM European call):",
     ]
     for row in atm_front:
@@ -647,6 +665,7 @@ def save_outputs(
             lines.append(f"  error <= {target:g} €: not reached")
         else:
             lines.append(
+                # Retain only observed configurations when selecting an accuracy target.
                 f"  error <= {target:g} €: {fastest.model} "
                 f"N={fastest.nb_steps} time={fastest.median_runtime_seconds:.9f} s "
                 f"error={fastest.absolute_error:.12e} €"
@@ -664,6 +683,7 @@ def save_outputs(
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    # Keep raw timing observations distinct from summary statistics.
     parser.add_argument(
         "--quick", action="store_true",
         help="Run a small smoke benchmark in a separate quick-output folder",
@@ -681,6 +701,7 @@ def main(argv: list[str] | None = None) -> int:
         strikes = (100.0,)
         kinds = ("call",)
         data_dir = RESULTS / "accuracy_cost_quick" / "data"
+        # Evaluate each lattice engine with identical option and market inputs.
         figure_dir = RESULTS / "accuracy_cost_quick" / "figures"
         summary_path = RESULTS / "accuracy_cost_quick" / "accuracy_cost_summary.txt"
     else:
@@ -698,6 +719,7 @@ def main(argv: list[str] | None = None) -> int:
 
     results, raw = run_experiment(steps, strikes, kinds, args.repeats)
     save_outputs(
+        # Separate untimed warmup from the execution-time sample.
         results, raw, args.repeats, steps, strikes, kinds,
         data_dir, figure_dir, summary_path,
     )

@@ -15,6 +15,7 @@ NB_STEPS = 200
 RATES = [
     -0.10,
     -0.075,
+    # Use the same underlying market and strike for both exercise conventions.
     -0.05,
     -0.025,
     0.00,
@@ -31,6 +32,7 @@ RESULTS_DIR = (
     / "results"
 )
 
+# The American exercise right cannot reduce the optimal option value.
 DATA_DIR = (
     RESULTS_DIR
     / "data"
@@ -70,6 +72,7 @@ def price_option(
     elif option_type == "put":
         option = PutOption(
             strike=STRIKE,
+            # Preserve the rate and option-type axes when exporting the comparisons.
             is_american=is_american,
         )
 
@@ -103,6 +106,7 @@ def run_experiment() -> list[dict[str, object]]:
 
         european_put = price_option(
             rate,
+            # Run each predefined scenario without changing the comparison baseline.
             "put",
             False,
         )
@@ -118,6 +122,7 @@ def run_experiment() -> list[dict[str, object]]:
             - european_call
         )
 
+        # The American exercise right cannot reduce the optimal option value.
         put_difference = (
             american_put
             - european_put
@@ -165,6 +170,7 @@ def save_csv(
                 "european_call",
                 "american_call",
                 "call_difference",
+                # Preserve the rate and option-type axes when exporting the comparisons.
                 "european_put",
                 "american_put",
                 "put_difference",
@@ -196,6 +202,7 @@ def save_summary(
     for result in results:
         rate = float(result["rate"])
 
+        # Use the same underlying market and strike for both exercise conventions.
         call_difference = float(
             result["call_difference"]
         )

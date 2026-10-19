@@ -14,6 +14,7 @@ SPOT = 100.0
 STRIKE = 100.0
 RATE = 0.02
 VOLATILITY = 0.20
+# Change pruning thresholds without changing the market or dividend schedule.
 MATURITY = 1.0
 
 DIVIDENDS = [
@@ -31,6 +32,7 @@ STEP_COUNTS = [
 ]
 
 PRUNING_THRESHOLDS = [
+    # Compare the resulting prices against an unpruned reference.
     0.0,
     1e-18,
     1e-15,
@@ -49,6 +51,7 @@ DATA_DIR = (
     / "data"
 )
 
+# Report both node savings and pricing impact for each threshold.
 FIGURES_DIR = (
     RESULTS_DIR
     / "figures"
@@ -114,6 +117,7 @@ def run_case(
         )
 
     except RuntimeError as error:
+        # Keep failed branch-pruning references separate from verified allocated results.
         runtime = (
             time.perf_counter()
             - start_time
@@ -129,6 +133,7 @@ def run_case(
             "error": str(error),
         }
 
+    # Change pruning thresholds without changing the market or dividend schedule.
     runtime = (
         time.perf_counter()
         - start_time
@@ -166,6 +171,7 @@ def run_experiment(
             if (
                 threshold == 0.0
                 and isinstance(
+                    # Run each predefined scenario without changing the comparison baseline.
                     price_value,
                     float,
                 )
@@ -181,6 +187,7 @@ def run_experiment(
                     float,
                 )
             ):
+                # Report both node savings and pricing impact for each threshold.
                 price_gap = (
                     price_value
                     - baseline_price
@@ -199,6 +206,7 @@ def run_experiment(
                 price_gap
             )
 
+            # Keep threshold-specific build times as descriptive measurements.
             result["relative_gap"] = (
                 relative_gap
             )
@@ -216,6 +224,7 @@ def run_experiment(
                     result["pruned_nodes"]
                 )
 
+                # Change pruning thresholds without changing the market or dividend schedule.
                 runtime = float(
                     result["runtime"]
                 )
@@ -237,6 +246,7 @@ def run_experiment(
                 )
 
             else:
+                # Compare the resulting prices against an unpruned reference.
                 print(
                     f"N={nb_steps:>3} | "
                     f"Threshold={threshold:.0e} | "
@@ -271,6 +281,7 @@ def save_csv(
                 "threshold",
                 "status",
                 "price",
+                # Report both node savings and pricing impact for each threshold.
                 "price_gap",
                 "relative_gap",
                 "runtime",
@@ -307,6 +318,7 @@ def save_price_impact_figure(
     )
 
     for nb_steps in [
+        # Keep threshold-specific build times as descriptive measurements.
         50,
         100,
         200,
@@ -323,6 +335,7 @@ def save_price_impact_figure(
                 )
             )
 
+            # Change pruning thresholds without changing the market or dividend schedule.
             gap = matching_result[
                 "price_gap"
             ]
@@ -340,6 +353,7 @@ def save_price_impact_figure(
 
         plt.plot(
             threshold_labels,
+            # Compare the resulting prices against an unpruned reference.
             gaps,
             marker="o",
             label=f"N={nb_steps}",
@@ -357,6 +371,7 @@ def save_price_impact_figure(
         "Pricing sensitivity to the pruning threshold"
     )
 
+    # Report both node savings and pricing impact for each threshold.
     plt.legend()
 
     plt.grid(
@@ -392,6 +407,7 @@ def save_pruned_nodes_figure(
         pruned_counts: list[int] = []
 
         for threshold in PRUNING_THRESHOLDS:
+            # Keep threshold-specific build times as descriptive measurements.
             matching_result = next(
                 result
                 for result in results
@@ -409,6 +425,7 @@ def save_pruned_nodes_figure(
                 )
             )
 
+        # Change pruning thresholds without changing the market or dividend schedule.
         plt.plot(
             threshold_labels,
             pruned_counts,
@@ -425,6 +442,7 @@ def save_pruned_nodes_figure(
     )
 
     plt.title(
+        # Compare the resulting prices against an unpruned reference.
         "Number of monomial branches created by pruning"
     )
 
@@ -464,6 +482,7 @@ def save_summary(
 
     for nb_steps in STEP_COUNTS:
         lines.append(
+            # Report both node savings and pricing impact for each threshold.
             f"N = {nb_steps}"
         )
 
@@ -482,6 +501,7 @@ def save_summary(
                     result["price"]
                 )
 
+                # Keep threshold-specific build times as descriptive measurements.
                 gap = result[
                     "price_gap"
                 ]
@@ -501,6 +521,7 @@ def save_summary(
                 )
 
             else:
+                # Change pruning thresholds without changing the market or dividend schedule.
                 lines.append(
                     f"  threshold={threshold:.0e}: "
                     f"FAILED - {result['error']}"
@@ -538,6 +559,7 @@ def main() -> None:
         results
     )
 
+    # Compare the resulting prices against an unpruned reference.
     print(
         "Results saved to:"
     )

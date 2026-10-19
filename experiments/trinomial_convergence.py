@@ -14,6 +14,7 @@ SPOT = 100.0
 STRIKE = 100.0
 RATE = 0.02
 VOLATILITY = 0.20
+# Compare binomial and trinomial discretizations on the same option.
 MATURITY = 1.0
 
 STEP_COUNTS = [
@@ -30,6 +31,7 @@ STEP_COUNTS = [
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
+# Use the identical Black-Scholes reference for both engines.
 RESULTS_DIR = (
     PROJECT_ROOT
     / "results"
@@ -45,6 +47,7 @@ FIGURES_DIR = (
     / "figures"
 )
 
+# Track pricing errors independently of the plotted model prices.
 CSV_PATH = (
     DATA_DIR
     / "trinomial_convergence.csv"
@@ -144,6 +147,7 @@ def run_experiment() -> list[dict[str, float | int]]:
             nb_steps
         )
 
+        # Run each predefined scenario without changing the comparison baseline.
         bin_error = (
             bin_price
             - reference_price
@@ -161,6 +165,7 @@ def run_experiment() -> list[dict[str, float | int]]:
                 "trinomial_price": tri_price,
                 "black_scholes_price": reference_price,
                 "binomial_error": bin_error,
+                # Use the identical Black-Scholes reference for both engines.
                 "trinomial_error": tri_error,
                 "binomial_absolute_error": abs(bin_error),
                 "trinomial_absolute_error": abs(tri_error),
@@ -200,6 +205,7 @@ def save_csv(
                 "binomial_price",
                 "trinomial_price",
                 "black_scholes_price",
+                # Track pricing errors independently of the plotted model prices.
                 "binomial_error",
                 "trinomial_error",
                 "binomial_absolute_error",
@@ -232,6 +238,7 @@ def save_price_figure(
         for result in results
     ]
 
+    # Compare binomial and trinomial discretizations on the same option.
     trinomial_prices = [
         float(result["trinomial_price"])
         for result in results
@@ -249,6 +256,7 @@ def save_price_figure(
     plt.plot(
         steps,
         binomial_prices,
+        # Use the identical Black-Scholes reference for both engines.
         marker="o",
         label="Binomial",
     )
@@ -267,6 +275,7 @@ def save_price_figure(
         label="Black-Scholes",
     )
 
+    # Track pricing errors independently of the plotted model prices.
     plt.xlabel(
         "Number of steps"
     )
@@ -314,6 +323,7 @@ def save_error_figure(
     ]
 
     plt.figure(
+        # Compare binomial and trinomial discretizations on the same option.
         figsize=(9, 5)
     )
 
@@ -331,6 +341,7 @@ def save_error_figure(
         label="Trinomial",
     )
 
+    # Use the identical Black-Scholes reference for both engines.
     plt.xlabel(
         "Number of steps"
     )
@@ -409,6 +420,7 @@ def main() -> None:
         results
     )
 
+    # Track pricing errors independently of the plotted model prices.
     print()
     print("Results saved to:")
 

@@ -22,6 +22,7 @@ from pathlib import Path
 
 import matplotlib
 
+# Retain the phase-one baseline and time only additional discretizations.
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
@@ -63,6 +64,66 @@ class Aggregate:
     source: str  # phase1 or newly_measured
 
 
+def _validated_baseline_metrics(
+    data: dict[str, str], strike: float, key: tuple[str, int, float],
+) -> tuple[float, float, float, float, int]:
+    """Independently validate Black–Scholes error and positive measured cost."""
+    reference = float(data["reference_price"])
+    actual_reference = bs_reference("call", strike)
+    if not math.isclose(reference, actual_reference, rel_tol=1e-11, abs_tol=1e-9):
+        raise ValueError(
+            f"Black-Scholes reference mismatch at K={strike}. "
+            "The baseline may use different market parameters."
+        )
+    price = float(data["price"])
+    error = abs(price - reference)
+    stored_error = float(data["absolute_error"])
+    if not math.isclose(error, stored_error, rel_tol=1e-10, abs_tol=1e-11):
+        raise ValueError(f"Inconsistent baseline price/error at {key}.")
+    t = float(data["median_runtime_seconds"])
+    nodes = int(data["allocated_nodes"])
+    if not (math.isfinite(t) and t > 0 and nodes > 0):
+        raise ValueError(f"Invalid baseline cost data at {key}.")
+    return reference, price, error, t, nodes
+
+
+def _parse_baseline_call_record(
+    data: dict[str, str], seen: set[tuple[str, int, float]],
+) -> Result | None:
+    """Validate price, reference, grid key and measured cost for one call."""
+    if data["option_kind"] != "call":
+        return None  # Phase 2 compares calls; puts remain in phase 1.
+    if data["status"] != "success":
+        raise ValueError("Phase-1 call grid contains failed cases.")
+    model = data["model"]
+    n = int(data["nb_steps"])
+    strike = float(data["strike"])
+    key = (model, n, strike)
+    if key in seen:
+        raise ValueError(f"Duplicate baseline row: {key}")
+    seen.add(key)
+    if model not in MODELS or n not in STEP_COUNTS or strike not in STRIKES:
+        raise ValueError(f"Unexpected baseline combination: {key}")
+    reference, price, error, t, nodes = _validated_baseline_metrics(data, strike, key)
+    return Result(
+            nb_steps=n,
+            strike=strike,
+            option_kind="call",
+            model=model,
+            # Aggregate error across all strikes before selecting an admissible configuration.
+            reference_price=reference,
+            price=price,
+            absolute_error=error,
+            relative_error=(error / reference if reference > 0 else None),
+            median_runtime_seconds=t,
+            min_runtime_seconds=float(data["min_runtime_seconds"]),
+            max_runtime_seconds=float(data["max_runtime_seconds"]),
+            allocated_nodes=nodes,
+            status="success",
+            failure_reason="",
+    )
+
+
 def load_baseline(path: Path = BASELINE_CSV) -> list[Result]:
     """Load and validate the *complete* phase-1 call cross-section.
 
@@ -80,56 +141,13 @@ def load_baseline(path: Path = BASELINE_CSV) -> list[Result]:
     try:
         with path.open(newline="", encoding="utf-8-sig") as handle:
             for data in csv.DictReader(handle):
-                if data["option_kind"] != "call":
-                    continue  # Phase 2 compares calls; puts remain in phase 1.
-                if data["status"] != "success":
-                    raise ValueError("Phase-1 call grid contains failed cases.")
-                model = data["model"]
-                n = int(data["nb_steps"])
-                strike = float(data["strike"])
-                key = (model, n, strike)
-                if key in seen:
-                    raise ValueError(f"Duplicate baseline row: {key}")
-                seen.add(key)
-                if model not in MODELS or n not in STEP_COUNTS or strike not in STRIKES:
-                    raise ValueError(f"Unexpected baseline combination: {key}")
-                reference = float(data["reference_price"])
-                actual_reference = bs_reference("call", strike)
-                if not math.isclose(reference, actual_reference, rel_tol=1e-11, abs_tol=1e-9):
-                    raise ValueError(
-                        f"Black-Scholes reference mismatch at K={strike}. "
-                        "The baseline may use different market parameters."
-                    )
-                price = float(data["price"])
-                error = abs(price - reference)
-                stored_error = float(data["absolute_error"])
-                if not math.isclose(error, stored_error, rel_tol=1e-10, abs_tol=1e-11):
-                    raise ValueError(f"Inconsistent baseline price/error at {key}.")
-                t = float(data["median_runtime_seconds"])
-                nodes = int(data["allocated_nodes"])
-                if not (math.isfinite(t) and t > 0 and nodes > 0):
-                    raise ValueError(f"Invalid baseline cost data at {key}.")
-                records.append(
-                    Result(
-                        nb_steps=n,
-                        strike=strike,
-                        option_kind="call",
-                        model=model,
-                        reference_price=reference,
-                        price=price,
-                        absolute_error=error,
-                        relative_error=(error / reference if reference > 0 else None),
-                        median_runtime_seconds=t,
-                        min_runtime_seconds=float(data["min_runtime_seconds"]),
-                        max_runtime_seconds=float(data["max_runtime_seconds"]),
-                        allocated_nodes=nodes,
-                        status="success",
-                        failure_reason="",
-                    )
-                )
+                record = _parse_baseline_call_record(data, seen)
+                if record is not None:
+                    records.append(record)
     except (KeyError, TypeError) as exc:
         raise ValueError(f"Invalid phase-1 CSV schema: {exc}") from exc
 
+    # Read the saved reference measurements without recomputing the baseline.
     required = {
         (model, n, strike)
         for model in MODELS
@@ -158,6 +176,25 @@ def validate_source_metadata(path: Path = BASELINE_SUMMARY) -> None:
         )
 
 
+def _log_multistrike_measurement(
+    idx: int, total: int, strike: float, n: int, model: str, result: Result,
+) -> None:
+    """Print the observed numerical error and measured time, or failure."""
+    if result.status == "success":
+        print(
+            f"[{idx:>3}/{total}] K={strike:>5g} N={n:>3} "
+            f"{model:22s} error={result.absolute_error:.4e} "
+            f"time={result.median_runtime_seconds * 1000:.2f} ms",
+            flush=True,
+        )
+    else:
+        print(
+            f"[{idx:>3}/{total}] K={strike:>5g} N={n:>3} "
+            f"{model:22s} FAILED {result.failure_reason}",
+            flush=True,
+        )
+
+
 def measure_new_steps(
     steps: tuple[int, ...], repeats: int
 ) -> tuple[list[Result], list[TimingObservation]]:
@@ -179,25 +216,35 @@ def measure_new_steps(
             for model in MODELS:
                 idx += 1
                 result, observations = measure_case(
+                    # Time only the additional lattice resolutions, preserving the phase-one sample.
                     model=model, nb_steps=n, kind="call",
                     strike=strike, repeats=repeats, reference=reference,
                 )
                 records.append(result)
                 raw.extend(observations)
-                if result.status == "success":
-                    print(
-                        f"[{idx:>3}/{total}] K={strike:>5g} N={n:>3} "
-                        f"{model:22s} error={result.absolute_error:.4e} "
-                        f"time={result.median_runtime_seconds * 1000:.2f} ms",
-                        flush=True,
-                    )
-                else:
-                    print(
-                        f"[{idx:>3}/{total}] K={strike:>5g} N={n:>3} "
-                        f"{model:22s} FAILED {result.failure_reason}",
-                        flush=True,
-                    )
+                _log_multistrike_measurement(idx, total, strike, n, model, result)
     return records, raw
+
+
+def _validated_strike_statistics(
+    model: str, n: int, rows: list[Result], strikes: tuple[float, ...],
+    models: tuple[str, ...],
+) -> tuple[list[float], list[float], list[int]]:
+    """Reject incomplete strike grids, price errors and invalid timings."""
+    if model not in models:
+        raise ValueError(f"Unknown model {model}")
+    if len(rows) != len(strikes) or {r.strike for r in rows} != set(strikes):
+        raise ValueError(f"Incomplete or duplicate strike coverage for {model}, N={n}.")
+    errors = [float(r.absolute_error) for r in rows]
+    times = [float(r.median_runtime_seconds) for r in rows]
+    nodes = [int(r.allocated_nodes) for r in rows]
+    if len(set(nodes)) != 1:
+        raise ValueError(f"Node allocation changed with strike for {model}, N={n}.")
+    if any(not math.isfinite(x) or x < 0 for x in errors):
+        raise ValueError("Invalid absolute errors.")
+    if any(not math.isfinite(x) or x <= 0 for x in times):
+        raise ValueError("Invalid runtime.")
+    return errors, times, nodes
 
 
 def aggregate_cross_strike(
@@ -216,25 +263,14 @@ def aggregate_cross_strike(
 
     output = []
     for (model, n), rows in sorted(groups.items()):
-        if model not in models:
-            raise ValueError(f"Unknown model {model}")
-        if len(rows) != len(strikes) or {r.strike for r in rows} != set(strikes):
-            raise ValueError(f"Incomplete or duplicate strike coverage for {model}, N={n}.")
-        errors = [float(r.absolute_error) for r in rows]
-        times = [float(r.median_runtime_seconds) for r in rows]
-        nodes = [int(r.allocated_nodes) for r in rows]
-        if len(set(nodes)) != 1:
-            raise ValueError(f"Node allocation changed with strike for {model}, N={n}.")
-        if any(not math.isfinite(x) or x < 0 for x in errors):
-            raise ValueError("Invalid absolute errors.")
-        if any(not math.isfinite(x) or x <= 0 for x in times):
-            raise ValueError("Invalid runtime.")
+        errors, times, nodes = _validated_strike_statistics(model, n, rows, strikes, models)
         worst = max(rows, key=lambda x: float(x.absolute_error))
         output.append(
             Aggregate(
                 model=model,
                 nb_steps=n,
                 worst_absolute_error=max(errors),
+                # Aggregate pricing error across the predefined strikes before ranking models.
                 mean_absolute_error=statistics.mean(errors),
                 root_mean_square_error=math.sqrt(statistics.mean(x*x for x in errors)),
                 worst_strike=worst.strike,
@@ -286,6 +322,7 @@ def target_choices(rows: list[Aggregate], targets: tuple[float, ...] = TARGET_ER
                 "sum_median_runtime_seconds": winner.sum_median_runtime_seconds if winner else "",
             }
         )
+    # Choose the fastest observed configuration satisfying each accuracy bound.
     return choices
 
 
@@ -303,6 +340,7 @@ def plot_curves(rows: list[Aggregate], field: str, path: Path, xlabel: str) -> N
     ax.set(xlabel=xlabel, ylabel="Maximum absolute pricing error over K=80,100,120 (€)",
            title="Cross-strike worst-case accuracy versus computational cost")
     ax.grid(which="both", alpha=0.20)
+    # Aggregate error across all strikes before selecting an admissible configuration.
     ax.legend(fontsize=9)
     if excluded:
         ax.text(.02, .02, f"{excluded} exact-zero points excluded from log scale",
@@ -320,6 +358,7 @@ def plot_frontier(rows: list[Aggregate], path: Path) -> None:
                 and r.worst_absolute_error > 0.0]
         ax.scatter([r.max_median_runtime_seconds for r in part],
                    [r.worst_absolute_error for r in part],
+                   # Keep empirical runtimes separate from model-error estimates.
                    s=38, alpha=0.75, label=MODEL_LABELS[model])
     front = [r for r in pareto_multi(rows) if r.worst_absolute_error > 0]
     if front:
@@ -344,16 +383,10 @@ def plot_frontier(rows: list[Aggregate], path: Path) -> None:
     plt.close(fig)
 
 
-def save_phase2(
+def _aggregate_complete_strike_groups(
     baseline: list[Result], new_results: list[Result],
-    raw: list[TimingObservation], output_dir: Path, repeats: int,
-    added_steps: tuple[int, ...],
-) -> dict[str, Path]:
-    """Separate outputs: never overwrite phase-1 or existing lattice analyses."""
-    out_data = output_dir / "data"
-    out_fig = output_dir / "figures"
-    out_data.mkdir(parents=True, exist_ok=True)
-    out_fig.mkdir(parents=True, exist_ok=True)
+) -> tuple[list[Aggregate], list[Result]]:
+    """Aggregate only configurations priced for all three strikes."""
     combined = baseline + new_results
     successful = [r for r in combined if r.status == "success"]
     failed = [r for r in combined if r.status != "success"]
@@ -373,10 +406,15 @@ def save_phase2(
         [record for record in successful
          if (record.model, record.nb_steps) in allowed_keys]
     )
-    if failed:
-        print(f"WARNING: {len(failed)} failed new cases; incomplete groups excluded.")
-    choices = target_choices(complete)
-    front = pareto_multi(complete)
+    return complete, failed
+
+
+def _phase2_output_files(output_dir: Path) -> dict[str, Path]:
+    """Construct the paths for phase-two outputs only."""
+    out_data = output_dir / "data"
+    out_fig = output_dir / "figures"
+    out_data.mkdir(parents=True, exist_ok=True)
+    out_fig.mkdir(parents=True, exist_ok=True)
     files = {
         "new_cases": out_data / "accuracy_cost_multistrike_new.csv",
         "timings": out_data / "accuracy_cost_multistrike_timings.csv",
@@ -388,6 +426,14 @@ def save_phase2(
         "pareto_fig": out_fig / "accuracy_cost_multistrike_pareto.png",
         "summary": output_dir / "accuracy_cost_multistrike_summary.txt",
     }
+    return files
+
+
+def _write_phase2_tables(files: dict[str, Path],
+                         new_results: list[Result], raw: list[TimingObservation],
+                         complete: list[Aggregate], front: list[Aggregate],
+                         choices: list[dict]) -> None:
+    """Persist raw measurements and aggregate tables without overwriting phase one."""
     write_csv(files["new_cases"], [asdict(r) for r in new_results],
               fieldnames=list(Result.__dataclass_fields__))
     write_csv(files["timings"], [asdict(r) for r in raw],
@@ -397,12 +443,22 @@ def save_phase2(
     write_csv(files["pareto"], [asdict(r) for r in front],
               fieldnames=list(Aggregate.__dataclass_fields__))
     write_csv(files["targets"], choices)
+
+
+def _plot_phase2_outputs(files: dict[str, Path], complete: list[Aggregate]) -> None:
+    """Render runtime, allocation and Pareto figures from the same grid."""
     plot_curves(complete, "max_median_runtime_seconds", files["runtime_fig"],
                 "Worst median runtime across strikes (seconds per valuation)")
     plot_curves(complete, "allocated_nodes_per_tree", files["nodes_fig"],
                 "Allocated nodes per lattice")
     plot_frontier(complete, files["pareto_fig"])
 
+
+
+def _phase2_summary_header(new_results: list[Result], failed: list[Result],
+                           complete: list[Aggregate], repeats: int,
+                           added_steps: tuple[int, ...]) -> list[str]:
+    """Document scope, methodology and provenance of the timing experiment."""
     original_ns = ", ".join(str(x) for x in STEP_COUNTS)
     extra_ns = ", ".join(str(x) for x in added_steps) if added_steps else "none"
     lines = [
@@ -420,6 +476,7 @@ def save_phase2(
         "",
         f"Phase-1 original steps: {original_ns}.",
         f"Newly measured steps: {extra_ns}.",
+        # Exclude failed or incomplete observations from cross-strike comparisons.
         f"Phase-1 baseline: {BASELINE_CSV}",
         f"Phase-1 summary: {BASELINE_SUMMARY}",
         f"New timed repetitions per configuration: {repeats}.",
@@ -437,12 +494,20 @@ def save_phase2(
         "Baseline and new timings were measured in different runs; CPU-load drift",
         "can affect frontier membership near ties. Use the original raw timings",
         "and consider a joint rerun if cost differences are marginal.",
+        # Select only observed feasible points when constructing the Pareto frontier.
         "All estimates conditional on this PC and sampled values of N.",
         "Call results only: do not claim to have remeasured put timings.",
         "No changes to src/ or original phase-1 CSVs.",
         "",
         "Best sampled configuration meeting a uniform error bound:",
     ]
+    return lines
+
+
+def _write_phase2_summary(files: dict[str, Path],
+                         lines: list[str], choices: list[dict],
+                         front: list[Aggregate], failed: list[Result]) -> None:
+    """Append observed feasible targets, frontier and failure diagnostics."""
     for row in choices:
         if row["status"] == "reached":
             lines.append(
@@ -460,16 +525,36 @@ def save_phase2(
             f"max_median_ms={1000 * row.max_median_runtime_seconds:.3f}"
         )
     if failed:
+        # Retain the phase-one baseline and time only additional discretizations.
         lines.extend(["", "Failed new cases:"])
         for row in failed:
             lines.append(
                 f"  {row.model} N={row.nb_steps} K={row.strike:g}: {row.failure_reason}"
             )
     files["summary"].write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def save_phase2(
+    baseline: list[Result], new_results: list[Result],
+    raw: list[TimingObservation], output_dir: Path, repeats: int,
+    added_steps: tuple[int, ...],
+) -> dict[str, Path]:
+    """Separate outputs: never overwrite phase-1 or existing lattice analyses."""
+    complete, failed = _aggregate_complete_strike_groups(baseline, new_results)
+    if failed:
+        print(f"WARNING: {len(failed)} failed new cases; incomplete groups excluded.")
+    choices = target_choices(complete)
+    front = pareto_multi(complete)
+    files = _phase2_output_files(output_dir)
+    _write_phase2_tables(files, new_results, raw, complete, front, choices)
+    _plot_phase2_outputs(files, complete)
+    lines = _phase2_summary_header(new_results, failed, complete, repeats, added_steps)
+    _write_phase2_summary(files, lines, choices, front, failed)
     return files
 
 
-def main(argv: list[str] | None = None) -> int:
+def _parse_phase2_args(argv: list[str] | None) -> argparse.Namespace:
+    """Validate the phase-two command line before any experiment starts."""
     parser = argparse.ArgumentParser(description=__doc__)
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--quick", action="store_true", help="Smoke test: N=80 only, one repeat; separate outputs")
@@ -480,21 +565,35 @@ def main(argv: list[str] | None = None) -> int:
     if args.repeats < 1:
         parser.error("--repeats must be >= 1")
 
+    return args
+
+
+def _phase2_run_configuration(args: argparse.Namespace) -> tuple[tuple[int, ...], int, Path]:
+    """Select the same quick, baseline-only or full resolution grid."""
+    if args.quick:
+        extra_steps = (80,)
+        repeats = 1
+        output_dir = ROOT / "results" / "accuracy_cost_multistrike_quick"
+    elif args.baseline_only:
+        extra_steps = ()
+        repeats = 0
+        output_dir = ROOT / "results" / "accuracy_cost_multistrike_preview"
+    else:
+        extra_steps = ADDITIONAL_STEPS
+        repeats = args.repeats
+        output_dir = ROOT / "results"
+
+    return extra_steps, repeats, output_dir
+
+
+def main(argv: list[str] | None = None) -> int:
+    # Aggregate error across all strikes before selecting an admissible configuration.
+    args = _parse_phase2_args(argv)
+
     try:
         validate_source_metadata()
         baseline = load_baseline()
-        if args.quick:
-            extra_steps = (80,)
-            repeats = 1
-            output_dir = ROOT / "results" / "accuracy_cost_multistrike_quick"
-        elif args.baseline_only:
-            extra_steps = ()
-            repeats = 0
-            output_dir = ROOT / "results" / "accuracy_cost_multistrike_preview"
-        else:
-            extra_steps = ADDITIONAL_STEPS
-            repeats = args.repeats
-            output_dir = ROOT / "results"
+        extra_steps, repeats, output_dir = _phase2_run_configuration(args)
 
         print(f"Baseline: {len(baseline)} call configurations re-used.")
         print(f"New N values: {extra_steps if extra_steps else 'none (analysis-only)'}")

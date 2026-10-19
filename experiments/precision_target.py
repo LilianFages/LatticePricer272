@@ -15,6 +15,7 @@ MATURITY = 1.0
 
 TARGET_PRECISIONS = [
     0.005,
+    # Select lattice depth using the prescribed numerical-precision target.
     0.0025,
     0.001,
     0.0005,
@@ -33,6 +34,7 @@ RESULTS_DIR = (
     / "results"
 )
 
+# Keep estimated discretization error separate from observed error.
 DATA_DIR = (
     RESULTS_DIR
     / "data"
@@ -111,6 +113,7 @@ def empirical_gap(
             minimum_error is None
             or error < minimum_error
         ):
+            # Compute the measured pricing error using the independent reference price.
             minimum_error = error
 
         if (
@@ -151,6 +154,7 @@ def run_experiment() -> list[dict[str, object]]:
             )
         )
 
+        # Run each predefined scenario without changing the comparison baseline.
         theoretical_relative_gap = (
             estimator.relative_gap(
                 nb_steps=nb_steps,
@@ -169,6 +173,7 @@ def run_experiment() -> list[dict[str, object]]:
             / SPOT
         )
 
+        # Keep estimated discretization error separate from observed error.
         target_met = (
             empirical_relative_gap
             <= target
@@ -186,6 +191,7 @@ def run_experiment() -> list[dict[str, object]]:
                 "theoretical_relative_gap": (
                     theoretical_relative_gap
                 ),
+                # Use a common option and analytic price for every target precision.
                 "empirical_relative_gap": (
                     empirical_relative_gap
                 ),
@@ -264,6 +270,7 @@ def save_summary(
             result["target_precision"]
         )
 
+        # Select lattice depth using the prescribed numerical-precision target.
         nb_steps = int(
             result["recommended_steps"]
         )

@@ -13,6 +13,7 @@ Single-run runtimes are diagnostic only, not a rigorous speed benchmark.
 
 import csv
 import math
+from itertools import product
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -30,6 +31,7 @@ from src.recursive_pricer import RecursivePricer
 from src.trinomial_tree import TrinomialTree
 
 
+# Compare allocation and branch pruning on identical scenario inputs.
 SPOT = 100.0
 RATE = 0.02
 VOLATILITY = 0.20
@@ -47,6 +49,7 @@ DIVIDEND_SCENARIOS = {
 
 PRICE_ABS_TOL = 1e-9
 PRICE_REL_TOL = 1e-10
+# Check probability-mass conservation independently of price agreement.
 MASS_ABS_TOL = 1e-10
 LOCAL_PROB_TOL = 1e-12
 
@@ -111,6 +114,7 @@ class CountingTrinomialTree(TrinomialTree):
         )
         self.allocated_node_count: int = 1
 
+    # Treat the documented extreme-tail reference failure as a missing comparison.
     def _build_column(
         self: Self,
         trunk_price: float,
@@ -139,6 +143,34 @@ def make_tree(case: ValidationCase, optimized: bool) -> TrinomialTree:
     )
 
 
+def _validated_successor_frontier(
+    frontier: dict[int, Node], date_index: int,
+) -> dict[int, Node]:
+    """Check each transition row and deduplicate recombining successors."""
+    next_frontier: dict[int, Node] = {}
+    for node in frontier.values():
+        transitions = (
+            (node.next_up, node.up_probability),
+            (node.next_mid, node.mid_probability),
+            (node.next_down, node.down_probability),
+        )
+        row_sum = 0.0
+        for successor, probability in transitions:
+            if successor is None or probability is None:
+                raise RuntimeError(f"Incomplete transition at date {date_index}.")
+            if not math.isfinite(probability) or not (
+                -LOCAL_PROB_TOL <= probability <= 1.0 + LOCAL_PROB_TOL
+            ):
+                raise RuntimeError(f"Invalid local probability at date {date_index}.")
+            row_sum += probability
+            next_frontier[id(successor)] = successor
+
+        if abs(row_sum - 1.0) > LOCAL_PROB_TOL:
+            raise RuntimeError(f"Transition probabilities do not sum to 1 at date {date_index}.")
+
+    return next_frontier
+
+
 def maximum_probability_mass_error(tree: TrinomialTree) -> float:
     """Inspect probability normalization at every reachable date.
 
@@ -157,27 +189,7 @@ def maximum_probability_mass_error(tree: TrinomialTree) -> float:
         if date_index == tree.nb_steps:
             break
 
-        next_frontier: dict[int, Node] = {}
-        for node in frontier.values():
-            transitions = (
-                (node.next_up, node.up_probability),
-                (node.next_mid, node.mid_probability),
-                (node.next_down, node.down_probability),
-            )
-            row_sum = 0.0
-            for successor, probability in transitions:
-                if successor is None or probability is None:
-                    raise RuntimeError(f"Incomplete transition at date {date_index}.")
-                if not math.isfinite(probability) or not (
-                    -LOCAL_PROB_TOL <= probability <= 1.0 + LOCAL_PROB_TOL
-                ):
-                    raise RuntimeError(f"Invalid local probability at date {date_index}.")
-                row_sum += probability
-                next_frontier[id(successor)] = successor
-
-            if abs(row_sum - 1.0) > LOCAL_PROB_TOL:
-                raise RuntimeError(f"Transition probabilities do not sum to 1 at date {date_index}.")
-
+        next_frontier = _validated_successor_frontier(frontier, date_index)
         frontier = next_frontier
 
     return largest_error
@@ -207,13 +219,8 @@ def price_one(case: ValidationCase, optimized: bool) -> dict[str, float | int]:
 
 
 
-def run_case(case: ValidationCase) -> dict[str, object]:
-    """Evaluate the two pricers independently, recording all outcomes.
-
-    status='passed': both prices available and matching, no extra allocations.
-    status='allocation_only': allocation succeeds, but branch is unavailable.
-    status='failed': allocation fails or an available comparison disagrees.
-    """
+def _empty_validation_result(case: ValidationCase) -> dict[str, object]:
+    """Initialize the full, stable validation-report schema."""
     result: dict[str, object] = {
         "scenario": case.scenario,
         "nb_steps": case.nb_steps,
@@ -231,6 +238,7 @@ def run_case(case: ValidationCase) -> dict[str, object]:
         "allocation_nodes": "",
         "node_savings_pct": "",
         "branch_runtime_seconds": "",
+        # Do not interpret one-shot timing measurements as performance confidence bounds.
         "allocation_runtime_seconds": "",
         "branch_mass_error": "",
         "allocation_mass_error": "",
@@ -239,6 +247,13 @@ def run_case(case: ValidationCase) -> dict[str, object]:
         "error": "",
     }
 
+    return result
+
+
+def _collect_pricer_outcomes(
+    case: ValidationCase, result: dict[str, object],
+) -> dict[str, dict[str, float | int]]:
+    """Price each engine independently and record its own failure."""
     outcomes: dict[str, dict[str, float | int]] = {}
     for name, optimized in (("branch", False), ("allocation", True)):
         try:
@@ -253,6 +268,43 @@ def run_case(case: ValidationCase) -> dict[str, object]:
             result[f"{name}_runtime_seconds"] = outcome["runtime_seconds"]
             result[f"{name}_mass_error"] = outcome["mass_error"]
 
+    return outcomes
+
+
+def _classify_missing_branch_reference(
+    case: ValidationCase, result: dict[str, object],
+) -> None:
+    """Distinguish the diagnosed tail limitation from unexpected failures."""
+    # Only the diagnosed extreme-tail limitation is an expected
+    # reference failure. Do not silently accept unrelated failures.
+    known_tail_limitation = (
+        case.scenario == "two_dividends"
+        and case.nb_steps == 200
+        and result["branch_error"]
+        == "RuntimeError: Expected stock price must remain positive."
+    )
+    if known_tail_limitation:
+        result["status"] = "allocation_only"
+        result["error"] = "Known branch tail limitation; no pricing comparison"
+    else:
+        result["error"] = (
+            "Unexpected branch reference failure: "
+            + str(result["branch_error"])
+        )
+
+
+
+def run_case(case: ValidationCase) -> dict[str, object]:
+    """Evaluate the two pricers independently, recording all outcomes.
+
+    status='passed': both prices available and matching, no extra allocations.
+    status='allocation_only': allocation succeeds, but branch is unavailable.
+    status='failed': allocation fails or an available comparison disagrees.
+    """
+    result = _empty_validation_result(case)
+
+    outcomes = _collect_pricer_outcomes(case, result)
+
     allocation = outcomes.get("allocation")
     branch = outcomes.get("branch")
 
@@ -263,24 +315,10 @@ def run_case(case: ValidationCase) -> dict[str, object]:
         return result
 
     if branch is None:
-        # Only the diagnosed extreme-tail limitation is an expected
-        # reference failure. Do not silently accept unrelated failures.
-        known_tail_limitation = (
-            case.scenario == "two_dividends"
-            and case.nb_steps == 200
-            and result["branch_error"]
-            == "RuntimeError: Expected stock price must remain positive."
-        )
-        if known_tail_limitation:
-            result["status"] = "allocation_only"
-            result["error"] = "Known branch tail limitation; no pricing comparison"
-        else:
-            result["error"] = (
-                "Unexpected branch reference failure: "
-                + str(result["branch_error"])
-            )
+        _classify_missing_branch_reference(case, result)
         return result
 
+    # Keep failed branch-pruning references separate from verified allocated results.
     branch_price = float(branch["price"])
     allocation_price = float(allocation["price"])
     absolute_gap = abs(allocation_price - branch_price)
@@ -303,6 +341,48 @@ def run_case(case: ValidationCase) -> dict[str, object]:
 
 
 
+def _check_strike_monotonicity(
+    index: dict, price_key: str, engine: str, scenario: str,
+    steps: int, kind: str, issues: list[str],
+) -> None:
+    """Check that calls fall and puts rise as strike increases."""
+    for exercise in ("european", "american"):
+        prices = [
+            float(index[(scenario, steps, strike, kind, exercise)][price_key])
+            for strike in STRIKES
+            if (scenario, steps, strike, kind, exercise) in index
+        ]
+        if len(prices) != len(STRIKES):
+            continue
+        for lower, higher in zip(prices, prices[1:]):
+            violation = (
+                lower + PRICE_ABS_TOL < higher if kind == "call"
+                else lower > higher + PRICE_ABS_TOL
+            )
+            if violation:
+                issues.append(
+                    f"Strike monotonicity: {engine}, "
+                    f"{scenario}, N={steps}, {kind}, {exercise}"
+                )
+
+
+def _check_american_dominance(
+    index: dict, price_key: str, engine: str, scenario: str,
+    steps: int, kind: str, issues: list[str],
+) -> None:
+    """American put/call value must dominate the matching European value."""
+    for strike in STRIKES:
+        euro = index.get((scenario, steps, strike, kind, "european"))
+        amer = index.get((scenario, steps, strike, kind, "american"))
+        if euro is not None and amer is not None:
+            if float(amer[price_key]) + PRICE_ABS_TOL < float(euro[price_key]):
+                issues.append(
+                    f"American dominance: {engine}, {scenario}, "
+                    f"N={steps}, {kind}, K={strike}"
+                )
+
+
+
 def check_financial_invariants(rows: list[dict[str, object]]) -> list[str]:
     """Check exercise dominance and strike monotonicity per available engine."""
     issues: list[str] = []
@@ -314,37 +394,9 @@ def check_financial_invariants(rows: list[dict[str, object]]) -> list[str]:
             for r in rows if r[status_key] == "success"
         }
 
-        for scenario in DIVIDEND_SCENARIOS:
-            for steps in STEP_COUNTS:
-                for kind in OPTION_KINDS:
-                    for strike in STRIKES:
-                        euro = index.get((scenario, steps, strike, kind, "european"))
-                        amer = index.get((scenario, steps, strike, kind, "american"))
-                        if euro is not None and amer is not None:
-                            if float(amer[price_key]) + PRICE_ABS_TOL < float(euro[price_key]):
-                                issues.append(
-                                    f"American dominance: {engine}, {scenario}, "
-                                    f"N={steps}, {kind}, K={strike}"
-                                )
-
-                    for exercise in ("european", "american"):
-                        prices = [
-                            float(index[(scenario, steps, strike, kind, exercise)][price_key])
-                            for strike in STRIKES
-                            if (scenario, steps, strike, kind, exercise) in index
-                        ]
-                        if len(prices) != len(STRIKES):
-                            continue
-                        for lower, higher in zip(prices, prices[1:]):
-                            violation = (
-                                lower + PRICE_ABS_TOL < higher if kind == "call"
-                                else lower > higher + PRICE_ABS_TOL
-                            )
-                            if violation:
-                                issues.append(
-                                    f"Strike monotonicity: {engine}, "
-                                    f"{scenario}, N={steps}, {kind}, {exercise}"
-                                )
+        for scenario, steps, kind in product(DIVIDEND_SCENARIOS, STEP_COUNTS, OPTION_KINDS):
+            _check_american_dominance(index, price_key, engine, scenario, steps, kind, issues)
+            _check_strike_monotonicity(index, price_key, engine, scenario, steps, kind, issues)
     return issues
 
 
@@ -357,11 +409,9 @@ def save_csv(rows: list[dict[str, object]]) -> None:
 
 
 
-def save_figures(rows: list[dict[str, object]]) -> None:
-    """Plot comparison coverage and node savings for comparable cases only."""
-    COVERAGE_FIGURE.parent.mkdir(parents=True, exist_ok=True)
-    scenarios = list(DIVIDEND_SCENARIOS)
-    pretty = ["No dividend", "One cash dividend", "Two cash dividends"]
+def _coverage_counts(rows: list[dict[str, object]], scenarios: list[str]
+) -> tuple[list[int], list[int], list[int]]:
+    """Summarize independently validated, unpaired and failed scenarios."""
     comparable = [
         sum(r["scenario"] == scenario and r["status"] == "passed" for r in rows)
         for scenario in scenarios
@@ -374,6 +424,15 @@ def save_figures(rows: list[dict[str, object]]) -> None:
         sum(r["scenario"] == scenario and r["status"] == "failed" for r in rows)
         for scenario in scenarios
     ]
+    return comparable, allocation_only, failed
+
+
+def _save_coverage_figure(rows: list[dict[str, object]]) -> None:
+    """Plot comparison coverage and node savings for comparable cases only."""
+    COVERAGE_FIGURE.parent.mkdir(parents=True, exist_ok=True)
+    scenarios = list(DIVIDEND_SCENARIOS)
+    pretty = ["No dividend", "One cash dividend", "Two cash dividends"]
+    comparable, allocation_only, failed = _coverage_counts(rows, scenarios)
     x = list(range(len(scenarios)))
     width = 0.25
     fig, ax = plt.subplots(figsize=(9, 5))
@@ -391,6 +450,12 @@ def save_figures(rows: list[dict[str, object]]) -> None:
     fig.savefig(COVERAGE_FIGURE, dpi=200)
     plt.close(fig)
 
+
+
+def _save_savings_figure(rows: list[dict[str, object]]) -> None:
+    """Plot node savings only for matched price comparisons."""
+    scenarios = list(DIVIDEND_SCENARIOS)
+    pretty = ["No dividend", "One cash dividend", "Two cash dividends"]
     fig, ax = plt.subplots(figsize=(9, 5))
     for scenario, label in zip(scenarios, pretty):
         xs: list[int] = []
@@ -406,6 +471,7 @@ def save_figures(rows: list[dict[str, object]]) -> None:
                 and r["exercise"] == "european"
             ), None)
             if match is not None:
+                # Compare allocation and branch pruning on identical scenario inputs.
                 xs.append(steps)
                 savings.append(float(match["node_savings_pct"]))
         ax.plot(xs, savings, marker="o", linewidth=1.8, label=label)
@@ -418,6 +484,12 @@ def save_figures(rows: list[dict[str, object]]) -> None:
     fig.savefig(SAVINGS_FIGURE, dpi=200)
     plt.close(fig)
 
+
+
+def save_figures(rows: list[dict[str, object]]) -> None:
+    """Write coverage and savings charts in their original order."""
+    _save_coverage_figure(rows)
+    _save_savings_figure(rows)
 
 
 def save_summary(rows: list[dict[str, object]], issues: list[str]) -> None:
@@ -433,6 +505,7 @@ def save_summary(rows: list[dict[str, object]], issues: list[str]) -> None:
         f"Absolute price tolerance={PRICE_ABS_TOL}; relative tolerance={PRICE_REL_TOL}",
         f"Configurations={len(rows)}; comparable={len(comparable)}; "
         f"allocation_only={len(allocation_only)}; failed={len(failed)}",
+        # Check probability-mass conservation independently of price agreement.
         f"Allocation engine success={sum(r['allocation_status'] == 'success' for r in rows)}",
         f"Branch engine success={sum(r['branch_status'] == 'success' for r in rows)}",
         f"Maximum |price difference| among comparable cases={max_gap:.12e}",
@@ -452,6 +525,7 @@ def save_summary(rows: list[dict[str, object]], issues: list[str]) -> None:
         f"branch_error={r['branch_error']}"
         for r in allocation_only
     )
+    # Treat the documented extreme-tail reference failure as a missing comparison.
     if not allocation_only:
         lines.append("  None")
     lines.append("Failed cases:")
@@ -470,28 +544,24 @@ def save_summary(rows: list[dict[str, object]], issues: list[str]) -> None:
     SUMMARY_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def main() -> None:
-    all_cases = cases()
-    rows: list[dict[str, object]] = []
-    for index, case in enumerate(all_cases, start=1):
-        result = run_case(case)
-        rows.append(result)
-        print(
-            f"[{index:3}/{len(all_cases)}] {case.scenario:<17} N={case.nb_steps:3} "
-            f"K={case.strike:5.0f} {case.kind:4} "
-            f"{'American' if case.is_american else 'European':8} "
-            f"-> {result['status']}"
-        )
-        if result["status"] == "allocation_only":
-            print(f"    Branch unavailable: {result['branch_error']}")
-            print(f"    Allocation price: {float(result['allocation_price']):.12f}")
-        elif result["status"] == "failed":
-            print(f"    {result['error']}")
+def _log_pricing_case(index: int, total: int, case: ValidationCase,
+                      result: dict[str, object]) -> None:
+    """Report each independent engine result without changing validation."""
+    print(
+        f"[{index:3}/{total}] {case.scenario:<17} N={case.nb_steps:3} "
+        f"K={case.strike:5.0f} {case.kind:4} "
+        f"{'American' if case.is_american else 'European':8} "
+        f"-> {result['status']}"
+    )
+    if result["status"] == "allocation_only":
+        print(f"    Branch unavailable: {result['branch_error']}")
+        print(f"    Allocation price: {float(result['allocation_price']):.12f}")
+    elif result["status"] == "failed":
+        print(f"    {result['error']}")
 
-    issues = check_financial_invariants(rows)
-    save_csv(rows)
-    save_figures(rows)
-    save_summary(rows, issues)
+
+def _log_validation_summary(rows: list[dict[str, object]], issues: list[str]) -> int:
+    """Report validated comparisons and return the count of failed cases."""
     comparable = sum(r["status"] == "passed" for r in rows)
     independent = sum(r["status"] == "allocation_only" for r in rows)
     failures = sum(r["status"] == "failed" for r in rows)
@@ -502,6 +572,22 @@ def main() -> None:
     print(f"Results: {DATA_PATH.relative_to(ROOT)}")
     print(f"Summary: {SUMMARY_PATH.relative_to(ROOT)}")
     print(f"Figures: {COVERAGE_FIGURE.relative_to(ROOT)}, {SAVINGS_FIGURE.relative_to(ROOT)}")
+    return failures
+
+
+def main() -> None:
+    all_cases = cases()
+    rows: list[dict[str, object]] = []
+    for index, case in enumerate(all_cases, start=1):
+        # Do not interpret one-shot timing measurements as performance confidence bounds.
+        result = run_case(case)
+        rows.append(result)
+        _log_pricing_case(index, len(all_cases), case, result)
+    issues = check_financial_invariants(rows)
+    save_csv(rows)
+    save_figures(rows)
+    save_summary(rows, issues)
+    failures = _log_validation_summary(rows, issues)
     if failures or issues:
         raise SystemExit(1)
 

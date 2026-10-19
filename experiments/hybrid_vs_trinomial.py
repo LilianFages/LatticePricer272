@@ -15,6 +15,7 @@ from src.trinomial_tree import TrinomialTree
 
 SPOT = 100.0
 STRIKE = 100.0
+# Use identical discrete-dividend contracts for both lattice structures.
 RATE = 0.02
 VOLATILITY = 0.20
 MATURITY = 1.0
@@ -32,6 +33,7 @@ STEP_COUNTS = [
     50,
     100,
     200,
+    # Time price construction separately from graph-size measurements.
     300,
 ]
 
@@ -49,6 +51,7 @@ DATA_DIR = (
     / "data"
 )
 
+# Compare reachable-node counts instead of theoretical grid dimensions.
 FIGURES_DIR = (
     RESULTS_DIR
     / "figures"
@@ -64,6 +67,7 @@ PRICE_GAP_FIGURE_PATH = (
     / "hybrid_vs_trinomial_price_gap.png"
 )
 
+# Keep absolute price gaps distinct from runtime and allocation ratios.
 RUNTIME_FIGURE_PATH = (
     FIGURES_DIR
     / "hybrid_vs_trinomial_runtime.png"
@@ -129,6 +133,7 @@ def count_reachable_nodes(
         )
 
         for next_node in (
+            # Track reachable nodes without double-counting recombining successors.
             node.next_up,
             node.next_mid,
             node.next_down,
@@ -198,6 +203,7 @@ def measure_runtime(
                 nb_steps
             )
 
+        # Measure execution time outside the node-counting traversal.
         durations.append(
             time.perf_counter()
             - start_time
@@ -249,6 +255,7 @@ def run_experiment() -> list[dict[str, float | int]]:
             - trinomial_price
         )
 
+        # Run each predefined scenario without changing the comparison baseline.
         absolute_gap = abs(
             price_gap
         )
@@ -265,6 +272,7 @@ def run_experiment() -> list[dict[str, float | int]]:
 
         trinomial_runtime = measure_runtime(
             nb_steps,
+            # Keep absolute price gaps distinct from runtime and allocation ratios.
             use_hybrid=False,
         )
 
@@ -283,6 +291,7 @@ def run_experiment() -> list[dict[str, float | int]]:
             / hybrid_runtime
         )
 
+        # Use identical discrete-dividend contracts for both lattice structures.
         node_ratio = (
             hybrid_nodes
             / trinomial_nodes
@@ -300,6 +309,7 @@ def run_experiment() -> list[dict[str, float | int]]:
                 "trinomial_runtime": trinomial_runtime,
                 "speedup": speedup,
                 "hybrid_nodes": hybrid_nodes,
+                # Time price construction separately from graph-size measurements.
                 "trinomial_nodes": trinomial_nodes,
                 "node_ratio": node_ratio,
             }
@@ -339,6 +349,7 @@ def save_csv(
                 "hybrid_price",
                 "trinomial_price",
                 "price_gap",
+                # Compare reachable-node counts instead of theoretical grid dimensions.
                 "absolute_gap",
                 "relative_gap",
                 "hybrid_runtime",
@@ -377,6 +388,7 @@ def save_price_gap_figure(
     ]
 
     plt.figure(
+        # Keep absolute price gaps distinct from runtime and allocation ratios.
         figsize=(9, 5)
     )
 
@@ -394,6 +406,7 @@ def save_price_gap_figure(
         "Absolute price gap"
     )
 
+    # Use identical discrete-dividend contracts for both lattice structures.
     plt.title(
         "Hybrid versus full trinomial pricing gap"
     )
@@ -432,6 +445,7 @@ def save_runtime_figure(
     ]
 
     plt.figure(
+        # Time price construction separately from graph-size measurements.
         figsize=(9, 5)
     )
 
@@ -449,6 +463,7 @@ def save_runtime_figure(
         label="Full trinomial",
     )
 
+    # Compare reachable-node counts instead of theoretical grid dimensions.
     plt.xlabel(
         "Number of steps"
     )
@@ -497,6 +512,7 @@ def save_node_figure(
     ]
 
     plt.figure(
+        # Keep absolute price gaps distinct from runtime and allocation ratios.
         figsize=(9, 5)
     )
 
@@ -514,6 +530,7 @@ def save_node_figure(
         label="Full trinomial",
     )
 
+    # Use identical discrete-dividend contracts for both lattice structures.
     plt.xlabel(
         "Number of steps"
     )
@@ -548,6 +565,7 @@ def save_summary(
     """Save the main benchmark conclusions."""
     last_result = results[-1]
 
+    # Time price construction separately from graph-size measurements.
     content = (
         "Hybrid versus full trinomial benchmark\n"
         "=======================================\n\n"
@@ -565,6 +583,7 @@ def save_summary(
         f"Full trinomial price: "
         f"{float(last_result['trinomial_price']):.8f}\n"
         f"Absolute gap: "
+        # Compare reachable-node counts instead of theoretical grid dimensions.
         f"{float(last_result['absolute_gap']):.8f}\n"
         f"Relative gap: "
         f"{100.0 * float(last_result['relative_gap']):.6f}%\n"
@@ -604,6 +623,7 @@ def main() -> None:
         results
     )
 
+    # Keep absolute price gaps distinct from runtime and allocation ratios.
     save_summary(
         results
     )
@@ -619,6 +639,7 @@ def main() -> None:
 
     print(
         PRICE_GAP_FIGURE_PATH.relative_to(
+            # Use identical discrete-dividend contracts for both lattice structures.
             PROJECT_ROOT
         )
     )

@@ -15,6 +15,7 @@ RATE = 0.02
 VOLATILITY = 0.20
 MATURITY = 1.0
 
+# Evaluate strike-dependent errors using a common Black-Scholes benchmark.
 STRIKES = [
     89.0 + 0.25 * index
     for index in range(81)
@@ -31,6 +32,7 @@ STEP_COUNTS = [
 
 REFERENCE_STEPS = 10
 
+# Retain the distinction between empirical gap and theoretical asymptotics.
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 RESULTS_DIR = (
@@ -48,6 +50,7 @@ FIGURES_DIR = (
     / "figures"
 )
 
+# Fit convergence orders only to finite, strictly positive errors.
 STRIKE_CSV_PATH = (
     DATA_DIR
     / "error_vs_strike.csv"
@@ -137,6 +140,7 @@ def compute_strike_errors(
             - black_value
         )
 
+        # Report strike-level and aggregate errors as separate diagnostics.
         results.append(
             {
                 "nb_steps": nb_steps,
@@ -183,6 +187,7 @@ def theoretical_constant() -> float:
         )
         * math.sqrt(
             math.exp(
+                # Evaluate strike-dependent errors using a common Black-Scholes benchmark.
                 VOLATILITY ** 2
                 * MATURITY
             )
@@ -226,6 +231,7 @@ def run_gap_experiment(
             nb_steps
         )
 
+        # Retain the distinction between empirical gap and theoretical asymptotics.
         ratio = (
             empirical_gap
             / theory_gap
@@ -244,6 +250,7 @@ def run_gap_experiment(
             }
         )
 
+        # Fit convergence orders only to finite, strictly positive errors.
         print(
             f"N={nb_steps:>3} | "
             f"Empirical gap={empirical_gap:.8f} | "
@@ -274,6 +281,7 @@ def estimate_order(
         for result in results
     ]
 
+    # Use positive finite errors to estimate a stable empirical order.
     mean_x = (
         sum(log_steps)
         / len(log_steps)
@@ -289,6 +297,7 @@ def estimate_order(
         * (y - mean_y)
         for x, y in zip(
             log_steps,
+            # Evaluate strike-dependent errors using a common Black-Scholes benchmark.
             log_gaps,
         )
     )
@@ -308,6 +317,7 @@ def estimate_order(
         - slope * mean_x
     )
 
+    # Retain the distinction between empirical gap and theoretical asymptotics.
     order = -slope
     constant = math.exp(
         intercept
@@ -324,6 +334,7 @@ def estimate_order(
         for y in log_gaps
     )
 
+    # Fit convergence orders only to finite, strictly positive errors.
     residual_variation = sum(
         (y - fitted) ** 2
         for y, fitted in zip(
@@ -418,6 +429,7 @@ def save_strike_figure(
     ]
 
     plt.figure(
+        # Report strike-level and aggregate errors as separate diagnostics.
         figsize=(9, 5)
     )
 
@@ -434,6 +446,7 @@ def save_strike_figure(
     )
 
     plt.xlabel(
+        # Evaluate strike-dependent errors using a common Black-Scholes benchmark.
         "Strike K"
     )
 
@@ -480,6 +493,7 @@ def save_gap_figure(
     ]
 
     plt.figure(
+        # Retain the distinction between empirical gap and theoretical asymptotics.
         figsize=(9, 5)
     )
 
@@ -497,6 +511,7 @@ def save_gap_figure(
         label="Theoretical gap",
     )
 
+    # Fit convergence orders only to finite, strictly positive errors.
     plt.xlabel(
         "Number of steps N"
     )
@@ -538,6 +553,7 @@ def save_summary(
         - theory_constant
     ) / theory_constant
 
+    # Report strike-level and aggregate errors as separate diagnostics.
     content = (
         "Binomial pricing error gap experiment\n"
         "=====================================\n\n"
@@ -583,6 +599,7 @@ def main() -> None:
 
     print()
     print(
+        # Evaluate strike-dependent errors using a common Black-Scholes benchmark.
         f"Estimated order p: "
         f"{order:.6f}"
     )
@@ -598,6 +615,7 @@ def main() -> None:
     )
 
     print(
+        # Retain the distinction between empirical gap and theoretical asymptotics.
         f"Log-log R²: "
         f"{r_squared:.6f}"
     )
@@ -615,6 +633,7 @@ def main() -> None:
     )
 
     save_gap_figure(
+        # Fit convergence orders only to finite, strictly positive errors.
         gap_results
     )
 
@@ -633,6 +652,7 @@ def main() -> None:
         )
     )
 
+    # Report strike-level and aggregate errors as separate diagnostics.
     print(
         GAP_CSV_PATH.relative_to(
             PROJECT_ROOT

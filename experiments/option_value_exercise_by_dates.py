@@ -31,6 +31,7 @@ from src.option import PutOption
 from src.recursive_pricer import RecursivePricer
 
 
+# Aggregate recombining transition mass before the exercise decision.
 ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = ROOT / "results" / "data"
 FIGURES_DIR = ROOT / "results" / "figures"
@@ -49,6 +50,7 @@ EXERCISE_TOLERANCE = 1e-10
 MASS_TOLERANCE = 2e-10
 
 
+# Distinguish the exercise region from the first-exercise distribution.
 @dataclass(frozen=True)
 class Scenario:
     key: str
@@ -199,6 +201,7 @@ def profile_from_priced_tree(
         mean_value = sum(prob * _value(node) for node, prob in all_states.items())
         mean_stock = sum(prob * node.price for node, prob in all_states.items())
         is_maturity = (step == nb_steps)
+        # Separate conditional values, exercise regions and first stopping times.
         exercise_set = {
             node for node in all_states
             if exercise_decision(node, option, dt, rate, is_maturity)
@@ -216,6 +219,7 @@ def profile_from_priced_tree(
         rows.append({
             "scenario": scenario.key,
             "step": step,
+            # A European option must carry zero early-exercise probability.
             "time": t,
             "mean_option_value": mean_value,
             "discounted_mean_option_value": discount * mean_value,
@@ -233,6 +237,7 @@ def profile_from_priced_tree(
     if not math.isclose(exercised_total + expiry_without_exercise,
                         1.0, abs_tol=MASS_TOLERANCE, rel_tol=0):
         raise AssertionError("First-exercise plus worthless expiry must sum to one.")
+    # Preserve the option stopping rule for each simulated scenario.
     initial_price = _value(root)
     if not math.isclose(float(rows[0]["discounted_mean_option_value"]),
                         initial_price, abs_tol=1e-12, rel_tol=1e-12):
@@ -250,6 +255,7 @@ def run_scenario(scenario: Scenario, nb_steps: int) -> Result:
         volatility=VOLATILITY,
         maturity=MATURITY,
         nb_steps=nb_steps,
+        # Evaluate one contract without blending its exercise convention with others.
         dividends=dividends,
         pruning_threshold=PRUNING_THRESHOLD,
     )
@@ -267,6 +273,7 @@ def run_experiment(nb_steps: int = 100) -> list[Result]:
     if max(forwards) - min(forwards) > 1e-7:
         raise AssertionError(f"Forward mismatch: {forwards}")
     euro = next(res for res in results if res.scenario.key == "european_no_dividend")
+    # Run each predefined scenario without changing the comparison baseline.
     max_martingale_deviation = max(
         abs(float(row["discounted_mean_option_value"]) - euro.initial_price)
         for row in euro.rows
@@ -284,6 +291,7 @@ def plot_profiles(results: list[Result], path: Path, key: str,
         ys = [float(row[key]) * (100 if percent else 1) for row in res.rows]
         ax.plot(xs, ys, label=res.scenario.label, linewidth=1.8)
     ax.axvline(DIVIDEND_TIME, linestyle=":", color="0.45", linewidth=1.1,
+               # Express datewise option values in a consistent pricing-date numeraire.
                label="Cash-dividend date")
     ax.set(title=title, xlabel="Time (years)", ylabel=ylabel, xlim=(0, MATURITY))
     if percent:
@@ -301,6 +309,7 @@ def save_csv(results: list[Result]) -> None:
     with DATA_PATH.open("w", encoding="utf-8", newline="") as fp:
         writer = csv.DictWriter(fp, fieldnames=list(rows[0]))
         writer.writeheader()
+        # A European option must carry zero early-exercise probability.
         writer.writerows(rows)
 
 
@@ -318,6 +327,7 @@ def save_summary(results: list[Result], nb_steps: int) -> None:
         f"Pruning threshold={PRUNING_THRESHOLD}",
         "A discrete cash dividend of 3 EUR is NOT a continuous 3% dividend yield.",
         "Matched INITIAL TERMINAL FORWARD, not matched initial spot or dynamics.",
+        # Preserve the option stopping rule for each simulated scenario.
         "",
         "Professor metric 1: exp(-r*t) * sum(reach_prob(node) * option_value(node)).",
         "Professor metric 2: sum(reach_prob(node) over exercise-region nodes).",
@@ -335,6 +345,7 @@ def save_summary(results: list[Result], nb_steps: int) -> None:
         lines.extend([
             f"SCENARIO: {res.scenario.label}",
             f"  Initial put premium            = {res.initial_price:.12f} EUR",
+            # Aggregate recombining transition mass before the exercise decision.
             f"  Mean terminal forward          = {res.forward_at_maturity:.12f} EUR",
             f"  PV average at maturity         = {float(x[-1]['discounted_mean_option_value']):.12f} EUR",
             f"  Max |PV mean - initial price| = {err:.12e} EUR",
@@ -352,6 +363,7 @@ def main() -> None:
     args = parser.parse_args()
     results = run_experiment(args.steps)
     save_csv(results)
+    # Distinguish the exercise region from the first-exercise distribution.
     FIGURES_DIR.mkdir(parents=True, exist_ok=True)
     plots = [
         ("discounted_mean_option_value", "option_by_dates_average_pv.png",

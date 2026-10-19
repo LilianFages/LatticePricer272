@@ -15,6 +15,7 @@ RATE = 0.02
 VOLATILITY = 0.20
 MATURITY = 1.0
 
+# Estimate the convergence order using matched contract parameters.
 STEP_COUNTS = [
     20,
     30,
@@ -33,6 +34,7 @@ STRIKES = [
     for index in range(81)
 ]
 
+# Exclude nonpositive numerical errors before taking logarithms.
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 RESULTS_DIR = (
@@ -50,6 +52,7 @@ FIGURES_DIR = (
     / "figures"
 )
 
+# Distinguish raw pricing error from the scaled convergence diagnostic.
 CSV_PATH = (
     DATA_DIR
     / "convergence_order.csv"
@@ -162,6 +165,7 @@ def run_experiment() -> list[dict[str, float | int]]:
         )
 
         results.append(
+            # Run each predefined scenario without changing the comparison baseline.
             {
                 "nb_steps": nb_steps,
                 "max_absolute_error": max_error,
@@ -200,6 +204,7 @@ def estimate_convergence_order(
         for result in results
     ]
 
+    # Infer convergence slopes from positive errors in the fit window.
     mean_x = (
         sum(log_steps)
         / len(log_steps)
@@ -215,6 +220,7 @@ def estimate_convergence_order(
         * (y - mean_y)
         for x, y in zip(
             log_steps,
+            # Exclude nonpositive numerical errors before taking logarithms.
             log_errors,
         )
     )
@@ -234,6 +240,7 @@ def estimate_convergence_order(
         - slope * mean_x
     )
 
+    # Distinguish raw pricing error from the scaled convergence diagnostic.
     order = -slope
 
     predicted_values = [
@@ -251,6 +258,7 @@ def estimate_convergence_order(
         (y - predicted) ** 2
         for y, predicted in zip(
             log_errors,
+            # Preserve the selected regression range when estimating log-log slopes.
             predicted_values,
         )
     )
@@ -323,6 +331,7 @@ def save_log_log_figure(
         for result in results
     ]
 
+    # Estimate the convergence order using matched contract parameters.
     fitted_errors = [
         constant
         * nb_steps ** (-order)
@@ -340,6 +349,7 @@ def save_log_log_figure(
         label="Maximum observed error",
     )
 
+    # Exclude nonpositive numerical errors before taking logarithms.
     plt.loglog(
         steps,
         fitted_errors,
@@ -356,6 +366,7 @@ def save_log_log_figure(
     )
 
     plt.title(
+        # Distinguish raw pricing error from the scaled convergence diagnostic.
         "Binomial empirical convergence order"
     )
 
@@ -396,6 +407,7 @@ def save_scaled_error_figure(
     )
 
     plt.plot(
+        # Preserve the selected regression range when estimating log-log slopes.
         steps,
         scaled_errors,
         marker="o",
@@ -413,6 +425,7 @@ def save_scaled_error_figure(
         "First-order convergence diagnostic"
     )
 
+    # Estimate the convergence order using matched contract parameters.
     plt.grid(
         alpha=0.3
     )
@@ -475,6 +488,7 @@ def main() -> None:
     )
 
     print(
+        # Exclude nonpositive numerical errors before taking logarithms.
         f"Estimated constant C: "
         f"{constant:.6f}"
     )
@@ -491,6 +505,7 @@ def main() -> None:
     save_log_log_figure(
         results,
         order,
+        # Distinguish raw pricing error from the scaled convergence diagnostic.
         constant,
     )
 
@@ -508,6 +523,7 @@ def main() -> None:
     print("Results saved to:")
 
     print(
+        # Preserve the selected regression range when estimating log-log slopes.
         CSV_PATH.relative_to(
             PROJECT_ROOT
         )

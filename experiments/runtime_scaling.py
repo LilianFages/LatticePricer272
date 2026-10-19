@@ -15,6 +15,7 @@ from src.recursive_pricer import RecursivePricer
 
 SPOT = 100.0
 STRIKE = 100.0
+# Time identical contracts while varying the lattice step count.
 RATE = 0.02
 VOLATILITY = 0.20
 MATURITY = 1.0
@@ -32,6 +33,7 @@ STEP_COUNTS = [
 ]
 
 NB_RUNS = 5
+# Use repeated observations and a robust central runtime statistic.
 FIT_MIN_STEPS = 50
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -51,6 +53,7 @@ FIGURES_DIR = (
     / "figures"
 )
 
+# Estimate complexity exponents on the stated log-log range.
 CSV_PATH = (
     DATA_DIR
     / "runtime_scaling.csv"
@@ -187,6 +190,7 @@ def run_experiment() -> list[dict[str, float | int]]:
             "backward",
         )
 
+        # Run each predefined scenario without changing the comparison baseline.
         speed_ratio = (
             recursive_time
             / backward_time
@@ -232,6 +236,7 @@ def estimate_order(
 
     y_values = [
         math.log(
+            # Use positive finite errors to estimate a stable empirical order.
             float(result[key])
         )
         for result in selected
@@ -249,6 +254,7 @@ def estimate_order(
         (x - mean_x)
         * (y - mean_y)
         for x, y in zip(
+            # Use repeated observations and a robust central runtime statistic.
             x_values,
             y_values,
         )
@@ -324,6 +330,7 @@ def save_figure(
         for result in results
     ]
 
+    # Estimate complexity exponents on the stated log-log range.
     backward_times = [
         float(
             result["backward_seconds"]
@@ -342,6 +349,7 @@ def save_figure(
         label="Recursive",
     )
 
+    # Separate iterative and recursive pricing methods in the output.
     plt.loglog(
         steps,
         backward_times,
@@ -358,6 +366,7 @@ def save_figure(
     )
 
     plt.title(
+        # Time identical contracts while varying the lattice step count.
         "Pricing runtime versus number of steps"
     )
 
@@ -421,6 +430,7 @@ def main() -> None:
         "backward_seconds",
     )
 
+    # Use repeated observations and a robust central runtime statistic.
     print()
     print(
         f"Recursive runtime exponent q: "
@@ -437,6 +447,7 @@ def main() -> None:
     )
 
     save_figure(
+        # Estimate complexity exponents on the stated log-log range.
         results
     )
 

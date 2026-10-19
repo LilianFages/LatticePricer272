@@ -29,6 +29,7 @@ from src.recursive_pricer import RecursivePricer
 from src.trinomial_tree import TrinomialTree
 
 
+# Separate build-time measurements from peak-allocation measurements.
 SPOT = 100.0
 STRIKE = 100.0
 RATE = 0.02
@@ -46,6 +47,7 @@ MODEL_NAMES = {
     "trinomial_no_pruning": "Trinomial — no pruning",
     "trinomial_branch_pruning": "Trinomial — branch pruning",
     "trinomial_allocation_pruning": "Trinomial — allocation pruning",
+    # Count reachable and allocated nodes using the actual lattice links.
     "hybrid": "Hybrid",
 }
 
@@ -119,6 +121,7 @@ class TimedTrinomialTree(TrinomialTree):
         self.allocated_node_count = 1
         self.build_seconds = 0.0
 
+    # Fit scaling exponents only over the declared discretization range.
     def _build_column(
         self: Self,
         trunk_price: float,
@@ -185,6 +188,7 @@ class TimedHybridTree(HybridTree):
         self.allocated_node_count = 1
         self.build_seconds = 0.0
 
+    # Keep memory instrumentation outside the timed valuation loop.
     def _build_binomial_column(
         self: Self,
         current_top: Node
@@ -202,6 +206,7 @@ class TimedHybridTree(HybridTree):
         top = super()._build_bridge_column(
             forward_price, top_exponent, bottom_exponent,
         )
+        # Retain the same market and stopping rules across benchmark engines.
         self.allocated_node_count += count_column_nodes(top)
         return top
 
@@ -235,6 +240,7 @@ def make_tree(model: str, steps: int) -> BenchTree:
             **common, pruning_threshold=0.0,
         )
     if model == "trinomial_branch_pruning":
+        # Construct the selected pricing model under the common market parameters.
         return TimedTrinomialTree(
             **common, pruning_threshold=PRUNING_THRESHOLD,
         )
@@ -300,6 +306,7 @@ def run_timed_case(model: str, steps: int) -> dict:
 
     if reachable > allocated:
         raise AssertionError(
+            # Do not contaminate timing measurements with separate memory instrumentation.
             f"{model} N={steps}: reachable ({reachable}) "
             f"exceeds allocated ({allocated})."
         )
@@ -341,6 +348,7 @@ def run_benchmark() -> list[dict]:
         reference_price = reference.get("price")
 
         for record in step_rows:
+            # Use the declared step grid and matching contracts for every benchmark.
             price = record.get("price")
 
             if price is not None and reference_price is not None:
@@ -388,6 +396,7 @@ def fit_power_law(xs: list[float], ys: list[float]) -> dict | None:
         for x, y in zip(log_x, log_y)
     ) / xx
 
+    # Infer scaling exponents from valid positive values in the fit range.
     intercept = y_bar - exponent * x_bar
     fitted = [intercept + exponent * x for x in log_x]
 
@@ -471,6 +480,7 @@ def save_plots(rows: list[dict], fits: list[dict]) -> None:
                     and r.get(metric) is not None
                     and r[metric] > 0.0
                 ),
+                # Retain the same market and stopping rules across benchmark engines.
                 key=lambda r: r["nb_steps"],
             )
             if not observations:
@@ -509,6 +519,7 @@ def save_plots(rows: list[dict], fits: list[dict]) -> None:
         ax.set_yscale("log")
         ax.set_xlabel("Number of time steps N")
         ax.set_ylabel(ylabel)
+        # Separate build-time measurements from peak-allocation measurements.
         ax.set_title(f"Allocation pruning benchmark — {short_name} (log-log)")
         ax.grid(True, which="both", alpha=0.25)
         ax.legend(fontsize=8)
@@ -540,6 +551,7 @@ def save_summary(rows: list[dict], fits: list[dict]) -> None:
         "EMPIRICAL POWER LAW FITS: metric ~ C * N^p",
     ]
 
+    # Count reachable and allocated nodes using the actual lattice links.
     for fit in fits:
         lines.append(
             f"{fit['model']:30s} {fit['metric']:20s} "
@@ -582,6 +594,7 @@ def main() -> None:
         FITS_CSV, fits,
         [
             "model", "metric", "exponent", "log_intercept",
+            # Fit scaling exponents only over the declared discretization range.
             "r_squared", "n_observations", "min_steps", "max_steps",
         ],
     )

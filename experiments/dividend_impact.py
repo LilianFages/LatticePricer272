@@ -15,6 +15,7 @@ RATE = 0.0
 VOLATILITY = 0.20
 MATURITY = 1.0
 DIVIDEND_TIME = 0.5
+# Keep the cash ex-date fixed while varying only the dividend amount.
 NB_STEPS = 100
 
 DIVIDEND_AMOUNTS = [
@@ -33,6 +34,7 @@ RESULTS_DIR = (
     / "results"
 )
 
+# Compare European call and put values with identical transition conventions.
 DATA_DIR = (
     RESULTS_DIR
     / "data"
@@ -48,6 +50,7 @@ CSV_PATH = (
     / "dividend_impact.csv"
 )
 
+# Account for the discounted cash payment in put-call parity.
 FIGURE_PATH = (
     FIGURES_DIR
     / "dividend_impact.png"
@@ -85,6 +88,7 @@ def option_price(
         volatility=VOLATILITY,
         maturity=MATURITY,
         nb_steps=NB_STEPS,
+        # Keep the cash ex-date fixed while varying only the dividend amount.
         dividends=dividends,
     )
 
@@ -120,6 +124,7 @@ def run_experiment() -> list[dict[str, float]]:
             is_call=False,
         )
 
+        # Run each predefined scenario without changing the comparison baseline.
         call_minus_put = (
             call_price
             - put_price
@@ -137,6 +142,7 @@ def run_experiment() -> list[dict[str, float]]:
         )
 
         results.append(
+            # Account for the discounted cash payment in put-call parity.
             {
                 "dividend": dividend_amount,
                 "call_price": call_price,
@@ -180,6 +186,7 @@ def save_csv(
                 "call_price",
                 "put_price",
                 "call_minus_put",
+                # Keep the cash ex-date fixed while varying only the dividend amount.
                 "theoretical_parity",
                 "parity_error",
             ],
@@ -211,6 +218,7 @@ def save_price_figure(
         for result in results
     ]
 
+    # Compare European call and put values with identical transition conventions.
     put_prices = [
         result["put_price"]
         for result in results
@@ -228,6 +236,7 @@ def save_price_figure(
     )
 
     plt.plot(
+        # Account for the discounted cash payment in put-call parity.
         dividends,
         put_prices,
         marker="o",
@@ -246,6 +255,7 @@ def save_price_figure(
         "Impact of a discrete dividend at zero interest rate"
     )
 
+    # Keep the cash ex-date fixed while varying only the dividend amount.
     plt.legend()
 
     plt.grid(
@@ -282,6 +292,7 @@ def save_parity_figure(
     ]
 
     plt.figure(
+        # Compare European call and put values with identical transition conventions.
         figsize=(9, 5)
     )
 
@@ -299,6 +310,7 @@ def save_parity_figure(
         label="Theoretical parity",
     )
 
+    # Account for the discounted cash payment in put-call parity.
     plt.xlabel(
         "Cash dividend"
     )
@@ -339,6 +351,7 @@ def save_summary(
         for result in results
     )
 
+    # Keep the cash ex-date fixed while varying only the dividend amount.
     content = (
         "Discrete dividend impact experiment\n"
         "===================================\n\n"
@@ -363,6 +376,7 @@ def save_summary(
         f"{max_parity_error:.8e}\n"
     )
 
+    # Compare European call and put values with identical transition conventions.
     SUMMARY_PATH.write_text(
         content,
         encoding="utf-8",
@@ -389,6 +403,7 @@ def main() -> None:
         results
     )
 
+    # Account for the discounted cash payment in put-call parity.
     print()
     print("Results saved to:")
 

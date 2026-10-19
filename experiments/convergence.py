@@ -14,6 +14,7 @@ SPOT = 100.0
 STRIKE = 100.0
 RATE = 0.02
 VOLATILITY = 0.20
+# Price the same European call at each binomial grid resolution.
 MATURITY = 1.0
 
 STEP_COUNTS = [
@@ -31,6 +32,7 @@ STEP_COUNTS = [
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
+# Use the Black-Scholes price as a fixed, independent reference.
 RESULTS_DIR = (
     PROJECT_ROOT
     / "results"
@@ -46,6 +48,7 @@ FIGURES_DIR = (
     / "figures"
 )
 
+# Keep signed pricing differences distinct from their absolute errors.
 CSV_PATH = (
     DATA_DIR
     / "convergence.csv"
@@ -124,6 +127,7 @@ def run_experiment() -> list[dict[str, float | int]]:
             - reference_price
         )
 
+        # Run each predefined scenario without changing the comparison baseline.
         absolute_error = abs(
             error
         )
@@ -196,6 +200,7 @@ def save_price_figure(
         for result in results
     ]
 
+    # Use the Black-Scholes price as a fixed, independent reference.
     bs_prices = [
         float(result["black_scholes_price"])
         for result in results
@@ -213,6 +218,7 @@ def save_price_figure(
     )
 
     plt.plot(
+        # Keep signed pricing differences distinct from their absolute errors.
         steps,
         bs_prices,
         linestyle="--",
@@ -231,6 +237,7 @@ def save_price_figure(
         "Binomial lattice convergence to Black-Scholes"
     )
 
+    # Price the same European call at each binomial grid resolution.
     plt.legend()
     plt.grid(
         alpha=0.3
@@ -267,6 +274,7 @@ def save_error_figure(
     plt.plot(
         steps,
         errors,
+        # Use the Black-Scholes price as a fixed, independent reference.
         marker="o",
     )
 
@@ -347,6 +355,7 @@ def main() -> None:
         results
     )
 
+    # Keep signed pricing differences distinct from their absolute errors.
     print()
     print("Results saved to:")
 
