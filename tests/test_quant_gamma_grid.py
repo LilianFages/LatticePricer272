@@ -8,6 +8,7 @@ import pytest
 
 from frontend.greeks_service import GreekBumps, calculate_greeks, select_gamma_bump
 from frontend.pricing_service import PricingRequest
+from frontend import quant_analytics as qa
 
 
 def test_grid_spacing_trinomial_atm_100_steps():
@@ -63,6 +64,48 @@ def test_gamma_bump_independent_of_delta_and_metadata():
     assert result.delta == pytest.approx(200.0)
     assert result.gamma == pytest.approx(2.0)
     assert result.gamma_spot_bump_pct > result.bumps.spot_pct
+
+
+@pytest.mark.parametrize(
+    ("gamma_choice", "expected"),
+    [("Auto · grid-aware", None), (5.0, 5.0)],
+)
+def test_greek_ticket_forwards_gamma_choice(monkeypatch, gamma_choice, expected):
+    """The user-selected Gamma bump reaches the pricing request settings."""
+    from types import SimpleNamespace
+    from contextlib import nullcontext
+
+    monkeypatch.setattr(
+        qa,
+        "st",
+        SimpleNamespace(
+            form=lambda *_a, **_k: nullcontext(),
+            form_submit_button=lambda *_a, **_k: True,
+        ),
+    )
+    monkeypatch.setattr(
+        qa, "_greek_contract_fields",
+        lambda: ("Call", "European", "Trinomial · Allocation pruning"),
+    )
+    monkeypatch.setattr(
+        qa, "_greek_market_fields",
+        lambda: (100.0, 100.0, 20.0, 2.0, 1.0),
+    )
+    monkeypatch.setattr(qa, "_greek_lattice_fields", lambda model: (100, 1e-18))
+    monkeypatch.setattr(
+        qa, "_greek_bump_fields",
+        lambda: (1.0, 0.5, 10.0, gamma_choice),
+    )
+    monkeypatch.setattr(qa, "_greek_dividend_fields", lambda: None)
+    monkeypatch.setattr(qa, "parse_dividends", lambda frame: ())
+
+    submitted, request, bumps, error = qa._greeks_ticket()
+    assert submitted is True
+    assert error is None
+    assert request is not None
+    assert bumps is not None
+    assert bumps.gamma_spot_pct == expected
+    assert (bumps.spot_pct, bumps.vol_pp, bumps.rate_bp) == (1.0, 0.5, 10.0)
 
 
 def test_invalid_manual_width_rejected():

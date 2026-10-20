@@ -101,7 +101,7 @@ def _greek_bump_fields() -> tuple:
         c1, c2 = st.columns(2)
         vol_bump_pp = c1.selectbox("Vol ± pp", (0.25, 0.5, 1.0), index=1)
         rate_bump_bp = c3.selectbox("Rate ± bp", (5.0, 10.0, 25.0), index=1)
-    return spot_bump_pct, vol_bump_pp, rate_bump_bp
+    return spot_bump_pct, vol_bump_pp, rate_bump_bp, gamma_choice
 
 
 
@@ -136,7 +136,7 @@ def _greeks_ticket():
         spot, strike, vol_pct, rate_pct, maturity = _greek_market_fields()
 
         steps, threshold = _greek_lattice_fields(model)
-        spot_bump_pct, vol_bump_pp, rate_bump_bp = _greek_bump_fields()
+        spot_bump_pct, vol_bump_pp, rate_bump_bp, gamma_choice = _greek_bump_fields()
 
         dividend_table = _greek_dividend_fields()
         submitted = st.form_submit_button("CALCULATE GREEKS  →", type="primary", width="stretch")
@@ -155,6 +155,9 @@ def _greeks_ticket():
         bumps = GreekBumps(
             spot_pct=float(spot_bump_pct), vol_pp=float(vol_bump_pp),
             rate_bp=float(rate_bump_bp),
+            gamma_spot_pct=(
+                None if gamma_choice == "Auto · grid-aware" else float(gamma_choice)
+            ),
         )
         return True, request, bumps, None
     except (ValueError, PricingInputError) as exc:
