@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import MutableMapping
 from dataclasses import replace
+from typing import Any
 
 import altair as alt
 import pandas as pd
@@ -11,6 +13,7 @@ import streamlit as st
 from frontend.lattice_explorer_service import (
     LatticeSnapshot, VisualNode, MAX_VISUAL_STEPS, snapshot_priced_tree,
 )
+from frontend.contract_workflow import assess_transfer, get_reference
 from frontend.pricing_service import (
     DEFAULT_THRESHOLD, MODELS, DividendInput, PricingInputError, PricingRequest,
 )
@@ -286,22 +289,116 @@ def _pruning_comparison(
 
 
 
+def apply_reference_to_explorer(
+    state: MutableMapping[str, Any],
+) -> tuple[bool, tuple[str, ...]]:
+    """Only import an exact reference compatible with this small-grid editor.
+
+    Rejecting an import changes NOTHING; successful import clears previous
+    chart results but never runs a numerical model or edits the shared ticket.
+    """
+    reference = get_reference(state)
+    if reference is None:
+        return False, ("No reference contract saved in Pricing Terminal.",)
+    check = assess_transfer(reference, "lattice_explorer")
+    if not check.exact:
+        return False, check.issues
+    generation = state.get("explorer_import_nonce", 0)
+    if type(generation) is not int or generation < 0:
+        raise ValueError("Invalid explorer widget generation.")
+    state["explorer_reference_seed"] = reference
+    state["explorer_import_nonce"] = generation + 1
+    state.pop("lattice_explorer_result", None)
+    return True, ()
+
+
+def explorer_dividend_defaults(
+    seed: PricingRequest | None,
+) -> tuple[bool, float, float]:
+    """Match the existing single-dividend editor without discarding cashflows."""
+    if seed is None or not seed.dividends:
+        return False, 0.5, 3.0
+    if len(seed.dividends) != 1:
+        raise ValueError("Explorer editor supports at most one cash dividend.")
+    dividend = seed.dividends[0]
+    return True, dividend.time, dividend.amount
+
+
+def _explorer_control_key(name: str) -> str:
+    """Rotate only contract widgets when the user explicitly imports."""
+    generation = st.session_state.get("explorer_import_nonce", 0)
+    return f"lx_{name}_{generation}" if generation else f"lx_{name}"
+
+
+def _explorer_default(field: str, fallback: Any) -> Any:
+    seed = st.session_state.get("explorer_reference_seed")
+    return getattr(seed, field) if isinstance(seed, PricingRequest) else fallback
+
+
+def _on_import_explorer_reference() -> None:
+    imported, issues = apply_reference_to_explorer(st.session_state)
+    st.session_state["explorer_import_feedback"] = (
+        ("success", "Reference contract imported. Build the lattices when ready.")
+        if imported else ("warning", "Import unavailable: " + " ".join(issues))
+    )
+
+
+def _render_explorer_import() -> None:
+    """Import before any editor widgets are instantiated on this rerun."""
+    st.markdown('<div class="desk-section">Reference contract · optional</div>',
+                unsafe_allow_html=True)
+    reference = get_reference(st.session_state)
+    if reference is None:
+        st.caption("Save a successfully priced contract in Pricing Terminal first.")
+    st.button(
+        "Import reference contract",
+        on_click=_on_import_explorer_reference,
+        disabled=reference is None,
+        key="lx_import_reference",
+        width="stretch",
+        help="Requires 2 <= N <= 10, at most one cash dividend and a compatible "
+             "pruning threshold. Incompatible references are never adjusted.",
+    )
+    feedback = st.session_state.get("explorer_import_feedback")
+    if feedback is not None:
+        level, message = feedback
+        if level == "success":
+            st.success(message)
+        else:
+            st.warning(message)
+    st.caption("Import fills the ticket only; left/right models remain independent. "
+               "No lattice is built until BUILD & COMPARE LATTICES is clicked.")
+
+
 def _explorer_market_fields(left: object) -> tuple:
     """Collect underlying option and market inputs."""
     with left:
         st.markdown('<div class="desk-section">01 · Market & option</div>', unsafe_allow_html=True)
         aa, bb = st.columns(2)
-        kind = aa.selectbox("Option", ("Call", "Put"), index=1)
-        exercise = bb.selectbox("Exercise", ("European", "American"), index=1)
+        kind = aa.selectbox("Option", ("Call", "Put"),
+                            index=("Call", "Put").index(_explorer_default("option_type", "Put")),
+                            key=_explorer_control_key("kind"))
+        exercise = bb.selectbox("Exercise", ("European", "American"),
+                                index=("European", "American").index(
+                                    _explorer_default("exercise", "American")),
+                                key=_explorer_control_key("exercise"))
         aa, bb = st.columns(2)
-        spot = aa.number_input("Spot · €", min_value=0.01, value=100.0, step=1.0)
-        strike = bb.number_input("Strike · €", min_value=0.0, value=100.0, step=1.0)
+        spot = aa.number_input("Spot · €", min_value=0.01,
+                               value=float(_explorer_default("spot", 100.0)),
+                               step=1.0, key=_explorer_control_key("spot"))
+        strike = bb.number_input("Strike · €", min_value=0.0,
+                                value=float(_explorer_default("strike", 100.0)),
+                                step=1.0, key=_explorer_control_key("strike"))
         aa, bb = st.columns(2)
         vol = aa.number_input("Volatility · %", min_value=0.0, max_value=500.0,
-                              value=20.0, step=1.0)
+                              value=float(_explorer_default("volatility", 0.20)) * 100.0,
+                              step=1.0, key=_explorer_control_key("volatility"))
         rate = bb.number_input("Rate · %", min_value=-50.0, max_value=100.0,
-                               value=2.0, step=0.25)
-        maturity = st.number_input("Maturity · years", min_value=0.01, value=1.0, step=0.25)
+                               value=float(_explorer_default("rate", 0.02)) * 100.0,
+                               step=0.25, key=_explorer_control_key("rate"))
+        maturity = st.number_input("Maturity · years", min_value=0.01,
+                                   value=float(_explorer_default("maturity", 1.0)),
+                                   step=0.25, key=_explorer_control_key("maturity"))
     return kind, exercise, spot, strike, vol, rate, maturity
 
 
@@ -312,20 +409,32 @@ def _explorer_graph_fields(right: object) -> tuple:
         # Keep geometric coordinate mapping separate from financial valuations.
         st.markdown('<div class="desk-section">02 · Visual comparison</div>', unsafe_allow_html=True)
         aa, bb = st.columns(2)
-        first = aa.selectbox("Left model", MODELS, index=0)
-        second = bb.selectbox("Right model", MODELS, index=3)
+        first = aa.selectbox("Left model", MODELS, index=0, key="lx_left_model")
+        second = bb.selectbox("Right model", MODELS, index=3, key="lx_right_model")
         aa, bb = st.columns(2)
         steps = aa.number_input("Visualization steps N", min_value=2,
-                                max_value=MAX_VISUAL_STEPS, value=5, step=1)
-        threshold = bb.selectbox("Pruning threshold", (1e-18, 1e-9, 1e-5, 1e-3), index=0,
-                                 format_func=lambda x: f"{x:.0e}")
+                                max_value=MAX_VISUAL_STEPS,
+                                value=int(_explorer_default("steps", 5)), step=1,
+                                key=_explorer_control_key("steps"))
+        threshold_choices = (1e-18, 1e-9, 1e-5, 1e-3)
+        threshold = bb.selectbox("Pruning threshold", threshold_choices,
+                                 index=threshold_choices.index(_explorer_default(
+                                     "pruning_threshold", DEFAULT_THRESHOLD)),
+                                 format_func=lambda x: f"{x:.0e}",
+                                 key=_explorer_control_key("threshold"))
         with st.expander("Optional single cash dividend"):
-            use_dividend = st.checkbox("Include cash dividend", value=False)
+            seed = st.session_state.get("explorer_reference_seed")
+            div_present, div_default_time, div_default_amount = explorer_dividend_defaults(
+                seed if isinstance(seed, PricingRequest) else None)
+            use_dividend = st.checkbox("Include cash dividend", value=div_present,
+                                       key=_explorer_control_key("use_dividend"))
             aa, bb = st.columns(2)
             div_time = aa.number_input("Ex-date · years", min_value=0.01,
-                                        value=0.50, step=0.05)
+                                        value=div_default_time, step=0.05,
+                                        key=_explorer_control_key("div_time"))
             div_amount = bb.number_input("Cash amount · €", min_value=0.01,
-                                          value=3.0, step=0.5)
+                                          value=div_default_amount, step=0.5,
+                                          key=_explorer_control_key("div_amount"))
             # Use the existing chart palette and explanatory labels.
             st.caption("Binomial does not support discrete cash dividends. "
                        "A model may fail independently of the other.")
@@ -404,6 +513,8 @@ def render_lattice_explorer_page() -> None:
         'optimal early exercise · side-by-side architectures</div>',
         unsafe_allow_html=True,
     )
+
+    _render_explorer_import()
 
     # Keep requested lattice depth and graph visualization synchronized.
     with st.form("lattice_explorer_form"):

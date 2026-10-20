@@ -6,6 +6,9 @@ Launch the existing Streamlit application from the repository root:
 
 from __future__ import annotations
 
+from collections.abc import MutableMapping
+from typing import Any
+
 import math
 
 import altair as alt
@@ -18,6 +21,7 @@ from frontend.comparison_service import (
     comparison_csv,
     display_rows,
 )
+from frontend.contract_workflow import assess_transfer, get_reference
 from frontend.pricing_service import (
     DEFAULT_THRESHOLD,
     MAX_STEPS,
@@ -35,6 +39,82 @@ DEFAULT_MODELS = (
     "Trinomial · Allocation pruning",
     "Hybrid",
 )
+
+
+def apply_reference_to_comparison(
+    state: MutableMapping[str, Any],
+) -> tuple[bool, tuple[str, ...]]:
+    """Atomically prefill a comparison ticket; never run pricing.
+
+    Comparison architectures and benchmark-only choices are deliberately
+    independent of the saved ticket's model. A rejected import changes nothing.
+    """
+    reference = get_reference(state)
+    if reference is None:
+        return False, ("No reference contract saved in Pricing Terminal.",)
+    check = assess_transfer(reference, "model_comparison")
+    if not check.exact:
+        return False, check.issues
+    generation = state.get("cmp_import_nonce", 0)
+    if not isinstance(generation, int) or generation < 0:
+        raise ValueError("Invalid comparison widget generation.")
+    state["cmp_reference_seed"] = reference
+    state["cmp_import_nonce"] = generation + 1
+    state["last_comparison_report"] = None
+    return True, ()
+
+
+def comparison_dividend_rows(seed: PricingRequest | None) -> list[dict[str, float]]:
+    """Present every saved cash dividend; preserve the default empty UI row."""
+    if seed is None or not seed.dividends:
+        return [{"time": 0.5, "amount": 0.0}]
+    return [{"time": div.time, "amount": div.amount} for div in seed.dividends]
+
+
+def _comparison_contract_key(base: str) -> str:
+    """Recreate only imported contract widgets, never benchmark selections."""
+    generation = st.session_state.get("cmp_import_nonce", 0)
+    return f"{base}_{generation}" if generation else base
+
+
+def _comparison_default(field: str, fallback: Any) -> Any:
+    seed = st.session_state.get("cmp_reference_seed")
+    return getattr(seed, field) if isinstance(seed, PricingRequest) else fallback
+
+
+def _on_import_comparison_reference() -> None:
+    imported, issues = apply_reference_to_comparison(st.session_state)
+    st.session_state["cmp_import_feedback"] = (
+        ("success", "Reference contract imported into the form. Run comparison when ready.")
+        if imported else ("warning", "Import unavailable: " + " ".join(issues))
+    )
+
+
+def _render_comparison_import() -> None:
+    """Explicit prefill, with no hidden repricing and no stale output panel."""
+    st.markdown('<div class="desk-section">Reference contract · optional</div>',
+                unsafe_allow_html=True)
+    reference = get_reference(st.session_state)
+    if reference is None:
+        st.caption("Save a successfully priced contract in Pricing Terminal first.")
+    st.button(
+        "Import reference contract",
+        on_click=_on_import_comparison_reference,
+        disabled=reference is None,
+        key="cmp_import_contract",
+        width="stretch",
+        help="Copy contract/market, N, threshold and all dividends. "
+             "Selected architectures, repetitions and price reference stay unchanged.",
+    )
+    feedback = st.session_state.get("cmp_import_feedback")
+    if feedback is not None:
+        level, message = feedback
+        if level == "success":
+            st.success(message)
+        else:
+            st.warning(message)
+    st.caption("Import fills the ticket only. Model selection and benchmark "
+               "settings stay independent; no valuation runs automatically.")
 
 
 def parse_dividends(frame: pd.DataFrame) -> tuple[DividendInput, ...]:
@@ -73,8 +153,13 @@ def _comparison_contract_fields() -> tuple:
     """Collect the common contract and selected pricing engines."""
     st.markdown('<div class="desk-section">01 · Contract</div>', unsafe_allow_html=True)
     a, b = st.columns(2)
-    kind = a.selectbox("Option", ("Call", "Put"), key="cmp_kind")
-    exercise = b.selectbox("Exercise", ("European", "American"), key="cmp_exercise")
+    kind = a.selectbox("Option", ("Call", "Put"),
+                       index=("Call", "Put").index(_comparison_default("option_type", "Call")),
+                       key=_comparison_contract_key("cmp_kind"))
+    exercise = b.selectbox("Exercise", ("European", "American"),
+                           index=("European", "American").index(
+                               _comparison_default("exercise", "European")),
+                           key=_comparison_contract_key("cmp_exercise"))
     models = tuple(st.multiselect(
         "Models to compare", MODELS, default=DEFAULT_MODELS,
         key="cmp_models", help="All selected models price the same contract."
@@ -88,19 +173,22 @@ def _comparison_market_fields() -> tuple:
     st.markdown('<div class="desk-section">02 · Market data</div>', unsafe_allow_html=True)
     a, b = st.columns(2)
     spot = a.number_input("Spot · €", min_value=0.01, max_value=1e7,
-                          value=100.0, step=1.0, format="%.2f", key="cmp_spot")
+                          value=float(_comparison_default("spot", 100.0)),
+                          step=1.0, format="%.2f", key=_comparison_contract_key("cmp_spot"))
     strike = b.number_input("Strike · €", min_value=0.0, max_value=1e7,
-                            value=100.0, step=1.0, format="%.2f", key="cmp_strike")
+                            value=float(_comparison_default("strike", 100.0)),
+                            step=1.0, format="%.2f", key=_comparison_contract_key("cmp_strike"))
     a, b = st.columns(2)
     # Preserve dividend-editing behavior and Streamlit widget keys.
     vol_pct = a.number_input("Volatility · %", min_value=0.0, max_value=500.0,
-                             value=20.0, step=1.0, format="%.2f", key="cmp_vol")
+                             value=float(_comparison_default("volatility", 0.20)) * 100.0,
+                             step=1.0, format="%.2f", key=_comparison_contract_key("cmp_vol"))
     rate_pct = b.number_input("Risk-free rate · %", min_value=-50.0,
-                              max_value=100.0, value=2.0, step=0.25,
-                              format="%.2f", key="cmp_rate")
+                              max_value=100.0, value=float(_comparison_default("rate", 0.02)) * 100.0,
+                              step=0.25, format="%.2f", key=_comparison_contract_key("cmp_rate"))
     maturity = st.number_input("Maturity · years", min_value=0.01,
-                               max_value=100.0, value=1.0, step=0.25,
-                               format="%.2f", key="cmp_maturity")
+                               max_value=100.0, value=float(_comparison_default("maturity", 1.0)),
+                               step=0.25, format="%.2f", key=_comparison_contract_key("cmp_maturity"))
     return spot, strike, vol_pct, rate_pct, maturity
 
 
@@ -109,13 +197,16 @@ def _comparison_benchmark_fields() -> tuple:
     """Set independent timing runs and price reference."""
     st.markdown('<div class="desk-section">03 · Benchmark setup</div>', unsafe_allow_html=True)
     steps = st.number_input("Time steps (N)", min_value=1, max_value=MAX_STEPS,
-                            value=100, step=25, key="cmp_steps")
+                            value=int(_comparison_default("steps", 100)),
+                            step=25, key=_comparison_contract_key("cmp_steps"))
     a, b = st.columns(2)
     threshold = a.selectbox(
         "Pruning threshold", (0.0, 1e-18, 1e-15, 1e-12),
-        index=1, format_func=lambda x: "0 (off)" if x == 0 else f"{x:.0e}",
+        index=(0.0, 1e-18, 1e-15, 1e-12).index(
+            _comparison_default("pruning_threshold", DEFAULT_THRESHOLD)),
+        format_func=lambda x: "0 (off)" if x == 0 else f"{x:.0e}",
         # Separate chart presentation from result selection.
-        key="cmp_threshold",
+        key=_comparison_contract_key("cmp_threshold"),
     )
     repetitions = b.selectbox(
         "Timing repetitions", (1, 3, 5), index=1, key="cmp_repetitions",
@@ -139,9 +230,10 @@ def _comparison_dividend_fields() -> object:
                    "Multiple rows supported. Binomial will be marked unsupported.")
         frame = st.data_editor(
             # Build comparable contracts from a shared market-input ticket.
-            pd.DataFrame([{"time": 0.5, "amount": 0.0}]),
+            pd.DataFrame(comparison_dividend_rows(
+                st.session_state.get("cmp_reference_seed"))),
             num_rows="dynamic", hide_index=True, width="stretch",
-            key="cmp_dividend_table",
+            key=_comparison_contract_key("cmp_dividend_table"),
             column_config={
                 "time": st.column_config.NumberColumn(
                     "Payment time · years", min_value=0.0,
@@ -362,8 +454,8 @@ def _render_comparison_output_column(
                 "otherwise compare against a selected numerical engine."
             )
             st.caption(
-                "The geometric lattice explorer (small N, real nodes and "
-                "transitions) will be implemented next in module 2.2."
+                "Lattice Explorer is available separately in Workspace 03 for "
+                "small-N graphical inspection of actual priced nodes."
             )
 
 
@@ -384,6 +476,7 @@ def render_comparison_page() -> None:
 
     left, right = st.columns([1.0, 1.35], gap="large")
     with left:
+        _render_comparison_import()
         submitted, request, models, repetitions, reference, error = comparison_form()
     _render_comparison_output_column(right, submitted, request, models, repetitions, reference, error)
 

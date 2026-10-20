@@ -28,6 +28,11 @@ from frontend.pricing_service import (
     price_contract,
 )
 from frontend.components import result_panel
+from frontend.contract_workflow import (
+    clear_reference,
+    get_reference,
+    save_reference_from_last_result,
+)
 from frontend.styles import apply_theme
 
 
@@ -188,6 +193,28 @@ def main() -> None:
             label_visibility="collapsed", key="lattice_workspace",
         )
         st.divider()
+        st.markdown("**REFERENCE CONTRACT**")
+        reference = get_reference(st.session_state)
+        if reference is None:
+            st.caption("No reference saved yet.")
+        else:
+            st.caption(
+                f"{reference.exercise} {reference.option_type} · "
+                f"S={reference.spot:g} € · K={reference.strike:g} €"
+            )
+            st.caption(
+                f"{reference.model} · N={reference.steps} · "
+                f"{len(reference.dividends)} cash dividend(s)"
+            )
+            st.button(
+                "Clear reference",
+                on_click=clear_reference,
+                args=(st.session_state,),
+                key="reference_contract_clear",
+                width="stretch",
+                help="Remove only the shared reference, not your pricing results.",
+            )
+        st.divider()
         st.markdown("**RESEARCH**")
         st.caption("Archived experiments · offline analysis")
         st.divider()
@@ -259,6 +286,19 @@ def main() -> None:
         last_result = st.session_state["last_pricing_result"]
         if last_result is not None:
             result_panel(last_result)
+            st.button(
+                "Save this contract as reference",
+                on_click=save_reference_from_last_result,
+                args=(st.session_state,),
+                key="reference_contract_save",
+                width="stretch",
+                help="Keep these successfully priced inputs in this session; "
+                     "other workspaces will import them only on request.",
+            )
+            if get_reference(st.session_state) == last_result.request:
+                st.caption("Active reference · saved from this pricing ticket.")
+            else:
+                st.caption("Save this ticket to reuse its inputs across workspaces.")
         elif not submitted:
             st.markdown('<div class="desk-section">Valuation output</div>', unsafe_allow_html=True)
             st.info("Configure the contract and select **RUN PRICING** to calculate a premium.")
