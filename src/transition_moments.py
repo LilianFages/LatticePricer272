@@ -1,6 +1,7 @@
 import math
 
 from src.dividend import CashDividend
+from src.dividend_timing import dividend_time_in_step
 
 
 class TransitionMoments:
@@ -80,10 +81,10 @@ class TransitionMoments:
         """Return moments when a cash dividend occurs in the step."""
         dt = step_end - step_start
 
-        remaining_time = (
-            step_end
-            - dividend.time
+        effective_time = dividend_time_in_step(
+            dividend.time, step_start, step_end
         )
+        remaining_time = step_end - effective_time
 
         # The dividend is carried from ex-date to the end of the step.
         expected_value = (
@@ -144,12 +145,5 @@ class TransitionMoments:
         if dividend is None:
             return
 
-        # Convention: a dividend belongs to the step ending on its ex-date.
-        if not (
-            step_start
-            < dividend.time
-            <= step_end
-        ):
-            raise ValueError(
-                "Dividend must occur inside the time step."
-            )
+        # The only tolerated endpoint overflow is binary roundoff.
+        dividend_time_in_step(dividend.time, step_start, step_end)

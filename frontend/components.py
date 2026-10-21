@@ -9,6 +9,8 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
+from src.risk.dividend_events import assess_dividend_exercise
+
 from frontend.pricing_service import (
     PricingRequest,
     PricingResult,
@@ -178,7 +180,7 @@ def result_panel(result: PricingResult) -> None:
         '<div class="name">Calculated model premium · EUR</div>'
         f'<div class="price">{result.price:,.6f} €</div>'
         f'<div class="description">{req.option_type} · {req.exercise} · '
-        f'{req.model} · {req.steps} steps</div></div>',
+        f'{req.model} · {req.steps} steps · {result.algorithm}</div></div>',
         unsafe_allow_html=True,
     )
 
@@ -194,7 +196,12 @@ def result_panel(result: PricingResult) -> None:
         ),
     )
 
-    _render_pricing_benchmarks(result)
+    exercise_audit = assess_dividend_exercise(req, result.price)
+    if exercise_audit.warning is not None:
+        st.warning(exercise_audit.warning)
+
+    with st.expander("Model benchmarks & allocation details", expanded=False):
+        _render_pricing_benchmarks(result)
 
     # The risk snapshot is cached by Pricing Terminal on a successful ticket.
     from frontend.trading_risk_views import render_desk_risk

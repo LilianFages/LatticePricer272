@@ -5,11 +5,13 @@ The only position inputs appear inside the collapsed Delta Hedge subsection.
 
 from __future__ import annotations
 
+from functools import partial
+
 import altair as alt
 import pandas as pd
 import streamlit as st
 
-from frontend.pricing_service import PricingInputError, PricingResult
+from frontend.pricing_service import PricingInputError, PricingResult, price_contract
 from frontend.trading_risk import (
     GREEK_NAMES, GREEK_UNITS, DeskRiskSnapshot, calculate_stock_hedge,
     compute_greek_curve, greek_table,
@@ -31,18 +33,22 @@ def _show_curve(result: PricingResult, snapshot: DeskRiskSnapshot) -> None:
                 points = compute_greek_curve(
                     result.request, chosen, count=5, span_pct=10.0,
                     bumps=snapshot.base.bumps,
+                    pricer=partial(price_contract, algorithm=result.algorithm),
                 )
             except (PricingInputError, ValueError, RuntimeError, OverflowError,
                     ZeroDivisionError) as exc:
                 st.error(f"Greek curve unavailable: {exc}")
             else:
-                st.session_state["desk_greek_curve"] = (result.request, chosen, points)
+                st.session_state["desk_greek_curve"] = (
+                    result.request, result.algorithm, chosen, points,
+                )
     cached = st.session_state.get("desk_greek_curve")
-    if not (isinstance(cached, tuple) and len(cached) == 3
-            and cached[0] == result.request and cached[1] == chosen):
+    if not (isinstance(cached, tuple) and len(cached) == 4
+            and cached[0] == result.request
+            and cached[1] == result.algorithm and cached[2] == chosen):
         st.caption("Select a Greek and click Calculate to display its spot-sensitivity curve.")
         return
-    _, _, points = cached
+    _, _, _, points = cached
     successful = [{"Spot (€)": point.spot, "Greek value": point.value}
                   for point in points if point.value is not None]
     if len(successful) >= 2:

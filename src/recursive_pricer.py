@@ -2,6 +2,10 @@ import math
 from typing import Self
 
 from src.binomial_tree import BinomialTree
+from src.dividend_exercise import (
+    DividendStepEvent, before_dividend_value, dividend_exercise_steps,
+    offgrid_exercise_bound,
+)
 from src.node import Node
 from src.option import Option
 from src.trinomial_tree import TrinomialTree
@@ -24,6 +28,11 @@ class RecursivePricer:
 
         # Recursive pricing requires the complete lattice in memory.
         tree.build()
+        event_steps = dividend_exercise_steps(tree) if option.is_american else {}
+        remaining_events = {
+            tree.nb_steps - step + 1: amount
+            for step, amount in event_steps.items()
+        }
 
         discount_factor = math.exp(
             -tree.rate * tree.dt
@@ -34,6 +43,7 @@ class RecursivePricer:
             remaining_steps=tree.nb_steps,
             option=option,
             discount_factor=discount_factor,
+            event_dividends=remaining_events,
         )
 
     def _price_node(
@@ -41,7 +51,8 @@ class RecursivePricer:
         node: Node,
         remaining_steps: int,
         option: Option,
-        discount_factor: float
+        discount_factor: float,
+        event_dividends: dict[int, DividendStepEvent],
     ) -> float:
         """Recursively price the option from one node."""
 
@@ -79,6 +90,7 @@ class RecursivePricer:
             remaining_steps=remaining_steps - 1,
             option=option,
             discount_factor=discount_factor,
+            event_dividends=event_dividends,
         )
 
         down_value = self._price_node(
@@ -86,8 +98,16 @@ class RecursivePricer:
             remaining_steps=remaining_steps - 1,
             option=option,
             discount_factor=discount_factor,
+            event_dividends=event_dividends,
         )
 
+        ex_dividend = event_dividends.get(remaining_steps)
+        up_value = before_dividend_value(
+            node.next_up, up_value, option, ex_dividend,
+        )
+        down_value = before_dividend_value(
+            node.next_down, down_value, option, ex_dividend,
+        )
         expected_option_value = (
             node.up_probability * up_value
             + node.down_probability * down_value
@@ -105,8 +125,12 @@ class RecursivePricer:
                 remaining_steps=remaining_steps - 1,
                 option=option,
                 discount_factor=discount_factor,
+                event_dividends=event_dividends,
             )
 
+            mid_value = before_dividend_value(
+                node.next_mid, mid_value, option, ex_dividend,
+            )
             expected_option_value += (
                 node.mid_probability
                 * mid_value
@@ -118,6 +142,9 @@ class RecursivePricer:
         )
 
         # American options may exercise early at the current node.
+        hold_value = offgrid_exercise_bound(
+            node, hold_value, option, ex_dividend,
+        )
         node.option_value = option.value_at_node(
             spot=node.price,
             hold_value=hold_value,

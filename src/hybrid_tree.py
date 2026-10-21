@@ -2,6 +2,7 @@ import math
 from typing import Self
 
 from src.dividend import CashDividend
+from src.dividend_timing import dividend_grid_step
 from src.node import Node, TrunkNode
 from src.transition_moments import TransitionMoments
 from src.trinomial_probability import TrinomialProbabilitySolver
@@ -185,33 +186,18 @@ class HybridTree:
         self: Self,
         step: int
     ) -> CashDividend | None:
-        """Return the dividend occurring during one time step."""
-        step_start = (
-            step - 1
-        ) * self.dt
-
-        step_end = (
-            step
-            * self.dt
-        )
-
+        """Find the cash event within the right-closed lattice interval."""
         dividend_in_step: CashDividend | None = None
-
-        # Assign each cash event to the unique step containing its ex-date.
         for dividend in self.dividends:
-            if (
-                step_start
-                < dividend.time
-                <= step_end
-            ):
-                if dividend_in_step is not None:
-                    raise ValueError(
-                        "Only one dividend per time step is supported."
-                    )
-
-                dividend_in_step = dividend
-
+            if dividend_grid_step(
+                dividend.time, self.maturity, self.nb_steps
+            ) != step:
+                continue
+            if dividend_in_step is not None:
+                raise ValueError("Only one dividend per time step is supported.")
+            dividend_in_step = dividend
         return dividend_in_step
+
 
     def _transition_moments(
         self: Self,

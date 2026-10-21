@@ -10,6 +10,7 @@ import math
 import sys
 from dataclasses import replace
 from datetime import date, timedelta
+from functools import partial
 from pathlib import Path
 
 # Streamlit adds frontend/ to sys.path; pricing engines live at repo root/src/.
@@ -29,6 +30,7 @@ from frontend.pricing_service import (
     DividendInput,
     PricingInputError,
     PricingRequest,
+    PRICING_ALGORITHMS,
     price_contract,
 )
 from frontend.components import result_panel
@@ -155,11 +157,15 @@ def build_ticket_form(reset_nonce: int) -> tuple[bool, PricingRequest | None, st
             '<div class="desk-section">04 · Model & numerical setup</div>',
             unsafe_allow_html=True,
         )
-        st.caption(
-            "Current execution engine: Recursive. Backward will be enabled "
-            "only after its validation for all model families."
+        engine_col, steps_col = st.columns(2, gap="small")
+        algorithm = engine_col.selectbox(
+            "Pricing algorithm", PRICING_ALGORITHMS,
+            index=0, key=f"{prefix}_pricing_algorithm",
+            help="Recursive memoization or iterative backward induction. "
+                 "Both use the same financial lattice and transitions.",
         )
-        steps = st.number_input(
+        st.caption("One pricing algorithm for the premium and every Greek.")
+        steps = steps_col.number_input(
             "Time steps (N)", min_value=1, max_value=MAX_STEPS,
             value=100, step=25, key=f"{prefix}_steps",
             help="Interactive safety cap; not the engine's mathematical limit.",
@@ -226,6 +232,7 @@ def build_ticket_form(reset_nonce: int) -> tuple[bool, PricingRequest | None, st
         # Render navigation and global page chrome without changing active widgets.
         return False, None, None
     st.session_state.pop("ticket_submitted_calendar", None)
+    st.session_state.pop("ticket_submitted_algorithm", None)
     try:
         model, pruning_threshold = resolve_model_selection(
             model_family, pruning_enabled, pruning_method, pruning_threshold,
@@ -245,6 +252,7 @@ def build_ticket_form(reset_nonce: int) -> tuple[bool, PricingRequest | None, st
             st.session_state["ticket_submitted_calendar"] = calendar
         else:
             request = replace(request, dividends=read_dividend_table(dividend_frame))
+        st.session_state["ticket_submitted_algorithm"] = algorithm
         return True, request, None
     except (PricingInputError, CalendarInputError) as exc:
         return True, None, str(exc)
@@ -364,14 +372,20 @@ def main() -> None:
                 st.error(parsing_error)
             elif request is not None:
                 try:
+                    selected_algorithm = st.session_state.get(
+                        "ticket_submitted_algorithm", "Recursive"
+                    )
                     with st.spinner("Running lattice pricing..."):
-                        result = price_contract(request)
+                        result = price_contract(request, algorithm=selected_algorithm)
                     st.session_state["last_pricing_result"] = result
                     try:
                         # Greek calculations happen once per successful RUN PRICING,
                         # not on Streamlit reruns or widget changes.
                         with st.spinner("Calculating desk Greeks..."):
-                            risk_snapshot = compute_desk_risk(request)
+                            risk_snapshot = compute_desk_risk(
+                                request,
+                                pricer=partial(price_contract, algorithm=selected_algorithm),
+                            )
                         st.session_state["desk_risk_snapshot"] = (request, risk_snapshot)
                     except (PricingInputError, ValueError, RuntimeError,
                             OverflowError, ZeroDivisionError) as risk_exc:
@@ -382,7 +396,8 @@ def main() -> None:
                     )
                     history = st.session_state["pricing_history"]
                     history.insert(0, {
-                        "Model": request.model, "Type": request.option_type,
+                        "Model": request.model, "Engine": selected_algorithm,
+                        "Type": request.option_type,
                         "Exercise": request.exercise, "K": request.strike,
                         "N": request.steps, "Divs": len(request.dividends),
                         "Price (€)": round(result.price, 8),

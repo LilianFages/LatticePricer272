@@ -17,7 +17,9 @@ from src.pricing_errors import PricingInputError
 from src.binomial_tree import BinomialTree
 from src.black_scholes import BlackScholesPricer
 from src.dividend import CashDividend
+from src.dividend_timing import dividend_grid_step
 from src.hybrid_tree import HybridTree
+from src.iterative_backward_pricer import IterativeBackwardPricer
 from src.node import Node
 from src.option import CallOption, PutOption
 from src.recursive_pricer import RecursivePricer
@@ -30,6 +32,8 @@ ModelName = Literal[
 ]
 OptionType = Literal["Call", "Put"]
 ExerciseStyle = Literal["European", "American"]
+PricingAlgorithm = Literal["Recursive", "Backward"]
+PRICING_ALGORITHMS: tuple[PricingAlgorithm, ...] = ("Recursive", "Backward")
 
 MODELS: tuple[ModelName, ...] = (
     "Binomial",
@@ -74,6 +78,7 @@ class PricingResult:
     pruned_transitions: int | None
     black_scholes: float | None
     full_trinomial_reference_nodes: int | None = None
+    algorithm: PricingAlgorithm = "Recursive"
 
     @property
     def black_scholes_relative_error_pct(self) -> float | None:
@@ -100,12 +105,13 @@ class PricingResult:
 PricingFunction = Callable[[PricingRequest], PricingResult]
 
 def _dividend_step(time_value: float, maturity: float, steps: int) -> int:
-    """Use the same (step_start, step_end] convention as TrinomialTree."""
-    dt = maturity / steps
-    for step in range(1, steps + 1):
-        if (step - 1) * dt < time_value <= step * dt:
-            return step
-    raise PricingInputError("Dividend dates must fall within the option's maturity.")
+    """Share the lattice's stable, right-closed ex-date convention."""
+    try:
+        return dividend_grid_step(time_value, maturity, steps)
+    except ValueError as exc:
+        raise PricingInputError(
+            "Dividend dates must fall within the option's maturity."
+        ) from exc
 
 
 def _validate_dividend_schedule(request: PricingRequest) -> None:
@@ -214,8 +220,14 @@ def count_reachable_nodes(root: Node) -> int:
     return len(seen)
 
 
-def price_contract(request: PricingRequest) -> PricingResult:
-    """Run a fresh end-to-end pricing, then collect diagnostics."""
+def price_contract(
+    request: PricingRequest,
+    *,
+    algorithm: PricingAlgorithm = "Recursive",
+) -> PricingResult:
+    """Price a contract using the explicitly selected numerical algorithm."""
+    if algorithm not in PRICING_ALGORITHMS:
+        raise PricingInputError("Unknown pricing algorithm.")
     validate_request(request)
     start = time.perf_counter()
     tree = _build_tree(request)
@@ -223,7 +235,8 @@ def price_contract(request: PricingRequest) -> PricingResult:
         strike=request.strike,
         is_american=request.exercise == "American",
     )
-    price = RecursivePricer().price(tree, option)
+    pricer = RecursivePricer() if algorithm == "Recursive" else IterativeBackwardPricer()
+    price = pricer.price(tree, option)
     elapsed_ms = (time.perf_counter() - start) * 1000.0
     if not math.isfinite(price) or price < 0.0:
         raise RuntimeError("The engine returned an invalid option price.")
@@ -248,6 +261,7 @@ def price_contract(request: PricingRequest) -> PricingResult:
             tree.pruned_node_count if isinstance(tree, TrinomialTree) else None
         ),
         black_scholes=reference,
+        algorithm=algorithm,
         full_trinomial_reference_nodes=(
             (request.steps + 1) ** 2
             if (
@@ -273,6 +287,7 @@ def ticket_csv(result: PricingResult) -> str:
         ("steps", request.steps), ("pruning_threshold", request.pruning_threshold),
         ("dividends", "; ".join(f"{d.time}:{d.amount}" for d in request.dividends)),
         ("price", result.price), ("runtime_ms", result.elapsed_ms),
+        ("pricing_algorithm", result.algorithm),
         ("reachable_nodes", result.reachable_nodes),
         ("allocated_nodes", result.allocated_nodes),
         ("pruned_transitions", result.pruned_transitions),
