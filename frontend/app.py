@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import math
 import sys
+from dataclasses import replace
+from datetime import date, timedelta
 from pathlib import Path
 
 # Streamlit adds frontend/ to sys.path; pricing engines live at repo root/src/.
@@ -18,19 +20,23 @@ if str(PROJECT_ROOT) not in sys.path:
 import pandas as pd
 import streamlit as st
 
+from frontend.calendar_contract import CalendarInputError
+from frontend.calendar_ticket import dated_request, parse_dated_dividends
+from frontend.model_selection import resolve_model_selection
 from frontend.pricing_service import (
     DEFAULT_THRESHOLD,
     MAX_STEPS,
-    MODELS,
     DividendInput,
     PricingInputError,
     PricingRequest,
     price_contract,
 )
 from frontend.components import result_panel
+from frontend.trading_risk import compute_desk_risk
 from frontend.contract_workflow import (
     clear_reference,
     get_reference,
+    get_reference_calendar,
     save_reference_from_last_result,
 )
 from frontend.styles import apply_theme
@@ -81,17 +87,58 @@ def read_dividend_table(frame: pd.DataFrame) -> tuple[DividendInput, ...]:
 def build_ticket_form(reset_nonce: int) -> tuple[bool, PricingRequest | None, str | None]:
     """Return submitted status and either a validated shape or parsing error."""
     prefix = f"ticket_{reset_nonce}"
+    date_col, model_col = st.columns([1.2, 1.0], gap="medium")
+    with date_col:
+        date_mode = st.radio(
+            "Maturity convention", ("Calendar dates", "Time in years · legacy"),
+            horizontal=True, key=f"{prefix}_date_mode",
+            help="Changes the input editor only; it never reprices.",
+        )
+    with model_col:
+        model_family = st.selectbox(
+            "Model family", ("Binomial", "Hybrid", "Trinomial"),
+            index=2, key=f"{prefix}_model_family",
+            help="A financial model family, independent of the pricing algorithm.",
+        )
+    pruning_enabled = False
+    if model_family == "Trinomial":
+        pruning_mode = st.radio(
+            "Trinomial pruning", ("On", "Off"), horizontal=True,
+            key=f"{prefix}_pruning_mode",
+            help="Off uses the full trinomial; On enables probability pruning.",
+        )
+        pruning_enabled = pruning_mode == "On"
     with st.form(f"pricing_ticket_{reset_nonce}", clear_on_submit=False):
         st.markdown('<div class="desk-section">01 · Contract</div>', unsafe_allow_html=True)
         a, b = st.columns(2)
         option_type = a.selectbox("Option", ("Call", "Put"), key=f"{prefix}_option")
         exercise = b.selectbox("Exercise", ("European", "American"), key=f"{prefix}_exercise")
-        model = st.selectbox(
-            "Pricing model", MODELS, index=3, key=f"{prefix}_model",
-            help="Full / branch / allocation pruning use the existing trinomial engine.",
-        )
+        st.markdown('<div class="desk-section">02 · Contract dates</div>', unsafe_allow_html=True)
+        valuation_date = None
+        expiry_date = None
+        maturity = None
+        if date_mode == "Calendar dates":
+            today = date.today()
+            a, b = st.columns(2)
+            valuation_date = a.date_input(
+                "Valuation date", value=today, key=f"{prefix}_valuation_date",
+            )
+            expiry_date = b.date_input(
+                "Expiry date", value=today + timedelta(days=365),
+                key=f"{prefix}_expiry_date",
+            )
+            if expiry_date > valuation_date:
+                days = (expiry_date - valuation_date).days
+                st.caption(f"ACT/365F · {days} calendar days · T = {days / 365:.6f} years")
+            else:
+                st.caption("Expiry must be strictly later than valuation date.")
+        else:
+            maturity = st.number_input(
+                "Time to maturity · years", min_value=0.01, max_value=100.0,
+                value=1.0, step=0.25, format="%.2f", key=f"{prefix}_maturity",
+            )
 
-        st.markdown('<div class="desk-section">02 · Market data</div>', unsafe_allow_html=True)
+        st.markdown('<div class="desk-section">03 · Market data</div>', unsafe_allow_html=True)
         a, b = st.columns(2)
         spot = a.number_input("Spot · €", min_value=0.01, max_value=10000000.0,
                               value=100.0, step=1.0, format="%.2f", key=f"{prefix}_spot")
@@ -103,48 +150,73 @@ def build_ticket_form(reset_nonce: int) -> tuple[bool, PricingRequest | None, st
                                  value=20.0, step=1.0, format="%.2f", key=f"{prefix}_vol")
         rate_pct = b.number_input("Risk-free rate · %", min_value=-50.0, max_value=100.0,
                                   value=2.0, step=0.25, format="%.2f", key=f"{prefix}_rate")
-        maturity = st.number_input("Time to maturity · years", min_value=0.01,
-                                   max_value=100.0, value=1.0, step=0.25, format="%.2f", key=f"{prefix}_maturity")
 
-        st.markdown('<div class="desk-section">03 · Numerical setup</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="desk-section">04 · Model & numerical setup</div>',
+            unsafe_allow_html=True,
+        )
+        st.caption(
+            "Current execution engine: Recursive. Backward will be enabled "
+            "only after its validation for all model families."
+        )
         steps = st.number_input(
             "Time steps (N)", min_value=1, max_value=MAX_STEPS,
             value=100, step=25, key=f"{prefix}_steps",
             help="Interactive safety cap; not the engine's mathematical limit.",
         )
+        pruning_method = "Allocation"
         pruning_threshold = DEFAULT_THRESHOLD
-        if model in ("Trinomial · Branch pruning", "Trinomial · Allocation pruning"):
-            pruning_threshold = st.selectbox(
-                # Keep the user-facing results and chart layout identical to the existing terminal.
-                "Pruning threshold",
-                (0.0, 1e-18, 1e-15, 1e-12),
-                index=1, key=f"{prefix}_threshold",
-                format_func=lambda x: "0 (disabled)" if x == 0 else f"{x:.0e}",
-            )
+        if model_family == "Trinomial" and pruning_enabled:
+            with st.expander("Trinomial pruning · Advanced", expanded=False):
+                pruning_method = st.selectbox(
+                    "Implementation", ("Allocation", "Branch"),
+                    key=f"{prefix}_pruning_method",
+                    help="Select allocation or branch pruning for research comparability.",
+                )
+                pruning_threshold = st.selectbox(
+                    "Pruning threshold", (1e-18, 1e-15, 1e-12),
+                    key=f"{prefix}_threshold",
+                    format_func=lambda value: f"{value:.0e}",
+                )
 
         with st.expander("Cash dividends · optional", expanded=False):
-            st.caption(
-                "Time in years from pricing date; amount in EUR per share. "
-                "A row with amount 0 is ignored. Add rows for multiple dividends."
-            )
-            dividend_frame = st.data_editor(
-                pd.DataFrame([{"time": 0.5, "amount": 0.0}]),
-                num_rows="dynamic",
-                hide_index=True,
-                width="stretch", key=f"{prefix}_dividend_table",
-                column_config={
-                    # Preserve error messages and empty states for model failures.
-                    "time": st.column_config.NumberColumn(
-                        "Payment time · years", min_value=0.0, max_value=100.0,
-                        step=0.05, format="%.4f", required=False,
-                    ),
-                    "amount": st.column_config.NumberColumn(
-                        "Cash amount · €", min_value=0.0,
-                        max_value=1000000.0, step=0.50, format="%.2f", required=False,
-                    ),
-                },
-            )
-            st.caption("The Binomial model does not support cash dividends.")
+            if date_mode == "Calendar dates":
+                st.caption("Ex-dates are calendar dates. Amounts are EUR per share. "
+                           "A zero-amount row is ignored.")
+                dividend_frame = st.data_editor(
+                    pd.DataFrame([{
+                        "ex_date": valuation_date + timedelta(days=182),
+                        "amount": 0.0,
+                    }]),
+                    num_rows="dynamic", hide_index=True, width="stretch",
+                    key=f"{prefix}_dated_dividend_table",
+                    column_config={
+                        "ex_date": st.column_config.DateColumn("Ex-dividend date", format="DD/MM/YYYY"),
+                        "amount": st.column_config.NumberColumn(
+                            "Cash amount · €", min_value=0.0,
+                            max_value=1000000.0, step=0.50, format="%.2f",
+                        ),
+                    },
+                )
+            else:
+                st.caption("Dates expressed in years from pricing. "
+                           "A zero-amount row is ignored.")
+                dividend_frame = st.data_editor(
+                    pd.DataFrame([{"time": 0.5, "amount": 0.0}]),
+                    num_rows="dynamic", hide_index=True, width="stretch",
+                    key=f"{prefix}_dividend_table",
+                    column_config={
+                        "time": st.column_config.NumberColumn(
+                            "Payment time · years", min_value=0.0,
+                            max_value=100.0, step=0.05, format="%.4f",
+                        ),
+                        "amount": st.column_config.NumberColumn(
+                            "Cash amount · €", min_value=0.0,
+                            max_value=1000000.0, step=0.50, format="%.2f",
+                        ),
+                    },
+                )
+            st.caption("Binomial does not support discrete cash dividends.")
 
         submitted = st.form_submit_button(
             "RUN PRICING  →", type="primary", width="stretch",
@@ -153,16 +225,28 @@ def build_ticket_form(reset_nonce: int) -> tuple[bool, PricingRequest | None, st
     if not submitted:
         # Render navigation and global page chrome without changing active widgets.
         return False, None, None
+    st.session_state.pop("ticket_submitted_calendar", None)
     try:
-        dividends = read_dividend_table(dividend_frame)
+        model, pruning_threshold = resolve_model_selection(
+            model_family, pruning_enabled, pruning_method, pruning_threshold,
+        )
         request = PricingRequest(
             spot=float(spot), strike=float(strike), rate=float(rate_pct) / 100.0,
-            volatility=float(vol_pct) / 100.0, maturity=float(maturity),
+            volatility=float(vol_pct) / 100.0,
+            maturity=float(maturity) if maturity is not None else 1.0,
             steps=int(steps), option_type=option_type, exercise=exercise,
-            model=model, dividends=dividends, pruning_threshold=pruning_threshold,
+            model=model, pruning_threshold=pruning_threshold,
         )
+        if date_mode == "Calendar dates":
+            dates = parse_dated_dividends(dividend_frame)
+            request, calendar = dated_request(
+                request, valuation_date, expiry_date, dates,
+            )
+            st.session_state["ticket_submitted_calendar"] = calendar
+        else:
+            request = replace(request, dividends=read_dividend_table(dividend_frame))
         return True, request, None
-    except PricingInputError as exc:
+    except (PricingInputError, CalendarInputError) as exc:
         return True, None, str(exc)
 
 
@@ -170,6 +254,11 @@ def reset_ticket() -> None:
     """Create fresh widget identities; preserve session blotter."""
     st.session_state["ticket_reset_nonce"] = st.session_state.get("ticket_reset_nonce", 0) + 1
     st.session_state["last_pricing_result"] = None
+    st.session_state.pop("desk_risk_snapshot", None)
+    st.session_state.pop("desk_risk_error", None)
+    st.session_state.pop("desk_greek_curve", None)
+    st.session_state.pop("last_pricing_calendar", None)
+    st.session_state.pop("ticket_submitted_calendar", None)
     st.session_state.pop("spot_revaluation", None)
 
 
@@ -206,6 +295,12 @@ def main() -> None:
                 f"{reference.model} · N={reference.steps} · "
                 f"{len(reference.dividends)} cash dividend(s)"
             )
+            reference_calendar = get_reference_calendar(st.session_state)
+            if reference_calendar is not None:
+                st.caption(
+                    f"Dates: {reference_calendar.valuation_date:%d/%m/%Y} → "
+                    f"{reference_calendar.expiry_date:%d/%m/%Y} · ACT/365F"
+                )
             st.button(
                 "Clear reference",
                 on_click=clear_reference,
@@ -259,6 +354,10 @@ def main() -> None:
     with right:
         if submitted:
             st.session_state["last_pricing_result"] = None
+            st.session_state.pop("desk_risk_snapshot", None)
+            st.session_state.pop("desk_risk_error", None)
+            st.session_state.pop("desk_greek_curve", None)
+            st.session_state.pop("last_pricing_calendar", None)
             st.session_state.pop("spot_revaluation", None)
             if parsing_error is not None:
                 # Preserve error messages and empty states for model failures.
@@ -268,6 +367,19 @@ def main() -> None:
                     with st.spinner("Running lattice pricing..."):
                         result = price_contract(request)
                     st.session_state["last_pricing_result"] = result
+                    try:
+                        # Greek calculations happen once per successful RUN PRICING,
+                        # not on Streamlit reruns or widget changes.
+                        with st.spinner("Calculating desk Greeks..."):
+                            risk_snapshot = compute_desk_risk(request)
+                        st.session_state["desk_risk_snapshot"] = (request, risk_snapshot)
+                    except (PricingInputError, ValueError, RuntimeError,
+                            OverflowError, ZeroDivisionError) as risk_exc:
+                        # A failed Greek must never invalidate a successful premium.
+                        st.session_state["desk_risk_error"] = str(risk_exc)
+                    st.session_state["last_pricing_calendar"] = st.session_state.get(
+                        "ticket_submitted_calendar"
+                    )
                     history = st.session_state["pricing_history"]
                     history.insert(0, {
                         "Model": request.model, "Type": request.option_type,

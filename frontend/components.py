@@ -196,6 +196,10 @@ def result_panel(result: PricingResult) -> None:
 
     _render_pricing_benchmarks(result)
 
+    # The risk snapshot is cached by Pricing Terminal on a successful ticket.
+    from frontend.trading_risk_views import render_desk_risk
+    render_desk_risk(result)
+
     with st.expander("Terminal payoff (contractual)", expanded=False):
         st.altair_chart(payoff_chart(req), width="stretch")
         st.caption("Payoff at maturity versus terminal stock price; not present-value sensitivity.")

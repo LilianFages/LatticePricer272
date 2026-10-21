@@ -10,12 +10,15 @@ from collections.abc import MutableMapping
 from dataclasses import dataclass
 from typing import Any
 
+from frontend.calendar_contract import ContractCalendar
+from frontend.calendar_ticket import calendar_matches_request
 from frontend.exercise_boundary_service import MAX_BOUNDARY_STEPS
 from frontend.lattice_explorer_service import MAX_VISUAL_STEPS
 from frontend.pricing_service import PricingRequest, PricingResult, validate_request
 
 
 REFERENCE_KEY = "lattice272_reference_contract"
+REFERENCE_CALENDAR_KEY = "lattice272_reference_calendar"
 TARGETS = (
     "model_comparison",
     "lattice_explorer",
@@ -50,6 +53,7 @@ def save_reference(
         raise TypeError("Reference contract must be a PricingRequest.")
     validate_request(request)
     state[REFERENCE_KEY] = request
+    state.pop(REFERENCE_CALENDAR_KEY, None)
 
 
 def save_reference_from_last_result(
@@ -63,7 +67,15 @@ def save_reference_from_last_result(
     result = state.get("last_pricing_result")
     if not isinstance(result, PricingResult):
         raise ValueError("No successful pricing result is available to save.")
+    calendar = state.get("last_pricing_calendar")
+    if calendar is not None:
+        if not isinstance(calendar, ContractCalendar) or not calendar_matches_request(
+            calendar, result.request
+        ):
+            raise ValueError("Last pricing calendar does not match the priced contract.")
     save_reference(state, result.request)
+    if calendar is not None:
+        state[REFERENCE_CALENDAR_KEY] = calendar
     return result.request
 
 
@@ -77,9 +89,19 @@ def get_reference(state: MutableMapping[str, Any]) -> PricingRequest | None:
     return stored
 
 
+def get_reference_calendar(state: MutableMapping[str, Any]) -> ContractCalendar | None:
+    """Retrieve original dates, when this reference originated from a dated ticket."""
+    calendar = state.get(REFERENCE_CALENDAR_KEY)
+    if calendar is not None and not isinstance(calendar, ContractCalendar):
+        raise TypeError("Invalid reference calendar metadata.")
+    return calendar
+
+
 def clear_reference(state: MutableMapping[str, Any]) -> bool:
-    """Discard the reference and report whether one was present."""
-    return state.pop(REFERENCE_KEY, None) is not None
+    """Discard both the reference ticket and its optional calendar metadata."""
+    was_saved = state.pop(REFERENCE_KEY, None) is not None
+    state.pop(REFERENCE_CALENDAR_KEY, None)
+    return was_saved
 
 
 def assess_transfer(request: PricingRequest, target: str) -> TransferCheck:

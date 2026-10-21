@@ -10,9 +10,10 @@ import io
 import math
 import time
 from dataclasses import dataclass, replace
-from typing import Literal
+from typing import Callable, Literal
 
 from src.allocation_pruned_trinomial_tree import AllocationPrunedTrinomialTree
+from src.pricing_errors import PricingInputError
 from src.binomial_tree import BinomialTree
 from src.black_scholes import BlackScholesPricer
 from src.dividend import CashDividend
@@ -39,10 +40,6 @@ MODELS: tuple[ModelName, ...] = (
 )
 MAX_STEPS = 350  # Interactive latency cap, not a financial/model restriction.
 DEFAULT_THRESHOLD = 1e-18
-
-
-class PricingInputError(ValueError):
-    """User-correctable invalid market or contract input."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,6 +95,9 @@ class PricingResult:
             return None
         return self.price - self.black_scholes
 
+
+# Pricing callbacks remain injectable for risk and future backward engines.
+PricingFunction = Callable[[PricingRequest], PricingResult]
 
 def _dividend_step(time_value: float, maturity: float, steps: int) -> int:
     """Use the same (step_start, step_end] convention as TrinomialTree."""
