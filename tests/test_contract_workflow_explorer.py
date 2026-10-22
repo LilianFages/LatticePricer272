@@ -24,14 +24,15 @@ def test_absent_reference_never_changes_explorer() -> None:
     assert state == before
 
 
-def test_pricing_terminal_default_depth_requires_explicit_change() -> None:
+def test_above_visual_cap_requires_explicit_change() -> None:
     state = {"lattice_explorer_result": "old geometry"}
-    save_reference(state, PricingRequest())  # N=100; explorer maximum N=10.
+    save_reference(state, PricingRequest(steps=101))
     before = state.copy()
     accepted, problems = apply_reference_to_explorer(state)
     assert not accepted
-    assert any("N=100" in msg for msg in problems)
+    assert any("N=101" in message for message in problems)
     assert state == before
+
 
 
 def test_small_grid_import_is_exact_and_clears_obsolete_geometry() -> None:

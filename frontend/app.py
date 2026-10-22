@@ -278,6 +278,9 @@ def main() -> None:
     if "pricing_history" not in st.session_state:
         st.session_state["pricing_history"] = []
 
+    from frontend.model_diagnostics import WORKSPACES, migrate_navigation_state
+    migrate_navigation_state(st.session_state)
+
     with st.sidebar:
         st.markdown("### ◈ LATTICE 272")
         st.caption("DERIVATIVES PRICING · QUANT LAB")
@@ -286,7 +289,7 @@ def main() -> None:
         st.markdown("**WORKSPACE**")
         workspace = st.radio(
             "Workspace",
-            ("01 / Pricing terminal", "02 / Model comparison", "03 / Lattice explorer", "04 / Quant analytics", "05 / Research lab"),
+            WORKSPACES,
             label_visibility="collapsed", key="lattice_workspace",
         )
         st.divider()
@@ -329,22 +332,17 @@ def main() -> None:
                       help="Reset inputs and the displayed result; session blotter is retained.")
 
     # Validate form inputs before triggering numerical pricing workflows.
-    if workspace == "02 / Model comparison":
-        from frontend.model_comparison import render_comparison_page
-        render_comparison_page()
+    if workspace == "02 / Model diagnostics":
+        from frontend.model_diagnostics import render_model_diagnostics_page
+        render_model_diagnostics_page()
         return
 
-    if workspace == "03 / Lattice explorer":
-        from frontend.lattice_explorer import render_lattice_explorer_page
-        render_lattice_explorer_page()
-        return
-
-    if workspace == "04 / Quant analytics":
+    if workspace == "03 / Quant analytics":
         from frontend.quant_analytics import render_quant_analytics_page
         render_quant_analytics_page()
         return
 
-    if workspace == "05 / Research lab":
+    if workspace == "04 / Research lab":
         from frontend.research_lab import render_research_lab_page
         # Keep the user-facing results and chart layout identical to the existing terminal.
         render_research_lab_page()

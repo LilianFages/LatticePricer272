@@ -12,13 +12,16 @@ from typing import Any
 
 from src.node import Node
 from frontend.lattice_allocation import capture_allocated_columns
+from frontend.exercise_policy import (
+    dividend_events_for_request, immediate_node_exercise,
+)
 from src.option import CallOption, PutOption
 from src.recursive_pricer import RecursivePricer
 from frontend.pricing_service import (
     PricingInputError, PricingRequest, _build_tree, validate_request,
 )
 
-MAX_VISUAL_STEPS = 10
+MAX_VISUAL_STEPS = 100
 EPS = 1e-13
 
 
@@ -115,23 +118,18 @@ def _successors(node: Node) -> list[tuple[str, Node, float]]:
     return out
 
 
-def _exercise_state(node: Node, request: PricingRequest, step: int) -> str:
-    """Mark optimal early exercise using priced successors, not a new model."""
+def _exercise_state(
+    node: Node, request: PricingRequest, step: int,
+    event_steps: dict | None = None,
+) -> str:
+    """Classify immediate node exercise, separate from dividend-event exercise."""
     if step == request.steps:
         return "Maturity"
-    if request.exercise == "European":
-        return "Continuation"
-    intrinsic = (max(node.price - request.strike, 0.0)
-                 if request.option_type == "Call"
-                 else max(request.strike - node.price, 0.0))
-    if intrinsic <= EPS:
-        return "Continuation"
-    disc = math.exp(-request.rate * request.maturity / request.steps)
-    hold = disc * sum(
-        probability * float(child.option_value)
-        for _, child, probability in _successors(node)
-    )
-    if intrinsic > hold + max(1e-10, 1e-10 * intrinsic):
+    if immediate_node_exercise(
+        node, request, step, request.maturity / request.steps,
+        ((child, probability) for _, child, probability in _successors(node)),
+        event_steps,
+    ):
         return "Early exercise"
     return "Continuation"
 
@@ -184,6 +182,7 @@ def _trace_reachable_layers(tree: object, request: PricingRequest) -> tuple:
 def _make_priced_visual_nodes(layers: list, masses: list, ids: dict, request: PricingRequest) -> object:
     """Describe priced nodes with their measured financial states."""
     nodes_out: list[VisualNode] = []
+    event_steps = dividend_events_for_request(request)
     for step, layer in enumerate(layers):
         # Return deterministic tabular coordinates for visualization.
         for node in layer:
@@ -197,7 +196,7 @@ def _make_priced_visual_nodes(layers: list, masses: list, ids: dict, request: Pr
                 node_id=ids[id(node)], step=step, price=float(node.price),
                 option_value=float(node.option_value),
                 reach_probability=masses[step][id(node)],
-                state=_exercise_state(node, request, step),
+                state=_exercise_state(node, request, step, event_steps),
                 up_probability=node.up_probability,
                 mid_probability=node.mid_probability,
                 down_probability=node.down_probability,

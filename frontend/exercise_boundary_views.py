@@ -118,6 +118,14 @@ def _pv_chart(study: ExerciseStudy) -> alt.Chart:
 def _render_exercise_stopping_details(study: ExerciseStudy) -> None:
     st.markdown('<div class="desk-section">Exercise probabilities by date</div>',
                 unsafe_allow_html=True)
+    if study.request.exercise == "American" and study.request.dividends:
+        st.info(
+            "These curves classify exercise at displayed lattice nodes. "
+            "The pricing engine also values exercise around dividend events; "
+            "those pre/post ex-date decisions are not included in the first-exercise "
+            "distribution or exercise-region mass shown here. "
+            "Do not interpret these as complete stopping-time probabilities."
+        )
     st.altair_chart(_probabilities(study), width="stretch")
     st.caption('Blue = unconditional probability of being inside the exercise region (paths may already have exercised). '
         'Gold = first exercise at this date, excluding previously stopped paths. Do not sum the blue series across dates.')

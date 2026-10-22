@@ -76,11 +76,12 @@ def test_small_grid_transfers_exactly_to_explorer() -> None:
 
 
 def test_explorer_never_silently_reduces_steps() -> None:
-    request = PricingRequest(steps=100)
+    request = PricingRequest(steps=101)
     check = assess_transfer(request, "lattice_explorer")
     assert not check.exact
-    assert "N=100" in check.issues[0]
-    assert request.steps == 100
+    assert "N=101" in check.issues[0]
+    assert request.steps == 101
+
 
 
 def test_explorer_rejects_multiple_dividends_without_dropping_them() -> None:

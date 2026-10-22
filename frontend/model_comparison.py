@@ -15,6 +15,7 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
+from frontend.diagnostics_fields import render_market_fields, render_option_pair
 from frontend.comparison_service import (
     ComparisonReport,
     compare_models,
@@ -150,16 +151,12 @@ def parse_dividends(frame: pd.DataFrame) -> tuple[DividendInput, ...]:
 
 
 def _comparison_contract_fields() -> tuple:
-    """Collect the common contract and selected pricing engines."""
+    """Contract-specific choices; the option editor is shared with the explorer."""
     st.markdown('<div class="desk-section">01 · Contract</div>', unsafe_allow_html=True)
-    a, b = st.columns(2)
-    kind = a.selectbox("Option", ("Call", "Put"),
-                       index=("Call", "Put").index(_comparison_default("option_type", "Call")),
-                       key=_comparison_contract_key("cmp_kind"))
-    exercise = b.selectbox("Exercise", ("European", "American"),
-                           index=("European", "American").index(
-                               _comparison_default("exercise", "European")),
-                           key=_comparison_contract_key("cmp_exercise"))
+    kind, exercise = render_option_pair(
+        _comparison_contract_key, _comparison_default,
+        widget_names=("cmp_kind", "cmp_exercise"),
+    )
     models = tuple(st.multiselect(
         "Models to compare", MODELS, default=DEFAULT_MODELS,
         key="cmp_models", help="All selected models price the same contract."
@@ -167,30 +164,14 @@ def _comparison_contract_fields() -> tuple:
     return kind, exercise, models
 
 
-
 def _comparison_market_fields() -> tuple:
-    """Collect common market parameters."""
-    st.markdown('<div class="desk-section">02 · Market data</div>', unsafe_allow_html=True)
-    a, b = st.columns(2)
-    spot = a.number_input("Spot · €", min_value=0.01, max_value=1e7,
-                          value=float(_comparison_default("spot", 100.0)),
-                          step=1.0, format="%.2f", key=_comparison_contract_key("cmp_spot"))
-    strike = b.number_input("Strike · €", min_value=0.0, max_value=1e7,
-                            value=float(_comparison_default("strike", 100.0)),
-                            step=1.0, format="%.2f", key=_comparison_contract_key("cmp_strike"))
-    a, b = st.columns(2)
-    # Preserve dividend-editing behavior and Streamlit widget keys.
-    vol_pct = a.number_input("Volatility · %", min_value=0.0, max_value=500.0,
-                             value=float(_comparison_default("volatility", 0.20)) * 100.0,
-                             step=1.0, format="%.2f", key=_comparison_contract_key("cmp_vol"))
-    rate_pct = b.number_input("Risk-free rate · %", min_value=-50.0,
-                              max_value=100.0, value=float(_comparison_default("rate", 0.02)) * 100.0,
-                              step=0.25, format="%.2f", key=_comparison_contract_key("cmp_rate"))
-    maturity = st.number_input("Maturity · years", min_value=0.01,
-                               max_value=100.0, value=float(_comparison_default("maturity", 1.0)),
-                               step=0.25, format="%.2f", key=_comparison_contract_key("cmp_maturity"))
-    return spot, strike, vol_pct, rate_pct, maturity
-
+    """Common financial fields; preserve comparison widget IDs and limits."""
+    return render_market_fields(
+        _comparison_contract_key, _comparison_default,
+        widget_names=("cmp_spot", "cmp_strike", "cmp_vol", "cmp_rate", "cmp_maturity"),
+        heading="02 · Market data", spot_max=1e7,
+        strike_max=1e7, maturity_max=100.0,
+    )
 
 
 def _comparison_benchmark_fields() -> tuple:
@@ -425,6 +406,8 @@ def _update_comparison_result(
                     st.session_state["last_comparison_report"] = compare_models(
                         request, models, repetitions, reference
                     )
+                    st.session_state["diagnostics_last_contract"] = request
+                    st.session_state["diagnostics_last_source"] = "Compare models"
             except (PricingInputError, ValueError) as exc:
                 st.error(str(exc))
 
@@ -454,25 +437,26 @@ def _render_comparison_output_column(
                 "otherwise compare against a selected numerical engine."
             )
             st.caption(
-                "Lattice Explorer is available separately in Workspace 03 for "
-                "small-N graphical inspection of actual priced nodes."
+                "Select Explore lattice in Model Diagnostics to inspect "
+                "actual priced nodes on a small grid."
             )
 
 
-def render_comparison_page() -> None:
-    """Page 02; rendered through the existing frontend/app.py entrypoint."""
+def render_comparison_page(*, embedded: bool = False) -> None:
+    """Render cross-model analysis, optionally inside Model Diagnostics."""
     if "last_comparison_report" not in st.session_state:
         st.session_state["last_comparison_report"] = None
 
-    st.markdown('<div class="desk-kicker">Model comparison / 02</div>',
-                unsafe_allow_html=True)
-    st.markdown('<div class="desk-title">Cross-Model · Pricing & Performance</div>',
-                unsafe_allow_html=True)
-    st.markdown(
-        '<div class="desk-subtitle">One contract · multiple pricing engines · '
-        'explicit reference and numerical diagnostics</div>',
-        unsafe_allow_html=True,
-    )
+    if not embedded:
+        st.markdown('<div class="desk-kicker">Model comparison / 02</div>',
+                    unsafe_allow_html=True)
+        st.markdown('<div class="desk-title">Cross-Model · Pricing & Performance</div>',
+                    unsafe_allow_html=True)
+        st.markdown(
+            '<div class="desk-subtitle">One contract · multiple pricing engines · '
+            'explicit reference and numerical diagnostics</div>',
+            unsafe_allow_html=True,
+        )
 
     left, right = st.columns([1.0, 1.35], gap="large")
     with left:
@@ -480,8 +464,9 @@ def render_comparison_page() -> None:
         submitted, request, models, repetitions, reference, error = comparison_form()
     _render_comparison_output_column(right, submitted, request, models, repetitions, reference, error)
 
-    st.divider()
-    st.caption(
-        "LatticePricer272 · University quant project · User-supplied prices. "
-        "No live market data, calibration or trading connectivity."
-    )
+    if not embedded:
+        st.divider()
+        st.caption(
+            "LatticePricer272 · University quant project · User-supplied prices. "
+            "No live market data, calibration or trading connectivity."
+        )

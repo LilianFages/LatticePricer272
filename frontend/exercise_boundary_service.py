@@ -21,6 +21,9 @@ from typing import Any
 from frontend.pricing_service import (
     PricingInputError, PricingRequest, _build_tree, validate_request,
 )
+from frontend.exercise_policy import (
+    dividend_events_for_request, immediate_node_exercise,
+)
 from src.option import CallOption, PutOption
 from src.recursive_pricer import RecursivePricer
 
@@ -115,19 +118,18 @@ def _payoff(price: float, strike: float, kind: str) -> float:
 
 
 def _exercise(node: Any, request: PricingRequest, step: int,
-              dt: float) -> bool:
-    intrinsic = _payoff(float(node.price), request.strike, request.option_type)
-    if intrinsic <= 0:
-        return False
-    if step == request.steps:
-        return True
-    if request.exercise != "American":
-        return False
-    hold = math.exp(-request.rate * dt) * math.fsum(
-        p * _value(child) for child, p in _successors(node)
+              dt: float, event_steps: dict | None = None) -> bool:
+    # No outgoing transition is needed at maturity, for a European option,
+    # or when exercise has zero intrinsic value.
+    needs_continuation = (
+        step < request.steps
+        and request.exercise == "American"
+        and _payoff(float(node.price), request.strike, request.option_type) > 0.0
     )
-    scale = max(1.0, abs(intrinsic), abs(hold))
-    return intrinsic > hold + EXERCISE_TOL * scale
+    successors = _successors(node) if needs_continuation else ()
+    return immediate_node_exercise(
+        node, request, step, dt, successors, event_steps,
+    )
 
 
 
@@ -157,9 +159,12 @@ def _measure_exercise_flows(
     dt: float,
     cumulative: float,
     time: float,
+    event_steps: dict | None = None,
 ) -> tuple:
-    """Measure stopping mass survival and discounted expected value."""
-    candidates = {node for node in full if _exercise(node, request, step, dt)}
+    """Measure lattice-node stopping mass survival and discounted expected value."""
+    candidates = {
+        node for node in full if _exercise(node, request, step, dt, event_steps)
+    }
     region = math.fsum(full[n] for n in candidates)
     first = math.fsum(alive.get(n, 0.0) for n in candidates)
     cumulative += first
@@ -208,6 +213,7 @@ def analyze_priced_tree(root: Any, request: PricingRequest) -> tuple[
     points: list[ExercisePoint] = []
     cumulative = 0.0
     worst_mass_error = 0.0
+    event_steps = dividend_events_for_request(request)
 
     for step in range(request.steps + 1):
         time, full_total, worst_mass_error = _validate_exercise_layer(full, worst_mass_error, step, dt)
@@ -221,6 +227,7 @@ def analyze_priced_tree(root: Any, request: PricingRequest) -> tuple[
             dt,
             cumulative,
             time,
+            event_steps,
         )
 
         bottom, top, boundary, non_contiguous = _find_exercise_envelope(full, candidates, request, step)
