@@ -10,7 +10,7 @@ import streamlit as st
 from frontend.exercise_boundary_service import (
     MAX_BOUNDARY_STEPS, ExerciseStudy, dates_csv, nodes_csv, run_exercise_study,
 )
-from frontend.model_comparison import parse_dividends
+from frontend.dividend_input import parse_dividends
 from frontend.pricing_service import (
     DEFAULT_THRESHOLD, MODELS, PricingInputError, PricingRequest,
 )

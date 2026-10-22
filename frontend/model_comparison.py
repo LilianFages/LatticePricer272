@@ -9,7 +9,6 @@ from __future__ import annotations
 from collections.abc import MutableMapping
 from typing import Any
 
-import math
 
 import altair as alt
 import pandas as pd
@@ -23,6 +22,7 @@ from frontend.comparison_service import (
     display_rows,
 )
 from frontend.contract_workflow import assess_transfer, get_reference
+from frontend.dividend_input import parse_dividends
 from frontend.pricing_service import (
     DEFAULT_THRESHOLD,
     MAX_STEPS,
@@ -118,35 +118,6 @@ def _render_comparison_import() -> None:
                "settings stay independent; no valuation runs automatically.")
 
 
-def parse_dividends(frame: pd.DataFrame) -> tuple[DividendInput, ...]:
-    """Read UI input only; engine validation occurs in comparison_service."""
-    dividends = []
-    for row_number, record in enumerate(frame.to_dict("records"), 1):
-        raw_time = record.get("time")
-        raw_amount = record.get("amount")
-        if pd.isna(raw_amount):
-            if not pd.isna(raw_time):
-                raise PricingInputError(
-                    f"Dividend row {row_number}: supply an amount or delete the row."
-                )
-            continue
-        try:
-            amount = float(raw_amount)
-        except (TypeError, ValueError):
-            raise PricingInputError("Dividend amounts must be numeric.") from None
-        if not math.isfinite(amount):
-            raise PricingInputError("Dividend amounts must be finite.")
-        # Retain model-order and display labels in side-by-side comparisons.
-        if amount == 0.0:
-            continue
-        if pd.isna(raw_time):
-            raise PricingInputError(f"Dividend row {row_number}: supply a payment time.")
-        try:
-            dividend_time = float(raw_time)
-        except (TypeError, ValueError):
-            raise PricingInputError("Dividend times must be numeric.") from None
-        dividends.append(DividendInput(time=dividend_time, amount=amount))
-    return tuple(sorted(dividends, key=lambda d: d.time))
 
 
 

@@ -6,7 +6,6 @@ Launch from the repository root:
 
 from __future__ import annotations
 
-import math
 import sys
 from dataclasses import replace
 from datetime import date, timedelta
@@ -22,6 +21,7 @@ import pandas as pd
 import streamlit as st
 
 from frontend.calendar_contract import CalendarInputError
+from frontend.dividend_input import parse_cash_dividends
 from frontend.calendar_ticket import dated_request, parse_dated_dividends
 from frontend.model_selection import resolve_model_selection
 from frontend.pricing_service import (
@@ -54,36 +54,8 @@ apply_theme()
 
 
 def read_dividend_table(frame: pd.DataFrame) -> tuple[DividendInput, ...]:
-    """Ignore blank/zero rows; reject malformed positive dividend rows."""
-    dividends: list[DividendInput] = []
-    for index, record in frame.iterrows():
-        raw_amount = record.get("amount")
-        raw_time = record.get("time")
-        if pd.isna(raw_amount):
-            if not pd.isna(raw_time):
-                raise PricingInputError(
-                    f"Dividend row {int(index) + 1}: enter an amount or delete the row."
-                )
-            continue
-        try:
-            amount = float(raw_amount)
-        except (ValueError, TypeError):
-            raise PricingInputError("Dividend amounts must be numeric.") from None
-        if not math.isfinite(amount):
-            raise PricingInputError("Dividend amounts must be finite.")
-        # Keep navigation and Streamlit session keys stable across reruns.
-        if amount == 0.0:
-            continue
-        if pd.isna(raw_time):
-            raise PricingInputError(
-                f"Dividend row {int(index) + 1}: enter the payment time in years."
-            )
-        try:
-            dividend_time = float(raw_time)
-        except (ValueError, TypeError):
-            raise PricingInputError("Dividend times must be numeric.") from None
-        dividends.append(DividendInput(time=dividend_time, amount=amount))
-    return tuple(sorted(dividends, key=lambda dividend: dividend.time))
+    """Parse the terminal's dividend editor using the shared UI validator."""
+    return parse_cash_dividends(frame, context="terminal")
 
 
 def build_ticket_form(reset_nonce: int) -> tuple[bool, PricingRequest | None, str | None]:

@@ -12,7 +12,7 @@ import pandas as pd
 import streamlit as st
 
 from frontend.greeks_service import GreekBumps, GreeksResult, calculate_greeks, greeks_csv
-from frontend.model_comparison import parse_dividends
+from frontend.dividend_input import parse_dividends
 from frontend.pricing_service import (
     DEFAULT_THRESHOLD, MAX_STEPS, MODELS,
     PricingInputError, PricingRequest,
