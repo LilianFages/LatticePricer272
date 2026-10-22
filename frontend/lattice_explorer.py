@@ -18,6 +18,7 @@ from frontend.lattice_explorer_service import (
     LatticeSnapshot, VisualNode, MAX_VISUAL_STEPS, snapshot_priced_tree,
 )
 from frontend.contract_workflow import assess_transfer, get_reference
+from frontend.workspace_policy import EXPLORER_THRESHOLDS
 from frontend.pricing_service import (
     DEFAULT_THRESHOLD, MODELS, DividendInput, PricingInputError, PricingRequest,
 )
@@ -550,7 +551,7 @@ def _explorer_graph_fields(right: object) -> tuple:
                                 max_value=MAX_VISUAL_STEPS,
                                 value=int(_explorer_default("steps", 5)), step=1,
                                 key=_explorer_control_key("steps"))
-        threshold_choices = (1e-18, 1e-9, 1e-5, 1e-3)
+        threshold_choices = EXPLORER_THRESHOLDS
         threshold = bb.selectbox("Pruning threshold", threshold_choices,
                                  index=threshold_choices.index(_explorer_default(
                                      "pruning_threshold", DEFAULT_THRESHOLD)),

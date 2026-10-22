@@ -22,6 +22,7 @@ from frontend.comparison_service import (
     display_rows,
 )
 from frontend.contract_workflow import assess_transfer, get_reference
+from frontend.workspace_policy import COMPARISON_THRESHOLDS
 from frontend.dividend_input import parse_dividends
 from frontend.pricing_service import (
     DEFAULT_THRESHOLD,
@@ -153,8 +154,8 @@ def _comparison_benchmark_fields() -> tuple:
                             step=25, key=_comparison_contract_key("cmp_steps"))
     a, b = st.columns(2)
     threshold = a.selectbox(
-        "Pruning threshold", (0.0, 1e-18, 1e-15, 1e-12),
-        index=(0.0, 1e-18, 1e-15, 1e-12).index(
+        "Pruning threshold", COMPARISON_THRESHOLDS,
+        index=COMPARISON_THRESHOLDS.index(
             _comparison_default("pruning_threshold", DEFAULT_THRESHOLD)),
         format_func=lambda x: "0 (off)" if x == 0 else f"{x:.0e}",
         # Separate chart presentation from result selection.

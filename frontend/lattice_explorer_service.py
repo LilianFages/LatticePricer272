@@ -21,7 +21,7 @@ from frontend.pricing_service import (
     PricingInputError, PricingRequest, _build_tree, validate_request,
 )
 
-MAX_VISUAL_STEPS = 100
+from frontend.workspace_policy import MAX_VISUAL_STEPS
 EPS = 1e-13
 
 

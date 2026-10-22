@@ -27,7 +27,7 @@ from frontend.exercise_policy import (
 from src.option import CallOption, PutOption
 from src.recursive_pricer import RecursivePricer
 
-MAX_BOUNDARY_STEPS = 200
+from frontend.workspace_policy import MAX_BOUNDARY_STEPS
 PROB_TOL = 2e-10
 # Distinguish optimal exercise decisions from path probabilities.
 EXERCISE_TOL = 1e-10

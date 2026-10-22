@@ -11,6 +11,7 @@ from typing import Any
 
 from frontend.contract_workflow import assess_transfer
 from frontend.pricing_service import PricingRequest
+from frontend.workspace_policy import (COMPARISON_THRESHOLDS, EXPLORER_THRESHOLDS)
 
 
 VIEW_TO_TARGET = {
@@ -18,8 +19,8 @@ VIEW_TO_TARGET = {
     "Explore lattice": "lattice_explorer",
 }
 THRESHOLDS = {
-    "Compare models": (0.0, 1e-18, 1e-15, 1e-12),
-    "Explore lattice": (1e-18, 1e-9, 1e-5, 1e-3),
+    "Compare models": COMPARISON_THRESHOLDS,
+    "Explore lattice": EXPLORER_THRESHOLDS,
 }
 
 

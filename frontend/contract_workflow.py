@@ -12,8 +12,12 @@ from typing import Any
 
 from frontend.calendar_contract import ContractCalendar
 from frontend.calendar_ticket import calendar_matches_request
-from frontend.exercise_boundary_service import MAX_BOUNDARY_STEPS
-from frontend.lattice_explorer_service import MAX_VISUAL_STEPS
+from frontend.workspace_policy import (
+    ANALYTICS_THRESHOLDS as _ANALYTICS_THRESHOLDS,
+    COMPARISON_THRESHOLDS as _COMPARISON_THRESHOLDS,
+    EXPLORER_THRESHOLDS as _EXPLORER_THRESHOLDS,
+    MAX_BOUNDARY_STEPS, MAX_VISUAL_STEPS,
+)
 from frontend.pricing_service import PricingRequest, PricingResult, validate_request
 
 
@@ -26,11 +30,6 @@ TARGETS = (
     "exercise_boundary",
     "research_lab",
 )
-
-_COMPARISON_THRESHOLDS = (0.0, 1e-18, 1e-15, 1e-12)
-_EXPLORER_THRESHOLDS = (1e-18, 1e-9, 1e-5, 1e-3)
-_ANALYTICS_THRESHOLDS = (0.0, 1e-18, 1e-15, 1e-12, 1e-5)
-
 
 @dataclass(frozen=True, slots=True)
 class TransferCheck:

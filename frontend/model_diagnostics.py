@@ -10,6 +10,8 @@ from typing import Any
 
 import streamlit as st
 
+from frontend.workspace_policy import MAX_VISUAL_STEPS
+
 
 WORKSPACES = (
     "01 / Pricing terminal",
@@ -60,10 +62,11 @@ def _render_shared_ticket_handoff(mode: str) -> None:
             f"{len(request.dividends)} dividend(s). No pricing runs until submission."
         )
         proposed_steps = request.steps
-        if mode == "Explore lattice" and not 2 <= request.steps <= 100:
-            st.info("Lattice inspection requires 2 ≤ N ≤ 100. Choose a new visual depth explicitly.")
+        if mode == "Explore lattice" and not 2 <= request.steps <= MAX_VISUAL_STEPS:
+            st.info(f"Lattice inspection requires 2 ≤ N ≤ {MAX_VISUAL_STEPS}. "
+                    "Choose a new visual depth explicitly.")
             proposed_steps = st.selectbox(
-                "New visualization depth (N)", range(2, 101), index=3,
+                "New visualization depth (N)", range(2, MAX_VISUAL_STEPS + 1), index=3,
                 key="diagnostics_transfer_visual_steps",
             )
 
