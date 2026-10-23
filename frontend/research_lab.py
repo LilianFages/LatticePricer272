@@ -577,3 +577,22 @@ def render_research_lab_page() -> None:
         _temporal()
     with library:
         _library()
+
+
+# Optional access to historical CSV-backed analyses. Kept separate from the
+# four live investigations and never used to launch an experiment.
+RESEARCH_ARCHIVE_HANDLERS = {
+    "Data library": _library,
+    "Pruning robustness": _pruning,
+    "Accuracy vs cost": _accuracy,
+    "Complexity": _scaling,
+    "Temporal exercise": _temporal,
+    "Overview": _overview,
+}
+
+
+def render_research_archive(selection: str) -> None:
+    """Render one selected historical study, with no additional tab navigation."""
+    if selection not in RESEARCH_ARCHIVE_HANDLERS:
+        raise ValueError(f"Unknown historical study: {selection!r}")
+    RESEARCH_ARCHIVE_HANDLERS[selection]()

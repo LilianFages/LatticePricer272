@@ -16,14 +16,13 @@ from frontend.workspace_policy import MAX_VISUAL_STEPS
 WORKSPACES = (
     "01 / Pricing terminal",
     "02 / Model diagnostics",
-    "03 / Quant analytics",
-    "04 / Research lab",
+    "03 / Quant research",
 )
 DIAGNOSTIC_MODES = ("Compare models", "Explore lattice")
 
 
 def migrate_navigation_state(state: MutableMapping[str, Any]) -> None:
-    """Preserve the selected analysis during the five-to-four page migration.
+    """Preserve the selected analysis during the legacy-to-three page migration.
 
     Called before the Streamlit navigation widget is instantiated. The
     operation is idempotent and never launches a pricing calculation.
@@ -31,8 +30,10 @@ def migrate_navigation_state(state: MutableMapping[str, Any]) -> None:
     migrations = {
         "02 / Model comparison": ("02 / Model diagnostics", "Compare models"),
         "03 / Lattice explorer": ("02 / Model diagnostics", "Explore lattice"),
-        "04 / Quant analytics": ("03 / Quant analytics", None),
-        "05 / Research lab": ("04 / Research lab", None),
+        "04 / Quant analytics": ("03 / Quant research", None),
+        "05 / Research lab": ("03 / Quant research", None),
+        "03 / Quant analytics": ("03 / Quant research", None),
+        "04 / Research lab": ("03 / Quant research", None),
     }
     old = state.get("lattice_workspace")
     if old not in migrations:

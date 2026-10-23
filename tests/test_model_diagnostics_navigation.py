@@ -10,8 +10,10 @@ from frontend.model_diagnostics import (
 @pytest.mark.parametrize("legacy,workspace,mode", [
     ("02 / Model comparison", "02 / Model diagnostics", "Compare models"),
     ("03 / Lattice explorer", "02 / Model diagnostics", "Explore lattice"),
-    ("04 / Quant analytics", "03 / Quant analytics", None),
-    ("05 / Research lab", "04 / Research lab", None),
+    ("04 / Quant analytics", "03 / Quant research", None),
+    ("05 / Research lab", "03 / Quant research", None),
+    ("03 / Quant analytics", "03 / Quant research", None),
+    ("04 / Research lab", "03 / Quant research", None),
 ])
 def test_legacy_workspace_migration(legacy, workspace, mode):
     state = {"lattice_workspace": legacy}
@@ -39,6 +41,6 @@ def test_current_workspace_is_not_overwritten():
 
 
 def test_navigation_has_unique_workspaces_and_modes():
-    assert len(WORKSPACES) == 4
+    assert len(WORKSPACES) == 3
     assert len(set(WORKSPACES)) == len(WORKSPACES)
     assert DIAGNOSTIC_MODES == ("Compare models", "Explore lattice")

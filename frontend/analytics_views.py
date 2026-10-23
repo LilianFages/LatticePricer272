@@ -218,12 +218,76 @@ def _render_convergence_results(outcome: ConvergenceResult) -> None:
     elif outcome.reference_error:
         st.warning(f"Reference unavailable: {outcome.reference_error}")
     _render_convergence_charts(successful, outcome)
+    _render_accuracy_cost_tradeoff(outcome)
     st.dataframe(frame, hide_index=True, width="stretch")
     st.download_button("Export convergence · CSV",
                        observations_csv(outcome.points, reference=outcome.reference_price,
                                         label=outcome.reference_label),
                        file_name="lattice272_convergence.csv", mime="text/csv", width="stretch")
 
+
+
+def _render_accuracy_cost_tradeoff(outcome: ConvergenceResult) -> None:
+    """Interactive observed Pareto study, using *saved* repricing results only."""
+    from frontend.research_accuracy_service import (
+        accuracy_cost_points, best_observed_under_target,
+    )
+
+    st.markdown('<div class="desk-section">Accuracy vs computational cost</div>',
+                unsafe_allow_html=True)
+    points = accuracy_cost_points(outcome)
+    if not points:
+        st.info("No complete runtime/price/reference observations for a tradeoff chart.")
+        return
+    analytic = outcome.reference_type == "analytic"
+    gap_label = ("Absolute Black–Scholes error (€)" if analytic else
+                 "Absolute gap to finite-N reference (€)")
+    if not analytic:
+        st.caption("Numerical-reference gaps are not true pricing errors. "
+                   "The selected finite-N comparator can itself be inaccurate.")
+    rows = pd.DataFrame([{
+        "Model": p.model, "N": p.steps, "Premium (€)": p.premium,
+        "Runtime (ms)": p.runtime_ms, "Absolute gap (€)": p.absolute_gap,
+        "Pareto candidate": p.pareto,
+    } for p in points])
+    a, b = st.columns([1.1, 1.0])
+    pareto_only = a.checkbox("Show observed Pareto candidates only", value=False,
+                              key="qa_conv_pareto_only")
+    target = b.selectbox("Target absolute gap (€)",
+                         (0.0005, 0.001, 0.005, 0.01, 0.05, 0.1),
+                         index=3, key="qa_conv_gap_target",
+                         format_func=lambda x: f"{x:g} €")
+    selected = rows[rows["Pareto candidate"]] if pareto_only else rows
+    chart = (alt.Chart(selected).mark_circle(size=105, opacity=0.9)
+             .encode(
+                 x=alt.X("Runtime (ms):Q", title="Single-run valuation time (ms)",
+                         scale=alt.Scale(zero=True)),
+                 y=alt.Y("Absolute gap (€):Q", title=gap_label,
+                         scale=alt.Scale(zero=True)),
+                 color=alt.Color("Model:N", title="Pricing model"),
+                 tooltip=["Model:N", "N:Q",
+                          alt.Tooltip("Premium (€):Q", format=".6f"),
+                          alt.Tooltip("Runtime (ms):Q", format=".3f"),
+                          alt.Tooltip("Absolute gap (€):Q", format=".6f"),
+                          "Pareto candidate:N"],
+             ).properties(height=300).interactive())
+    st.altair_chart(chart, width="stretch")
+    winner = best_observed_under_target(points, float(target))
+    if winner is None:
+        st.info(f"No sampled configuration achieved an absolute gap ≤ {target:g} €.")
+    else:
+        a, b, c = st.columns(3)
+        a.metric("Fastest observed model", winner.model)
+        b.metric("Time steps", f"N={winner.steps}")
+        c.metric("Observed runtime", f"{winner.runtime_ms:.2f} ms")
+        st.caption(f"Observed gap: {winner.absolute_gap:.6f} €. "
+                   "The target is checked only against this run's reference.")
+    st.caption("Pareto candidates are nondominated among the *sampled* settings "
+               "for runtime and absolute price gap. Each runtime is a single "
+               "measurement; rankings may change with CPU load. This is not a "
+               "statistical benchmark or an accuracy guarantee.")
+    with st.expander("All observed configurations"):
+        st.dataframe(rows, hide_index=True, width="stretch")
 
 def _convergence_input_form() -> tuple:
     with st.form("analytics_convergence_form"):
@@ -265,88 +329,75 @@ def render_convergence_tab() -> None:
         _render_convergence_results(outcome)
 
 
-def _render_stability_charts(successes: pd.DataFrame, analytic: object, request: PricingRequest) -> None:
-    for dimension, title in (("spot bump", "Spot-bump sensitivity"),
-                             ("steps", "Stability with N")):
-        subset = successes[successes["dimension"] == dimension]
-        if subset.empty:
-            continue
-        st.markdown(f'<div class="desk-section">{title}</div>', unsafe_allow_html=True)
-        # Keep chart axes, tooltips and color grouping consistent.
-        for greek in ("Delta", "Gamma"):
-            st.altair_chart(_line_chart(subset.assign(series=greek), x="x", y=greek,
-                                       group="series", x_label=("Spot bump (%)" if dimension=="spot bump" else "N"),
-                                       y_label=greek, height=190), width="stretch")
-            if analytic:
-                st.caption(f"Black–Scholes {greek}: {analytic[greek]:.6f} (analytic comparator, not used for bumps).")
 
 
 def _render_stability_results(saved: tuple) -> None:
+    """Retain the existing session data while rendering the focused research view."""
+    from frontend.research_risk_numerics_views import render_risk_numerics
     rows, request = saved
-    frame = pd.DataFrame([{
-        "dimension": r.dimension, "x": r.coordinate, "N": r.steps,
-        "Delta": r.delta, "Gamma": r.gamma, "Gamma bump %": r.gamma_bump_pct,
-        "status": r.status,
-    } for r in rows])
-    successes = frame[frame["status"] == "ok"]
-    st.metric("Successful risk configurations", f"{len(successes)} / {len(frame)}")
-    # Preserve on-demand execution to avoid unnecessary valuations.
-    failures = frame[frame["status"] != "ok"]
-    if not failures.empty:
-        st.warning("Some risk stencils could not be priced; failures remain explicit in CSV.")
-        with st.expander("Failed stencils"):
-            st.dataframe(failures, hide_index=True, width="stretch")
-    analytic = None
-    try:
-        from frontend.greeks_service import analytic_bs_greeks
-        analytic = analytic_bs_greeks(request)
-    except (ValueError, OverflowError, ZeroDivisionError):
-        pass
-    _render_stability_charts(successes, analytic, request)
-    st.caption('N-dependent Gamma uses a new grid-aware bump at each N; the two dimensions '
-        'vary together. To isolate N, rerun the analysis with a fixed manual Gamma bump in the Greeks snapshot.')
-    st.dataframe(frame, hide_index=True, width="stretch")
-    st.download_button("Export Greek stability · CSV", stability_csv(rows),
-                       file_name="lattice272_greek_stability.csv", mime="text/csv", width="stretch")
+    render_risk_numerics(rows, request, stability_csv)
 
 
 def _greeks_stability_input_form() -> tuple:
+    """Risk Numerics: vary spot stencil separately from lattice depth."""
+    from frontend.research_risk_numerics import GAMMA_N_MODES
     with st.form("analytics_greeks_stability_form"):
-        # Preserve Greek labels and numerical perturbation units.
         fields = _contract_fields("qa_stab")
-        st.markdown('<div class="desk-section">02 · Differencing & grid study</div>', unsafe_allow_html=True)
+        st.markdown('<div class="desk-section">02 · Numerical robustness</div>',
+                    unsafe_allow_html=True)
         model = st.selectbox("Pricing engine", MODELS, index=3, key="qa_stab_model")
-        bump_grid = st.multiselect("Spot shocks · % (Delta and Gamma)",
-                                   (0.5,1.0,2.0,3.5,5.0,7.5,10.0),
-                                   default=(0.5,1.0,3.5,5.0), key="qa_stab_bumps")
-        n_grid = st.multiselect("Discretization steps N", (20,40,60,80,100,125,150,175,200,250),
-                                default=(40,80,100,150), key="qa_stab_grid")
+        bump_grid = st.multiselect(
+            "Spot shocks · % (Delta and Gamma)",
+            (0.5, 1.0, 2.0, 3.5, 5.0, 7.5, 10.0),
+            default=(0.5, 1.0, 3.5, 5.0), key="qa_stab_bumps",
+        )
+        n_grid = st.multiselect(
+            "Discretization steps N", (20, 40, 60, 80, 100, 125, 150, 175, 200, 250),
+            default=(40, 80, 100, 150), key="qa_stab_grid",
+        )
+        gamma_mode = st.selectbox(
+            "Gamma bump for N sweep", GAMMA_N_MODES, index=0,
+            key="qa_stab_gamma_n_mode",
+            help="Grid-aware adapts Gamma's spot bump to N; fixed bump isolates "
+                 "the N effect more cleanly, but still has stencil bias.",
+        )
         threshold = _threshold("qa_stab_threshold")
-        st.caption('Bump sweep: same spot bump for Delta and Gamma. N sweep: Delta ±1%; '
-            'Gamma grid-aware. Repeated repricings can take time.')
-        submitted = st.form_submit_button("RUN GREEKS STABILITY  →", type="primary", width="stretch")
-    return (fields, model, bump_grid, n_grid, threshold, submitted)
+        st.caption("Each shock builds and prices a fresh lattice. "
+                   "Run only when the experiment settings are ready.")
+        submitted = st.form_submit_button(
+            "RUN RISK NUMERICS  →", type="primary", width="stretch",
+        )
+    return fields, model, bump_grid, n_grid, threshold, gamma_mode, submitted
 
 
 def render_greeks_stability_tab() -> None:
-    left, right = st.columns([1.0,1.45], gap="large")
+    """One deliberate repricing campaign; view interactions never reprice."""
+    from frontend.research_risk_numerics import n_sweep_gamma_bump
+
+    left, right = st.columns([1.0, 1.85], gap="large")
     with left:
-        fields, model, bump_grid, n_grid, threshold, submitted = _greeks_stability_input_form()
+        fields, model, bump_grid, n_grid, threshold, gamma_mode, submitted = (
+            _greeks_stability_input_form()
+        )
     with right:
-        st.markdown('<div class="desk-section">Risk stability / numerical diagnostics</div>', unsafe_allow_html=True)
+        st.markdown('<div class="desk-section">Risk numerics · Delta/Gamma stability</div>',
+                    unsafe_allow_html=True)
         if submitted:
             st.session_state.pop("qa_stab_result", None)
             try:
                 request = _get_request(fields, model, 100, threshold)
-                # Collect model-sensitivity inputs through the current Streamlit form.
-                with st.spinner("Repricing spot shocks across bumps and lattice sizes..."):
-                    rows = greeks_stability(request, tuple(sorted(bump_grid)), tuple(sorted(n_grid)))
+                gamma_bump = n_sweep_gamma_bump(gamma_mode)
+                with st.spinner("Repricing risk stencils across bumps and N..."):
+                    rows = greeks_stability(
+                        request, tuple(sorted(bump_grid)), tuple(sorted(n_grid)),
+                        gamma_bump_pct=gamma_bump,
+                    )
                 st.session_state["qa_stab_result"] = (rows, request)
             except (PricingInputError, ValueError, RuntimeError, OverflowError) as exc:
-                st.error(f"Greek stability unavailable: {exc}")
+                st.error(f"Risk numerics unavailable: {exc}")
         saved = st.session_state.get("qa_stab_result")
         if saved is None:
-            st.info('Run this diagnostic to inspect the dependence of Delta and Gamma on '
-                'the spot bump and the lattice discretization.')
+            st.info("Select spot-bump widths and N, then run the study. "
+                    "Results are explored without additional pricing.")
             return
         _render_stability_results(saved)

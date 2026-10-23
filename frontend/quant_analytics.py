@@ -370,15 +370,18 @@ def render_quant_analytics_page() -> None:
         '<div class="desk-subtitle">Bump-transparent Greeks · repricing sensitivities · '
         'convergence & computational cost</div>', unsafe_allow_html=True,
     )
-    greek_tab, sensitivity_tab, convergence_tab, stability_tab, exercise_tab = st.tabs(
-        ["Greeks snapshot", "Market sensitivities", "Convergence",
-         "Greeks stability", "Exercise boundary"]
+    greek_tab, sensitivity_tab, convergence_tab, efficiency_tab, stability_tab, exercise_tab = st.tabs(
+        ["Greeks snapshot", "Market sensitivities", "Numerical accuracy",
+         "Computational efficiency", "Risk numerics", "Optimal stopping"]
     )
     _render_quant_greeks_tab(greek_tab)
     with sensitivity_tab:
         render_sensitivity_tab()
     with convergence_tab:
         render_convergence_tab()
+    with efficiency_tab:
+        from frontend.research_efficiency_views import render_efficiency_tab
+        render_efficiency_tab()
     with stability_tab:
         render_greeks_stability_tab()
     with exercise_tab:

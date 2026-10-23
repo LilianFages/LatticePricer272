@@ -294,7 +294,7 @@ def main() -> None:
             )
         st.divider()
         st.markdown("**RESEARCH**")
-        st.caption("Archived experiments · offline analysis")
+        st.caption("Four live investigations · optional historical evidence")
         st.divider()
         st.caption("Local Python engine · no market-data feed")
         st.caption("Model output is theoretical, not an executable quote.")
@@ -309,15 +309,9 @@ def main() -> None:
         render_model_diagnostics_page()
         return
 
-    if workspace == "03 / Quant analytics":
-        from frontend.quant_analytics import render_quant_analytics_page
-        render_quant_analytics_page()
-        return
-
-    if workspace == "04 / Research lab":
-        from frontend.research_lab import render_research_lab_page
-        # Keep the user-facing results and chart layout identical to the existing terminal.
-        render_research_lab_page()
+    if workspace == "03 / Quant research":
+        from frontend.quant_research import render_quant_research_page
+        render_quant_research_page()
         return
 
     st.markdown('<div class="desk-kicker">Pricing terminal / 01</div>', unsafe_allow_html=True)
