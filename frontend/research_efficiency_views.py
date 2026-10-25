@@ -83,6 +83,166 @@ def _chart(
     )
 
 
+# Lot 4B.1: same-N benchmark ratios, separate from model pricing.
+def _speedup_frame(valid: pd.DataFrame) -> pd.DataFrame:
+    """Relative median latency at identical N; never divide by zero.
+
+    A missing or ambiguous full-tree baseline makes the ratio unavailable.
+    The figure is descriptive: medians do not establish a statistical speedup.
+    """
+    full = valid.loc[valid["Model"] == FULL, ["N", "Median latency (ms)"]].copy()
+    full["Median latency (ms)"] = pd.to_numeric(
+        full["Median latency (ms)"], errors="coerce"
+    )
+    full = full[full["Median latency (ms)"].map(
+        lambda x: pd.notna(x) and 0 < x < float("inf")
+    )]
+    # A duplicated full measurement is ambiguous; use neither one.
+    full = full.drop_duplicates(subset=["N"], keep=False)
+    full = full.rename(columns={"Median latency (ms)": "Full latency (ms)"})
+
+    pruned = valid.loc[valid["Model"].isin((BRANCH, ALLOCATION))].copy()
+    pruned["Median latency (ms)"] = pd.to_numeric(
+        pruned["Median latency (ms)"], errors="coerce"
+    )
+    pruned = pruned[pruned["Median latency (ms)"].map(
+        lambda x: pd.notna(x) and 0 < x < float("inf")
+    )]
+    compared = pruned.merge(full, on="N", how="inner", validate="many_to_one")
+    compared["Speed-up (×)"] = (
+        compared["Full latency (ms)"] / compared["Median latency (ms)"]
+    )
+    return compared.loc[compared["Speed-up (×)"].map(
+        lambda x: pd.notna(x) and float("-inf") < x < float("inf")
+    )].copy()
+
+
+def _price_gap_label(value: float | None) -> str:
+    """Never round a tiny but nonzero same-N price difference to a false zero."""
+    if value is None or pd.isna(value):
+        return "N/A"
+    if value == 0:
+        return "0 €"
+    if abs(value) < 1e-5:
+        return f"{value:.2e} €"
+    return f"{value:.6f} €"
+
+
+# Lot 4B.2 — overlapping allocations and full-tree baseline
+
+def _overlapping_allocation_ns(valid: pd.DataFrame) -> tuple[int, ...]:
+    """Exact coincidences for real measured full/branch allocations at equal N."""
+    full = valid.loc[valid["Model"] == FULL, ["N", "Allocated nodes"]]
+    branch = valid.loc[valid["Model"] == BRANCH, ["N", "Allocated nodes"]]
+    if full["N"].duplicated().any() or branch["N"].duplicated().any():
+        return ()  # Ambiguous observations are never silently paired.
+    matched = full.merge(branch, on="N", how="inner", suffixes=("_full", "_branch"))
+    matched = matched.dropna(subset=["Allocated nodes_full", "Allocated nodes_branch"])
+    coincident = matched.loc[
+        matched["Allocated nodes_full"] == matched["Allocated nodes_branch"], "N"
+    ]
+    return tuple(sorted(int(n) for n in coincident))
+
+
+def _allocation_nodes_chart(valid: pd.DataFrame) -> alt.LayerChart:
+    """Keep coincident Full/Branch lines visible through width and dash contrast.
+
+    The widest pink Full trace is rendered first; the narrower dashed Branch
+    trace on top leaves the pink background visible when counts coincide.
+    Individual points are layered with larger Full and smaller Branch marks.
+    """
+    colors = alt.Scale(
+        domain=[FULL, BRANCH, ALLOCATION],
+        range=["#F2A0A7", "#287FE2", "#88CDF2"],
+    )
+    x = alt.X("N:Q", title="N", scale=alt.Scale(zero=False))
+    y = alt.Y("Allocated nodes:Q", title="Allocated nodes", scale=alt.Scale(zero=True))
+    color = alt.Color(
+        "Model:N", scale=colors,
+        legend=alt.Legend(
+            orient="bottom", direction="vertical", columns=1,
+            title=None, labelLimit=300, labelFontSize=11, symbolSize=100,
+        ),
+    )
+    layers = []
+    for model, width, dash, point_size in (
+        (FULL, 5.1, [1, 0], 135),
+        (BRANCH, 2.3, [6, 5], 55),
+        (ALLOCATION, 2.3, [1, 0], 70),
+    ):
+        sample = valid.loc[valid["Model"] == model].sort_values("N")
+        if sample.empty:
+            continue
+        layers.append(
+            alt.Chart(sample)
+            .mark_line(
+                point=alt.OverlayMarkDef(size=point_size),
+                strokeWidth=width, strokeDash=dash,
+            )
+            .encode(
+                x=x, y=y, color=color,
+                tooltip=[
+                    "Model:N", "N:Q",
+                    alt.Tooltip("Allocated nodes:Q", format=",.0f"),
+                ],
+            )
+        )
+    return alt.layer(*layers).properties(height=EFFICIENCY_CHART_HEIGHT).interactive()
+
+
+def _speedup_baseline_chart(data: pd.DataFrame) -> alt.LayerChart:
+    """Real measured speed-up series with a clearly marked full-tree 1x level."""
+    x = alt.X("N:Q", title="N", scale=alt.Scale(zero=False))
+    y = alt.Y("Speed-up (×):Q", title="Speed-up (×)", scale=alt.Scale(zero=False))
+    anchor = pd.DataFrame({
+        "N": [float(data["N"].max())],
+        "Full baseline": [1.0],
+        "Label": ["Full = 1×"],
+    })
+    baseline = (
+        alt.Chart(anchor).mark_rule(
+            color="#F2A0A7", strokeDash=[6, 4], strokeWidth=2, opacity=.95,
+        ).encode(
+            y=alt.Y("Full baseline:Q", title="Speed-up (×)"),
+            tooltip=[alt.Tooltip("Label:N", title="Reference")],
+        )
+    )
+    baseline_label = (
+        alt.Chart(anchor).mark_text(
+            color="#F2A0A7", fontSize=11, align="right", dx=-5, dy=-9,
+        ).encode(
+            x=x, y=alt.Y("Full baseline:Q"), text="Label:N",
+        )
+    )
+    pruned = (
+        alt.Chart(data).mark_line(
+            point=alt.OverlayMarkDef(size=66), strokeWidth=2.3,
+        ).encode(
+            x=x, y=y,
+            color=alt.Color(
+                "Model:N",
+                scale=alt.Scale(
+                    domain=[BRANCH, ALLOCATION],
+                    range=["#287FE2", "#88CDF2"],
+                ),
+                legend=alt.Legend(
+                    orient="bottom", direction="vertical", columns=1,
+                    title=None, labelLimit=300, labelFontSize=11, symbolSize=100,
+                ),
+            ),
+            tooltip=[
+                "Model:N", "N:Q",
+                alt.Tooltip("Speed-up (×):Q", format=".3f"),
+                alt.Tooltip("Full latency (ms):Q", format=".3f"),
+                alt.Tooltip("Median latency (ms):Q", format=".3f"),
+            ],
+        )
+    )
+    return alt.layer(baseline, pruned, baseline_label).properties(
+        height=EFFICIENCY_CHART_HEIGHT,
+    ).interactive()
+
+
 def _results(report: EfficiencyReport) -> None:
     frame = _frame(report)
     valid = frame[frame["Status"] == "ok"].copy()
@@ -96,45 +256,68 @@ def _results(report: EfficiencyReport) -> None:
     if valid.empty:
         st.error("No model completed. Review the contract and dividend schedule.")
         return
+
     latest_n = int(valid["N"].max())
     optimal = valid[(valid["N"] == latest_n) & (valid["Model"] == ALLOCATION)]
+    maximum_gap = valid["Gap to full (€)"].dropna().max()
     if len(optimal) == 1:
         point = optimal.iloc[0]
         a, b, c = st.columns(3)
         a.metric("Allocation saving at largest N", (
             f"{point['Allocation savings (%)']:+.1f}%"
             if pd.notna(point["Allocation savings (%)"]) else "N/A"))
-        b.metric("Same-N price gap", (
-            f"{point['Gap to full (€)']:.6f} €"
-            if pd.notna(point["Gap to full (€)"]) else "N/A"))
+        b.metric("Max same-N price gap", _price_gap_label(maximum_gap))
         c.metric("Median model latency", f"{point['Median latency (ms)']:.1f} ms")
+    else:
+        st.caption(f"Max same-N price gap across valid scenarios: "
+                   f"{_price_gap_label(maximum_gap)}")
+
     a, b = st.columns(2, gap="large")
     with a:
-        st.altair_chart(_chart(valid, "N", "Allocated nodes"), width="stretch")
+        st.altair_chart(_allocation_nodes_chart(valid), width="stretch")
+        overlap_n = _overlapping_allocation_ns(valid)
+        if overlap_n:
+            st.caption("Full and Branch pruning allocate the same number of nodes at "
+                       f"N={', '.join(map(str, overlap_n))}. "
+                       "The thick pink Full trace remains behind the dashed Branch trace.")
     with b:
         st.altair_chart(_chart(valid, "N", "Median latency (ms)"), width="stretch")
-    st.markdown('<div class="desk-section">Price preservation & resource use</div>',
+
+    st.markdown('<div class="desk-section">Relative speed & resource use</div>',
                 unsafe_allow_html=True)
-    a, b = st.columns(2, gap="large")
-    with a:
-        available = valid.dropna(subset=["Gap to full (€)"])
-        if not available.empty:
-            st.altair_chart(_chart(available, "N", "Gap to full (€)"), width="stretch")
-    with b:
-        if report.measured_peak_memory:
-            measured = valid.dropna(subset=["Peak Python memory (MiB)"])
-            if not measured.empty:
-                st.altair_chart(_chart(measured, "N", "Peak Python memory (MiB)"),
-                                width="stretch")
+    speedup = _speedup_frame(valid)
+    memory = (valid.dropna(subset=["Peak Python memory (MiB)"])
+              if report.measured_peak_memory else valid.iloc[:0])
+    if not speedup.empty and not memory.empty:
+        a, b = st.columns(2, gap="large")
+        with a:
+            st.altair_chart(_speedup_baseline_chart(speedup), width="stretch")
+        with b:
+            st.altair_chart(_chart(memory, "N", "Peak Python memory (MiB)"),
+                            width="stretch")
+    else:
+        # Avoid an empty half-width panel when memory profiling was not chosen.
+        if not speedup.empty:
+            st.altair_chart(_speedup_baseline_chart(speedup), width="stretch")
         else:
-            st.info("Enable peak Python memory in the form to compare memory footprints. "
-                    "Measurement requires a separate, slower profiling run.")
-    st.caption("Exact Node allocations come from instrumented lattice builds, "
+            st.info("Speed-up is unavailable: a positive full-tree latency at the "
+                    "same N is required for each comparison.")
+        if not memory.empty:
+            st.altair_chart(_chart(memory, "N", "Peak Python memory (MiB)"),
+                            width="stretch")
+        elif not report.measured_peak_memory:
+            st.caption("Peak Python memory was not requested; enable profiling "
+                       "in the form to add this diagnostic.")
+
+    st.caption("Speed-up = median full-tree latency / median pruned-model latency "
+               "at the same N. Above 1× means faster; below 1× means slower. "
+               "Small timing differences are sensitive to local CPU noise.")
+    st.caption("Actual node allocations come from instrumented lattice builds, "
                "not estimated complexity formulas. Runtime is the median of "
-               f"{report.repetitions} normal, independent pricing runs; "
-               "profiling is kept outside runtime measurements. "
-               "Same-N full-trinomial gaps measure numerical disagreement, "
-               "not error versus the true option value. These are local CPU measurements.")
+               f"{report.repetitions} independent pricing runs; "
+               "memory profiling is measured separately using tracemalloc (not RSS). "
+               "Same-N price gaps, retained in the summary and CSV, measure numerical "
+               "disagreement with the full tree, not error versus the true value.")
     with st.expander("Detailed observations & CSV", expanded=False):
         st.dataframe(frame, hide_index=True, width="stretch")
         st.download_button("Export efficiency · CSV", frame.to_csv(index=False),

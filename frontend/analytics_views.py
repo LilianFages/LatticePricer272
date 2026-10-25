@@ -219,16 +219,65 @@ def _render_convergence_results(outcome: ConvergenceResult) -> None:
         st.warning(f"Reference unavailable: {outcome.reference_error}")
     _render_convergence_charts(successful, outcome)
     _render_accuracy_cost_tradeoff(outcome)
-    st.dataframe(frame, hide_index=True, width="stretch")
-    st.download_button("Export convergence · CSV",
-                       observations_csv(outcome.points, reference=outcome.reference_price,
-                                        label=outcome.reference_label),
-                       file_name="lattice272_convergence.csv", mime="text/csv", width="stretch")
+    with st.expander("Convergence observations & CSV", expanded=False):
+        st.dataframe(frame, hide_index=True, width="stretch")
+        st.download_button("Export convergence · CSV",
+                           observations_csv(outcome.points, reference=outcome.reference_price,
+                                            label=outcome.reference_label),
+                           file_name="lattice272_convergence.csv", mime="text/csv",
+                           width="stretch")
 
+
+
+# Lot 4B.1: visible global Pareto envelope, plotting only.
+def _pareto_path_frame(rows: pd.DataFrame) -> pd.DataFrame:
+    """Ordered, globally nondominated empirical Pareto vertices.
+
+    Different pricing models can alternate on the frontier. Duplicates with
+    identical coordinates are one graphical vertex but stay in the data table.
+    """
+    return (rows.loc[rows["Pareto candidate"]]
+            .sort_values(["Runtime (ms)", "Absolute gap (€)"], kind="mergesort")
+            .drop_duplicates(subset=["Runtime (ms)", "Absolute gap (€)"]))
+
+
+def _accuracy_cost_chart(rows: pd.DataFrame, *, pareto_only: bool,
+                         gap_label: str) -> alt.LayerChart:
+    """Plot all observed points plus the *global* nondominated envelope.
+
+    The dashed segments are visual guides between sampled settings; they are
+    not evidence of an attainable intermediate configuration.
+    """
+    displayed = rows.loc[rows["Pareto candidate"]] if pareto_only else rows
+    frontier = _pareto_path_frame(rows)
+    x = alt.X("Runtime (ms):Q", title="Single-run valuation time (ms)",
+              scale=alt.Scale(zero=True))
+    y = alt.Y("Absolute gap (€):Q", title=gap_label,
+              scale=alt.Scale(zero=True))
+    tips = ["Model:N", "N:Q", alt.Tooltip("Premium (€):Q", format=".6f"),
+            alt.Tooltip("Runtime (ms):Q", format=".3f"),
+            alt.Tooltip("Absolute gap (€):Q", format=".6f"),
+            "Pareto candidate:N"]
+    envelope = (alt.Chart(frontier)
+                .mark_line(color="#F5C46D", strokeDash=[6, 4], strokeWidth=2.7)
+                .encode(x=x, y=y, order=alt.Order("Runtime (ms):Q",
+                                                 sort="ascending")))
+    points = (alt.Chart(displayed).mark_circle(size=105, opacity=.92)
+              .encode(x=x, y=y,
+                      color=alt.Color("Model:N", title=None,
+                                      legend=alt.Legend(orient="bottom",
+                                                        direction="horizontal",
+                                                        columns=2, labelLimit=220)),
+                      tooltip=tips))
+    highlighted = (alt.Chart(frontier)
+                   .mark_point(filled=False, color="#F5C46D",
+                               size=205, strokeWidth=2.2)
+                   .encode(x=x, y=y, tooltip=tips))
+    return alt.layer(envelope, points, highlighted).properties(height=325).interactive()
 
 
 def _render_accuracy_cost_tradeoff(outcome: ConvergenceResult) -> None:
-    """Interactive observed Pareto study, using *saved* repricing results only."""
+    """Observed Pareto candidates, a global frontier and on-demand target search."""
     from frontend.research_accuracy_service import (
         accuracy_cost_points, best_observed_under_target,
     )
@@ -257,32 +306,28 @@ def _render_accuracy_cost_tradeoff(outcome: ConvergenceResult) -> None:
                          (0.0005, 0.001, 0.005, 0.01, 0.05, 0.1),
                          index=3, key="qa_conv_gap_target",
                          format_func=lambda x: f"{x:g} €")
-    selected = rows[rows["Pareto candidate"]] if pareto_only else rows
-    chart = (alt.Chart(selected).mark_circle(size=105, opacity=0.9)
-             .encode(
-                 x=alt.X("Runtime (ms):Q", title="Single-run valuation time (ms)",
-                         scale=alt.Scale(zero=True)),
-                 y=alt.Y("Absolute gap (€):Q", title=gap_label,
-                         scale=alt.Scale(zero=True)),
-                 color=alt.Color("Model:N", title="Pricing model"),
-                 tooltip=["Model:N", "N:Q",
-                          alt.Tooltip("Premium (€):Q", format=".6f"),
-                          alt.Tooltip("Runtime (ms):Q", format=".3f"),
-                          alt.Tooltip("Absolute gap (€):Q", format=".6f"),
-                          "Pareto candidate:N"],
-             ).properties(height=300).interactive())
-    st.altair_chart(chart, width="stretch")
+    st.altair_chart(_accuracy_cost_chart(rows, pareto_only=pareto_only,
+                                        gap_label=gap_label), width="stretch")
+    st.caption("Gold dashed line = observed global Pareto frontier across all selected "
+               "models; outlined points are the sampled nondominated candidates. "
+               "Connecting segments are a visual guide, not an attainable continuous "
+               "set of model configurations.")
     winner = best_observed_under_target(points, float(target))
     if winner is None:
         st.info(f"No sampled configuration achieved an absolute gap ≤ {target:g} €.")
     else:
         a, b, c = st.columns(3)
-        a.metric("Fastest observed model", winner.model)
+        # Keep full, unabridged model names in the data while avoiding clipped KPI text.
+        display_model = (winner.model.replace("Trinomial · Allocation pruning", "Allocation pruning")
+                         .replace("Trinomial · Branch pruning", "Branch pruning")
+                         .replace("Trinomial · Full", "Full trinomial"))
+        a.metric("Fastest eligible model", display_model)
         b.metric("Time steps", f"N={winner.steps}")
         c.metric("Observed runtime", f"{winner.runtime_ms:.2f} ms")
         st.caption(f"Observed gap: {winner.absolute_gap:.6f} €. "
-                   "The target is checked only against this run's reference.")
-    st.caption("Pareto candidates are nondominated among the *sampled* settings "
+                   "The target is checked only against this run's reference. "
+                   f"Full model name: {winner.model}.")
+    st.caption("Pareto candidates are nondominated among the sampled settings "
                "for runtime and absolute price gap. Each runtime is a single "
                "measurement; rankings may change with CPU load. This is not a "
                "statistical benchmark or an accuracy guarantee.")
