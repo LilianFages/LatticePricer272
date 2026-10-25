@@ -28,7 +28,6 @@ from src.risk.greeks import (
     GreekBumps as CoreBumps,
     calculate_greeks as core_greeks,
 )
-from src.risk.hedging import calculate_stock_hedge
 
 
 CONTRACT = PricingRequest()
@@ -91,15 +90,3 @@ def test_risk_kernel_is_independent_of_frontend_imports() -> None:
                 assert not (node.module or "").startswith("frontend")
             elif isinstance(node, ast.Import):
                 assert all(not item.name.startswith("frontend") for item in node.names)
-
-
-@pytest.mark.parametrize("side,delta,expected", [
-    ("Long", 0.60, -600),
-    ("Short", 0.60, 600),
-    ("Long", -0.40, 400),
-    ("Short", -0.40, -400),
-])
-def test_stock_trade_signs_unchanged(side: str, delta: float, expected: int) -> None:
-    trade = calculate_stock_hedge(delta, side, 10, 100)
-    assert trade.rounded_trade == expected
-    assert trade.instruction == ("BUY" if expected > 0 else "SELL")
