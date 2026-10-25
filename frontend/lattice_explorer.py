@@ -10,14 +10,16 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
-from frontend.diagnostics_fields import render_market_fields, render_option_pair
+from frontend.diagnostics_fields import (
+    render_market_fields, render_option_pair, render_reference_import,
+)
 from frontend.lattice_plot_sampling import (
     overview_step_indices, representative_transitions, select_chart_rows,
 )
 from frontend.lattice_explorer_service import (
     LatticeSnapshot, VisualNode, MAX_VISUAL_STEPS, snapshot_priced_tree,
 )
-from frontend.contract_workflow import assess_transfer, get_reference
+from frontend.diagnostics_contract import import_saved_reference
 from frontend.workspace_policy import EXPLORER_THRESHOLDS
 from frontend.pricing_service import (
     DEFAULT_THRESHOLD, MODELS, DividendInput, PricingInputError, PricingRequest,
@@ -442,24 +444,8 @@ def _pruning_comparison(
 def apply_reference_to_explorer(
     state: MutableMapping[str, Any],
 ) -> tuple[bool, tuple[str, ...]]:
-    """Only import an exact reference compatible with this small-grid editor.
-
-    Rejecting an import changes NOTHING; successful import clears previous
-    chart results but never runs a numerical model or edits the shared ticket.
-    """
-    reference = get_reference(state)
-    if reference is None:
-        return False, ("No reference contract saved in Pricing Terminal.",)
-    check = assess_transfer(reference, "lattice_explorer")
-    if not check.exact:
-        return False, check.issues
-    generation = state.get("explorer_import_nonce", 0)
-    if type(generation) is not int or generation < 0:
-        raise ValueError("Invalid explorer widget generation.")
-    state["explorer_reference_seed"] = reference
-    state["explorer_import_nonce"] = generation + 1
-    state.pop("lattice_explorer_result", None)
-    return True, ()
+    """Explicit exact import, preserving lattice-model and view choices."""
+    return import_saved_reference(state, "Explore lattice")
 
 
 def explorer_dividend_defaults(
@@ -485,39 +471,9 @@ def _explorer_default(field: str, fallback: Any) -> Any:
     return getattr(seed, field) if isinstance(seed, PricingRequest) else fallback
 
 
-def _on_import_explorer_reference() -> None:
-    imported, issues = apply_reference_to_explorer(st.session_state)
-    st.session_state["explorer_import_feedback"] = (
-        ("success", "Reference contract imported. Build the lattices when ready.")
-        if imported else ("warning", "Import unavailable: " + " ".join(issues))
-    )
-
-
 def _render_explorer_import() -> None:
-    """Import before any editor widgets are instantiated on this rerun."""
-    st.markdown('<div class="desk-section">Reference contract · optional</div>',
-                unsafe_allow_html=True)
-    reference = get_reference(st.session_state)
-    if reference is None:
-        st.caption("Save a successfully priced contract in Pricing Terminal first.")
-    st.button(
-        "Import reference contract",
-        on_click=_on_import_explorer_reference,
-        disabled=reference is None,
-        key="lx_import_reference",
-        width="stretch",
-        help="Requires 2 <= N <= 100, at most one cash dividend and a compatible "
-             "pruning threshold. Incompatible references are never adjusted.",
-    )
-    feedback = st.session_state.get("explorer_import_feedback")
-    if feedback is not None:
-        level, message = feedback
-        if level == "success":
-            st.success(message)
-        else:
-            st.warning(message)
-    st.caption("Import fills the ticket only; left/right models remain independent. "
-               "No lattice is built until BUILD & COMPARE LATTICES is clicked.")
+    """Explicit ticket prefill; lattice builds remain button-triggered."""
+    render_reference_import("Explore lattice")
 
 
 def _explorer_market_fields(left: object) -> tuple:

@@ -3,7 +3,10 @@ from typing import Self
 
 from src.dividend import CashDividend
 from src.dividend_timing import dividend_grid_step
-from src.node import Node, TrunkNode
+from src.node import (
+    Node, TrunkNode, bottom_node, middle_successors,
+    nearest_geometric_exponent,
+)
 from src.transition_moments import TransitionMoments
 from src.trinomial_probability import TrinomialProbabilitySolver
 
@@ -286,74 +289,18 @@ class TrinomialTree:
         return expected_value
 
     @staticmethod
-    def _bottom_node(
-        top_node: Node
-    ) -> Node:
+    def _bottom_node(top_node: Node) -> Node:
         """Return the lowest node of a column."""
-        current_node = top_node
-
-        while current_node.lower_neighbor is not None:
-            current_node = (
-                current_node.lower_neighbor
-            )
-
-        return current_node
+        return bottom_node(top_node)
 
     def _closest_exponent(
-        self: Self,
-        expected_value: float,
-        trunk_price: float
+        self: Self, expected_value: float, trunk_price: float,
     ) -> int:
-        """Return the lattice exponent closest to an expected value."""
-        if expected_value <= 0.0:
-            raise RuntimeError(
-                "Expected stock price must remain positive."
-            )
-
-        if self.volatility == 0.0:
-            return 0
-
-        raw_exponent = math.log(
-            expected_value
-            / trunk_price
-        ) / math.log(
-            self.alpha
+        """Return the nearest geometric node, preferring the lower on ties."""
+        return nearest_geometric_exponent(
+            expected_value, trunk_price, self.alpha,
+            zero_volatility=self.volatility == 0.0,
         )
-
-        lower_exponent = math.floor(
-            raw_exponent
-        )
-
-        upper_exponent = (
-            lower_exponent
-            + 1
-        )
-
-        # Compare adjacent exponent levels on the actual geometric grid.
-        lower_price = (
-            trunk_price
-            * self.alpha ** lower_exponent
-        )
-
-        upper_price = (
-            trunk_price
-            * self.alpha ** upper_exponent
-        )
-
-        # Break equal-distance ties toward the lower geometric level.
-        if (
-            abs(
-                upper_price
-                - expected_value
-            )
-            < abs(
-                lower_price
-                - expected_value
-            )
-        ):
-            return upper_exponent
-
-        return lower_exponent
 
     def _column_bounds(
         self: Self,
@@ -679,61 +626,13 @@ class TrinomialTree:
 
     @staticmethod
     def _find_middle_successor(
-        expected_value: float,
-        upper_candidate: Node,
-        middle_candidate: Node
+        expected_value: float, upper_candidate: Node, middle_candidate: Node,
     ) -> tuple[Node, Node, Node]:
-        """Return the closest middle node and its two neighbors."""
-        upper_node = (
-            upper_candidate
+        """Find the nearest middle successor and its two neighbors."""
+        return middle_successors(
+            expected_value, upper_candidate, middle_candidate,
+            grid_name="Trinomial",
         )
-
-        middle_node = (
-            middle_candidate
-        )
-
-        while True:
-            lower_node = (
-                middle_node.lower_neighbor
-            )
-
-            if lower_node is None:
-                raise RuntimeError(
-                    "Trinomial grid is too narrow below."
-                )
-
-            # Move the successor window only when the lower level is closer.
-            if (
-                abs(
-                    lower_node.price
-                    - expected_value
-                )
-                < abs(
-                    middle_node.price
-                    - expected_value
-                )
-            ):
-                if lower_node.lower_neighbor is None:
-                    raise RuntimeError(
-                        "Trinomial grid is too narrow below."
-                    )
-
-                upper_node = (
-                    middle_node
-                )
-
-                # Move the local three-node stencil down as one ordered group.
-                middle_node = (
-                    lower_node
-                )
-
-                continue
-
-            return (
-                upper_node,
-                middle_node,
-                lower_node,
-            )
 
     def _set_probabilities(
         self: Self,

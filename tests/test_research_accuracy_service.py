@@ -9,6 +9,8 @@ from frontend.analytics_service import ConvergenceResult, PricingObservation
 from frontend.research_accuracy_service import (
     accuracy_cost_points, best_observed_under_target,
 )
+import pandas as pd
+from frontend.analytics_views import _accuracy_cost_chart, _pareto_path_frame
 
 
 def _observation(model, n, price, ms, status="ok"):
@@ -74,3 +76,60 @@ def test_result_is_not_mutated():
     copy = replace(original)
     accuracy_cost_points(original)
     assert original == copy
+
+
+# Lot 5B.7B — Pareto visualization tests
+def _pareto_data():
+    return pd.DataFrame([
+        {"Model":"Binomial", "N":20, "Premium (€)":10.1,
+         "Runtime (ms)":1., "Absolute gap (€)":.1, "Pareto candidate":True},
+        {"Model":"Trinomial", "N":40, "Premium (€)":10.05,
+         "Runtime (ms)":3., "Absolute gap (€)":.05, "Pareto candidate":True},
+        {"Model":"Binomial", "N":40, "Premium (€)":10.09,
+         "Runtime (ms)":4., "Absolute gap (€)":.09, "Pareto candidate":False},
+        {"Model":"Trinomial", "N":80, "Premium (€)":10.01,
+         "Runtime (ms)":7., "Absolute gap (€)":.01, "Pareto candidate":True},
+    ])
+
+
+def test_pareto_vertices_global_and_sorted():
+    p = _pareto_path_frame(_pareto_data().iloc[::-1])
+    assert p["Runtime (ms)"].tolist() == [1., 3., 7.]
+    assert p["Absolute gap (€)"].tolist() == [.1, .05, .01]
+    assert p["Model"].tolist() == ["Binomial", "Trinomial", "Trinomial"]
+
+
+def test_identical_frontier_points_do_not_duplicate_line_vertices():
+    src = _pareto_data()
+    extra = src.iloc[[0]].copy()
+    extra.loc[extra.index[0], "Model"] = "Other model"
+    path = _pareto_path_frame(pd.concat((src, extra), ignore_index=True))
+    assert len(path) == 3
+
+
+def _layer_data(spec, index):
+    source = spec["layer"][index]["data"]
+    return (source["values"] if "values" in source
+            else spec["datasets"][source["name"]])
+
+
+def test_chart_contains_envelope_model_points_and_rings():
+    spec = _accuracy_cost_chart(_pareto_data(), pareto_only=False,
+                                gap_label="Absolute Black–Scholes error (€)").to_dict()
+    assert len(spec["layer"]) == 3
+    line, points, rings = spec["layer"]
+    assert line["mark"]["type"] == "line"
+    assert line["mark"]["strokeDash"]
+    assert points["mark"]["type"] == "circle"
+    assert points["encoding"]["color"]["field"] == "Model"
+    assert points["encoding"]["color"]["legend"]["orient"] == "bottom"
+    assert rings["mark"]["type"] == "point"
+    assert len(_layer_data(spec, 0)) == 3
+    assert len(_layer_data(spec, 1)) == 4
+
+
+def test_pareto_only_is_view_filter_without_changing_frontier():
+    spec = _accuracy_cost_chart(_pareto_data(), pareto_only=True,
+                                gap_label="Absolute price gap (€)").to_dict()
+    assert len(_layer_data(spec, 0)) == 3
+    assert len(_layer_data(spec, 1)) == 3

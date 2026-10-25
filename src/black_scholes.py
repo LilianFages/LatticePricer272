@@ -2,6 +2,7 @@ import math
 from typing import Self
 
 from src.option import CallOption, Option, PutOption
+from src.black_scholes_terms import standardized_terms
 
 
 class BlackScholesPricer:
@@ -49,30 +50,8 @@ class BlackScholesPricer:
         volatility: float,
         maturity: float
     ) -> tuple[float, float]:
-        """Compute Black-Scholes d1 and d2."""
-        volatility_sqrt_time = (
-            volatility
-            * math.sqrt(maturity)
-        )
-
-        # Combine moneyness, carry and variance in the d1 term.
-        d1 = (
-            math.log(
-                spot / strike
-            )
-            + (
-                rate
-                + 0.5 * volatility ** 2
-            )
-            * maturity
-        ) / volatility_sqrt_time
-
-        d2 = (
-            d1
-            - volatility_sqrt_time
-        )
-
-        return d1, d2
+        """Compute Black--Scholes terms with the shared pure formula."""
+        return standardized_terms(spot, strike, rate, volatility, maturity)
 
     def price(
         self: Self,

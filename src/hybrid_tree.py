@@ -3,7 +3,10 @@ from typing import Self
 
 from src.dividend import CashDividend
 from src.dividend_timing import dividend_grid_step
-from src.node import Node, TrunkNode
+from src.node import (
+    Node, TrunkNode, bottom_node, middle_successors,
+    nearest_geometric_exponent,
+)
 from src.transition_moments import TransitionMoments
 from src.trinomial_probability import TrinomialProbabilitySolver
 
@@ -328,70 +331,17 @@ class HybridTree:
         return next_top
 
     @staticmethod
-    def _bottom_node(
-        top_node: Node
-    ) -> Node:
-        """Return the lowest node of one column."""
-        current_node = top_node
-
-        while current_node.lower_neighbor is not None:
-            current_node = (
-                current_node.lower_neighbor
-            )
-
-        return current_node
+    def _bottom_node(top_node: Node) -> Node:
+        """Return the lowest node of a column."""
+        return bottom_node(top_node)
 
     def _closest_exponent(
-        self: Self,
-        expected_value: float,
-        forward_price: float
+        self: Self, expected_value: float, forward_price: float,
     ) -> int:
-        """Return the bridge-grid level closest to an expected value."""
-        if expected_value <= 0.0:
-            raise RuntimeError(
-                "Expected stock price must remain positive."
-            )
-
-        raw_exponent = math.log(
-            expected_value
-            / forward_price
-        ) / math.log(
-            self.level_ratio
+        """Return the nearest geometric bridge level."""
+        return nearest_geometric_exponent(
+            expected_value, forward_price, self.level_ratio,
         )
-
-        lower_exponent = math.floor(
-            raw_exponent
-        )
-
-        upper_exponent = (
-            lower_exponent
-            + 1
-        )
-
-        lower_price = (
-            forward_price
-            * self.level_ratio ** lower_exponent
-        )
-
-        # Price both bracketing levels before choosing the closest exponent.
-        upper_price = (
-            forward_price
-            * self.level_ratio ** upper_exponent
-        )
-
-        if (
-            abs(
-                upper_price
-                - expected_value
-            )
-            < abs(
-                lower_price
-                - expected_value
-            )
-        ):
-            return upper_exponent
-
-        return lower_exponent
 
     def _dividend_column_bounds(
         self: Self,
@@ -536,50 +486,13 @@ class HybridTree:
 
     @staticmethod
     def _find_middle_successor(
-        expected_value: float,
-        upper_candidate: Node,
-        middle_candidate: Node
+        expected_value: float, upper_candidate: Node, middle_candidate: Node,
     ) -> tuple[Node, Node, Node]:
-        """Return the closest middle node and its two neighbors."""
-        upper_node = upper_candidate
-        middle_node = middle_candidate
-
-        while True:
-            lower_node = (
-                middle_node.lower_neighbor
-            )
-
-            if lower_node is None:
-                raise RuntimeError(
-                    "Hybrid grid is too narrow below."
-                )
-
-            if (
-                abs(
-                    lower_node.price
-                    - expected_value
-                )
-                < abs(
-                    middle_node.price
-                    - expected_value
-                )
-            ):
-                # A middle successor must have a lower neighbor for a full stencil.
-                if lower_node.lower_neighbor is None:
-                    raise RuntimeError(
-                        "Hybrid grid is too narrow below."
-                    )
-
-                upper_node = middle_node
-                middle_node = lower_node
-
-                continue
-
-            return (
-                upper_node,
-                middle_node,
-                lower_node,
-            )
+        """Find the nearest middle successor and its two neighbors."""
+        return middle_successors(
+            expected_value, upper_candidate, middle_candidate,
+            grid_name="Hybrid",
+        )
 
     def _connect_dividend_column(
         self: Self,

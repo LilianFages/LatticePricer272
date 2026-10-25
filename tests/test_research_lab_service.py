@@ -11,7 +11,6 @@ from frontend.research_lab_service import (
     frontier_thresholds, load_dataset, mass_consistency, observed_pareto,
     robustness_by_step,
 )
-from install_research_lab import PatchError, apply_patch
 
 
 # This mixed fixture distinguishes comparable runs from allocation-only outcomes.
@@ -136,33 +135,6 @@ def test_csv_export_utf8_with_excel_bom():
     assert b"europ" in value
 
 
-APP_NAV = '("01 / Pricing terminal", "02 / Model comparison", "03 / Lattice explorer", "04 / Quant analytics"),'
-APP_UPCOMING = 'st.markdown("**UPCOMING**")\n        st.caption("05 / Research lab")'
-APP_ROUTE = ('    if workspace == "04 / Quant analytics":\n'
-             '        from frontend.quant_analytics import render_quant_analytics_page\n'
-             '        render_quant_analytics_page()\n'
-             '        return\n')
-
-
-# Registration of the research page must be safely repeatable.
-def test_app_patch_safely_registers_and_idempotent():
-    # Valid snippet preserving sidebar and route indentation.
-    text = ('def main():\n    workspace = "04 / Quant analytics"\n'
-            '    choice = ' + APP_NAV + '\n    with st.sidebar:\n        ' + APP_UPCOMING
-            + '\n' + APP_ROUTE)
-    patched, changed = apply_patch(text)
-    assert changed
-    assert '"05 / Research lab"' in patched
-    assert 'render_research_lab_page()' in patched
-    second, changed2 = apply_patch(patched)
-    assert not changed2 and second == patched
-
-
-# The installer must reject layouts it cannot modify reliably.
-def test_app_patch_refuses_unknown_app_layout():
-    with pytest.raises(PatchError):
-        apply_patch("def main(): pass\n")
-
 
 # Missing files must raise an explicit data-availability error.
 def test_dataset_missing_is_explicit(tmp_path: Path):
@@ -183,3 +155,41 @@ def test_repository_exports_when_available():
     assert len(robust) > 0 and len(cost) > 0 and len(temporal) > 0
     assert coverage_summary(robust)["compared"] > 0
     assert mass_consistency(temporal) < 1e-8
+
+
+# Lot 5B.5 — archived and live workflows share the same observed-data policy.
+@pytest.mark.parametrize("bad_time,bad_gap", [
+    (None, 0.02), (-1.0, 0.01), (0.0, 0.0), ("not-a-number", 0.1),
+    (0.01, None), (0.01, -0.01), (0.01, "invalid"),
+])
+def test_cost_error_filters_agree_between_pareto_and_targets(bad_time, bad_gap):
+    source = pd.DataFrame({
+        "model": ["Valid", "Invalid"], "nb_steps": [20, 40],
+        "max_median_runtime_seconds": [0.01, bad_time],
+        "worst_absolute_error": [0.001, bad_gap],
+    })
+    original = source.copy(deep=True)
+    frontier = observed_pareto(source)
+    target = frontier_thresholds(source, (0.002,))
+    assert frontier["model"].tolist() == ["Valid"]
+    assert target.loc[0, "model"] == "Valid"
+    pd.testing.assert_frame_equal(source, original)
+
+
+def test_cost_error_exact_zero_gap_is_accepted_by_both_summaries():
+    source = pd.DataFrame({
+        "model": ["Zero", "Other"], "nb_steps": [20, 40],
+        "max_median_runtime_seconds": [0.02, 0.03],
+        "worst_absolute_error": [0.0, 0.002],
+    })
+    assert observed_pareto(source)["model"].tolist() == ["Zero"]
+    best = frontier_thresholds(source, (0.0,))
+    assert best.loc[0, "model"] == "Zero"
+    assert best.loc[0, "error_eur"] == 0.0
+
+
+def test_research_archives_still_use_single_dispatcher():
+    import frontend.research_lab as lab
+    assert not hasattr(lab, "render_research_lab_page")
+    assert len(lab.RESEARCH_ARCHIVE_HANDLERS) == 6
+    assert all(callable(handler) for handler in lab.RESEARCH_ARCHIVE_HANDLERS.values())

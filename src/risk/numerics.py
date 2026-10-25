@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import math
 
+from src.black_scholes_terms import standardized_terms
+
 
 def _check_bump(name: str, size: float) -> None:
     if not math.isfinite(size) or size <= 0.0:
@@ -78,10 +80,7 @@ def black_scholes_vanna_vomma(
     if min(spot, strike, volatility, maturity) <= 0.0:
         raise ValueError("Spot, strike, volatility and maturity must be positive.")
     root_t = math.sqrt(maturity)
-    d1 = (math.log(spot / strike) + (rate + 0.5 * volatility ** 2) * maturity) / (
-        volatility * root_t
-    )
-    d2 = d1 - volatility * root_t
+    d1, d2 = standardized_terms(spot, strike, rate, volatility, maturity)
     density = math.exp(-0.5 * d1 * d1) / math.sqrt(2.0 * math.pi)
     vanna = -density * d2 / volatility * 0.01
     vomma = spot * density * root_t * d1 * d2 / volatility * 0.0001

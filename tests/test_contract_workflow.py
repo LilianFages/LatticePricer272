@@ -10,8 +10,9 @@ from frontend.contract_workflow import (
     clear_reference,
     get_reference,
     save_reference,
+    save_reference_from_last_result,
 )
-from frontend.pricing_service import DividendInput, PricingInputError, PricingRequest
+from frontend.pricing_service import PricingInputError, PricingRequest, PricingResult
 
 
 def test_save_read_clear_reference() -> None:
@@ -70,45 +71,6 @@ def test_default_contract_transfers_exactly(target: str) -> None:
     assert not check.issues
 
 
-def test_small_grid_transfers_exactly_to_explorer() -> None:
-    request = PricingRequest(steps=5)
-    assert assess_transfer(request, "lattice_explorer").exact
-
-
-def test_explorer_never_silently_reduces_steps() -> None:
-    request = PricingRequest(steps=101)
-    check = assess_transfer(request, "lattice_explorer")
-    assert not check.exact
-    assert "N=101" in check.issues[0]
-    assert request.steps == 101
-
-
-
-def test_explorer_rejects_multiple_dividends_without_dropping_them() -> None:
-    dividends = (DividendInput(0.25, 2.0), DividendInput(0.75, 3.0))
-    request = PricingRequest(steps=8, dividends=dividends)
-    check = assess_transfer(request, "lattice_explorer")
-    assert not check.exact
-    assert any("at most one" in reason for reason in check.issues)
-    assert request.dividends == dividends
-    assert assess_transfer(request, "model_comparison").exact
-
-
-def test_boundary_rejects_n_above_200_without_clamping() -> None:
-    request = PricingRequest(steps=250)
-    check = assess_transfer(request, "exercise_boundary")
-    assert not check.exact
-    assert any("N=200" in reason for reason in check.issues)
-    assert request.steps == 250
-
-
-def test_explorer_flags_unavailable_threshold() -> None:
-    request = PricingRequest(steps=5, pruning_threshold=0.0)
-    check = assess_transfer(request, "lattice_explorer")
-    assert not check.exact
-    assert any("threshold" in reason for reason in check.issues)
-
-
 def test_target_market_limits_are_explicit() -> None:
     request = PricingRequest(volatility=6.0, rate=1.1)
     check = assess_transfer(request, "model_comparison")
@@ -138,3 +100,72 @@ def test_large_maturity_not_exact_in_comparison_or_greeks() -> None:
         check = assess_transfer(request, target)
         assert not check.exact
         assert any("maturity" in reason for reason in check.issues)
+
+
+# Saved successful-ticket workflow (formerly test_contract_workflow_ui.py).
+def _result(request: PricingRequest) -> PricingResult:
+    return PricingResult(
+        request=request, price=8.0, elapsed_ms=1.0,
+        reachable_nodes=10, allocated_nodes=10,
+        pruned_transitions=0, black_scholes=None,
+    )
+
+
+def test_successful_pricing_ticket_can_be_saved() -> None:
+    request = PricingRequest(
+        option_type="Put", exercise="American", steps=30,
+    )
+    state = {"last_pricing_result": _result(request)}
+    assert save_reference_from_last_result(state) is request
+    assert get_reference(state) is request
+    assert state["last_pricing_result"].request is request
+
+
+def test_no_successful_price_does_not_replace_reference() -> None:
+    original = PricingRequest(steps=20)
+    state = {"last_pricing_result": _result(original)}
+    save_reference_from_last_result(state)
+    state["last_pricing_result"] = None
+    with pytest.raises(ValueError, match="successful pricing"):
+        save_reference_from_last_result(state)
+    assert get_reference(state) is original
+
+
+def test_invalid_result_type_cannot_be_saved() -> None:
+    state = {"last_pricing_result": "fake-pricing-result"}
+    with pytest.raises(ValueError, match="successful pricing"):
+        save_reference_from_last_result(state)
+    assert get_reference(state) is None
+
+
+def test_new_pricing_result_does_not_implicitly_replace_reference() -> None:
+    original = PricingRequest(spot=100.0)
+    state = {"last_pricing_result": _result(original)}
+    save_reference_from_last_result(state)
+    later = replace(original, spot=125.0)
+    state["last_pricing_result"] = _result(later)
+    assert get_reference(state) is original
+    assert get_reference(state).spot == 100.0
+    save_reference_from_last_result(state)
+    assert get_reference(state) is later
+
+
+def test_clear_reference_preserves_last_pricing_result() -> None:
+    request = PricingRequest()
+    result = _result(request)
+    state = {"last_pricing_result": result}
+    save_reference_from_last_result(state)
+    assert clear_reference(state) is True
+    assert get_reference(state) is None
+    assert state["last_pricing_result"] is result
+
+
+def test_saving_already_priced_result_never_calls_engine(monkeypatch) -> None:
+    request = PricingRequest()
+    state = {"last_pricing_result": _result(request)}
+
+    def forbidden(*_args, **_kwargs):
+        raise AssertionError("Reference save must not build or price a lattice")
+
+    monkeypatch.setattr("frontend.pricing_service.price_contract", forbidden)
+    assert save_reference_from_last_result(state) is request

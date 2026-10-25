@@ -9,7 +9,7 @@ from collections.abc import MutableMapping
 from dataclasses import replace
 from typing import Any
 
-from frontend.contract_workflow import assess_transfer
+from frontend.contract_workflow import assess_transfer, get_reference
 from frontend.pricing_service import PricingRequest
 from frontend.workspace_policy import (COMPARISON_THRESHOLDS, EXPLORER_THRESHOLDS)
 
@@ -48,7 +48,7 @@ def apply_handoff(
     state: MutableMapping[str, Any], destination: str, request: PricingRequest,
 ) -> None:
     """Prefill only compatible widgets; no numerical calculation or shared-reference edits."""
-    adjusted, issues = plan_handoff(request, destination)
+    _, issues = plan_handoff(request, destination)
     if issues:
         raise ValueError("Incompatible target ticket: " + " ".join(issues))
     if destination == "Compare models":
@@ -61,9 +61,28 @@ def apply_handoff(
     if type(generation) is not int or generation < 0:
         raise ValueError("Invalid import widget generation.")
     # Every validation precedes mutation. Old numerical results become stale.
-    state[seed_key] = adjusted
+    state[seed_key] = request
     state[generation_key] = generation + 1
     if destination == "Compare models":
         state["last_comparison_report"] = None
     else:
         state.pop("lattice_explorer_result", None)
+
+
+def import_saved_reference(
+    state: MutableMapping[str, Any], destination: str,
+) -> tuple[bool, tuple[str, ...]]:
+    """Import the saved pricing ticket into either diagnostic editor.
+
+    Reject incompatible requests without mutating the session. On success,
+    preserve the original immutable request and invalidate only the
+    destination's stale output; never run a pricing calculation.
+    """
+    reference = get_reference(state)
+    if reference is None:
+        return False, ("No reference contract saved in Pricing Terminal.",)
+    _, issues = plan_handoff(reference, destination)
+    if issues:
+        return False, issues
+    apply_handoff(state, destination, reference)
+    return True, ()

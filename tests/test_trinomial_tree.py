@@ -327,3 +327,43 @@ def test_large_step_count_probabilities_are_admissible() -> None:
     assert 0.0 <= tree.no_dividend_up_probability <= 1.0
     assert 0.0 <= tree.no_dividend_mid_probability <= 1.0
     assert 0.0 <= tree.no_dividend_down_probability <= 1.0
+
+
+# Shared geometric operations preserve strict-nearest selection and lower ties.
+def test_shared_geometric_exponent_tie_and_validation() -> None:
+    import pytest
+    from src.node import nearest_geometric_exponent
+
+    assert nearest_geometric_exponent(150.0, 100.0, 2.0) == 0
+    assert nearest_geometric_exponent(150.01, 100.0, 2.0) == 1
+    assert nearest_geometric_exponent(75.0, 100.0, 2.0) == -1
+    assert nearest_geometric_exponent(110.0, 100.0, 1.0,
+                                      zero_volatility=True) == 0
+    with pytest.raises(RuntimeError, match="positive"):
+        nearest_geometric_exponent(0.0, 100.0, 2.0,
+                                   zero_volatility=True)
+
+
+def test_shared_trinomial_stencil_and_column_bottom() -> None:
+    import pytest
+
+    upper, middle, lower, bottom = (Node(value) for value in (160., 120., 90., 60.))
+    upper.lower_neighbor = middle
+    middle.lower_neighbor = lower
+    lower.lower_neighbor = bottom
+    assert TrinomialTree._bottom_node(upper) is bottom
+    assert TrinomialTree._find_middle_successor(118., upper, middle) == (
+        upper, middle, lower,
+    )
+    assert TrinomialTree._find_middle_successor(88., upper, middle) == (
+        middle, lower, bottom,
+    )
+    with pytest.raises(RuntimeError, match="Trinomial grid is too narrow below"):
+        TrinomialTree._find_middle_successor(60., upper, middle)
+
+
+def test_trinomial_exponent_wrapper_uses_lattice_alpha() -> None:
+    tree = _build_tree(3)
+    assert tree._closest_exponent(100. * tree.alpha, 100.) == 1
+    zero_vol = _build_tree(3, volatility=0.)
+    assert zero_vol._closest_exponent(101., 100.) == 0

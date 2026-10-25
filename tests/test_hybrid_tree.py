@@ -306,3 +306,27 @@ def test_one_dividend_adds_one_terminal_node() -> None:
         )
         == 5
     )
+
+
+# Hybrid dividend bridges must use the same neighbor and geometric conventions.
+def test_shared_hybrid_stencil_and_column_bottom() -> None:
+    import pytest
+
+    upper, middle, lower, bottom = (Node(value) for value in (160., 120., 90., 60.))
+    upper.lower_neighbor = middle
+    middle.lower_neighbor = lower
+    lower.lower_neighbor = bottom
+    assert HybridTree._bottom_node(upper) is bottom
+    assert HybridTree._find_middle_successor(118., upper, middle) == (
+        upper, middle, lower,
+    )
+    assert HybridTree._find_middle_successor(88., upper, middle) == (
+        middle, lower, bottom,
+    )
+    with pytest.raises(RuntimeError, match="Hybrid grid is too narrow below"):
+        HybridTree._find_middle_successor(60., upper, middle)
+
+
+def test_hybrid_exponent_wrapper_uses_bridge_ratio() -> None:
+    tree = _build_hybrid(nb_steps=3)
+    assert tree._closest_exponent(100. * tree.level_ratio, 100.) == 1

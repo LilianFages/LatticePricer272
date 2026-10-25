@@ -10,6 +10,9 @@ from typing import Any
 
 import streamlit as st
 
+from frontend.contract_workflow import get_reference
+from frontend.diagnostics_contract import import_saved_reference
+
 
 def render_option_pair(
     key_for: Callable[[str], str],
@@ -80,3 +83,65 @@ def render_market_fields(
         format="%.2f", key=key_for(maturity_key),
     )
     return spot, strike, vol_pct, rate_pct, maturity
+
+
+# Mode-specific widget IDs and copy; all import mechanics are shared.
+_REFERENCE_IMPORT_UI = {
+    "Compare models": (
+        "cmp_import_contract",
+        "cmp_import_feedback",
+        "Reference contract imported into the form. Run comparison when ready.",
+        "Copy contract/market, N, threshold and all dividends. "
+        "Selected architectures, repetitions and price reference stay unchanged.",
+        "Import fills the ticket only. Model selection and benchmark "
+        "settings stay independent; no valuation runs automatically.",
+    ),
+    "Explore lattice": (
+        "lx_import_reference",
+        "explorer_import_feedback",
+        "Reference contract imported. Build the lattices when ready.",
+        "Requires 2 <= N <= 100, at most one cash dividend and a compatible "
+        "pruning threshold. Incompatible references are never adjusted.",
+        "Import fills the ticket only; left/right models remain independent. "
+        "No lattice is built until BUILD & COMPARE LATTICES is clicked.",
+    ),
+}
+
+
+def _reference_import_settings(mode: str) -> tuple[str, str, str, str, str]:
+    try:
+        return _REFERENCE_IMPORT_UI[mode]
+    except KeyError:
+        raise ValueError(f"Unknown diagnostic import mode: {mode}") from None
+
+
+def on_reference_import(mode: str) -> None:
+    """Perform only an explicit contract transfer, not a pricing run."""
+    _, feedback_key, success, _, _ = _reference_import_settings(mode)
+    accepted, issues = import_saved_reference(st.session_state, mode)
+    st.session_state[feedback_key] = (
+        ("success", success) if accepted
+        else ("warning", "Import unavailable: " + " ".join(issues))
+    )
+
+
+def render_reference_import(mode: str) -> None:
+    """Common reference-import widget for both Model Diagnostics investigations."""
+    button_key, feedback_key, _, help_text, caption = _reference_import_settings(mode)
+    st.markdown('<div class="desk-section">Reference contract · optional</div>',
+                unsafe_allow_html=True)
+    reference = get_reference(st.session_state)
+    if reference is None:
+        st.caption("Save a successfully priced contract in Pricing Terminal first.")
+    st.button(
+        "Import reference contract", on_click=on_reference_import, args=(mode,),
+        disabled=reference is None, key=button_key, width="stretch", help=help_text,
+    )
+    feedback = st.session_state.get(feedback_key)
+    if feedback is not None:
+        level, message = feedback
+        if level == "success":
+            st.success(message)
+        else:
+            st.warning(message)
+    st.caption(caption)

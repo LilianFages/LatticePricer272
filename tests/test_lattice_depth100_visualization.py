@@ -7,17 +7,10 @@ import pytest
 from frontend.lattice_explorer import (
     _chart, _has_ghost_allocations, _lattice_chart_data, _plot_domain,
 )
-from frontend.lattice_explorer_service import MAX_VISUAL_STEPS, snapshot_priced_tree
-from frontend.contract_workflow import assess_transfer
+from frontend.lattice_explorer_service import snapshot_priced_tree
 from frontend.pricing_service import PricingRequest
 
 
-def test_visual_cap_is_one_hundred_and_transfer_is_exact():
-    assert MAX_VISUAL_STEPS == 100
-    assert assess_transfer(PricingRequest(steps=100), "lattice_explorer").exact
-    check = assess_transfer(PricingRequest(steps=101), "lattice_explorer")
-    assert not check.exact
-    assert any("N=101" in issue for issue in check.issues)
 
 
 def test_allocation_filter_is_noop_for_fully_connected_tree():

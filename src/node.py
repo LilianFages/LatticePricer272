@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 
 class Node:
     """Represents a node in a recombining lattice."""
@@ -38,3 +40,59 @@ class TrunkNode(Node):
         )
 
         self.previous_trunk: TrunkNode | None = None
+
+
+def bottom_node(top_node: Node) -> Node:
+    """Return the lowest linked node in a lattice column."""
+    current = top_node
+    while current.lower_neighbor is not None:
+        current = current.lower_neighbor
+    return current
+
+
+def nearest_geometric_exponent(
+    expected_value: float,
+    reference_price: float,
+    level_ratio: float,
+    *,
+    zero_volatility: bool = False,
+) -> int:
+    """Select the closest geometric price level, preferring the lower on ties.
+
+    A zero-volatility trinomial grid has only the central price level.
+    """
+    if expected_value <= 0.0:
+        raise RuntimeError("Expected stock price must remain positive.")
+    if zero_volatility:
+        return 0
+
+    raw = math.log(expected_value / reference_price) / math.log(level_ratio)
+    lower = math.floor(raw)
+    upper = lower + 1
+    lower_price = reference_price * level_ratio ** lower
+    upper_price = reference_price * level_ratio ** upper
+    if abs(upper_price - expected_value) < abs(lower_price - expected_value):
+        return upper
+    return lower
+
+
+def middle_successors(
+    expected_value: float,
+    upper_candidate: Node,
+    middle_candidate: Node,
+    *,
+    grid_name: str,
+) -> tuple[Node, Node, Node]:
+    """Slide a three-node successor stencil down to the closest middle level."""
+    upper = upper_candidate
+    middle = middle_candidate
+    while True:
+        lower = middle.lower_neighbor
+        if lower is None:
+            raise RuntimeError(f"{grid_name} grid is too narrow below.")
+        if abs(lower.price - expected_value) < abs(middle.price - expected_value):
+            if lower.lower_neighbor is None:
+                raise RuntimeError(f"{grid_name} grid is too narrow below.")
+            upper, middle = middle, lower
+            continue
+        return upper, middle, lower

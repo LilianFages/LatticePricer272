@@ -3,8 +3,10 @@ from dataclasses import replace
 
 import pytest
 
+from frontend.contract_workflow import get_reference, save_reference
+
 from frontend.diagnostics_contract import (
-    THRESHOLDS, apply_handoff, plan_handoff,
+    THRESHOLDS, apply_handoff, import_saved_reference, plan_handoff,
 )
 from frontend.lattice_explorer_service import MAX_VISUAL_STEPS
 from frontend.pricing_service import DividendInput, PricingRequest
@@ -100,3 +102,75 @@ def test_transfer_never_prices(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_unknown_destination_rejected() -> None:
     with pytest.raises(ValueError):
         plan_handoff(PricingRequest(), "Unknown")
+
+
+@pytest.mark.parametrize("destination,seed,nonce,stale", [
+    ("Compare models", "cmp_reference_seed", "cmp_import_nonce", "last_comparison_report"),
+    ("Explore lattice", "explorer_reference_seed", "explorer_import_nonce", "lattice_explorer_result"),
+])
+def test_import_exact_identity_and_clear_stale_output(destination, seed, nonce, stale):
+    request = PricingRequest(steps=5, option_type="Put", exercise="American")
+    state = {stale: "old output", "cmp_models": ("Binomial",),
+             "lx_left_model": "Hybrid"}
+    save_reference(state, request)
+    assert import_saved_reference(state, destination) == (True, ())
+    assert state[seed] is request
+    assert state[nonce] == 1
+    assert stale not in state or state[stale] is None
+    assert get_reference(state) is request
+    assert state["cmp_models"] == ("Binomial",)
+    assert state["lx_left_model"] == "Hybrid"
+
+
+@pytest.mark.parametrize("destination", ["Compare models", "Explore lattice"])
+def test_absent_reference_does_not_mutate_state(destination):
+    state = {"last_comparison_report": object(), "lattice_explorer_result": object()}
+    before = state.copy()
+    assert import_saved_reference(state, destination)[0] is False
+    assert state == before
+
+
+@pytest.mark.parametrize("destination", ["Compare models", "Explore lattice"])
+def test_repeated_import_rotates_only_destination_generation(destination):
+    state = {}
+    request = PricingRequest(steps=5)
+    save_reference(state, request)
+    assert import_saved_reference(state, destination)[0]
+    save_reference(state, replace(request, spot=110.0))
+    assert import_saved_reference(state, destination)[0]
+    key = "cmp_import_nonce" if destination == "Compare models" else "explorer_import_nonce"
+    assert state[key] == 2
+
+
+def test_explorer_cannot_silently_drop_second_dividend():
+    original = PricingRequest(steps=5)
+    state = {"lattice_explorer_result": "old"}
+    save_reference(state, original)
+    bad = replace(original, dividends=(DividendInput(.2, 1.), DividendInput(.7, 2.)))
+    save_reference(state, bad)
+    before = state.copy()
+    accepted, issues = import_saved_reference(state, "Explore lattice")
+    assert not accepted and any("at most one" in message for message in issues)
+    assert state == before
+
+
+@pytest.mark.parametrize("destination,nonce", [
+    ("Compare models", "cmp_import_nonce"),
+    ("Explore lattice", "explorer_import_nonce"),
+])
+def test_invalid_nonce_does_not_partially_import(destination, nonce):
+    state = {nonce: "invalid"}
+    save_reference(state, PricingRequest(steps=5))
+    before = state.copy()
+    with pytest.raises(ValueError, match="generation"):
+        import_saved_reference(state, destination)
+    assert state == before
+
+
+def test_import_refuses_unknown_destination_without_mutation():
+    state = {}
+    save_reference(state, PricingRequest(steps=5))
+    before = state.copy()
+    with pytest.raises(ValueError, match="Unknown"):
+        import_saved_reference(state, "Unknown")
+    assert state == before

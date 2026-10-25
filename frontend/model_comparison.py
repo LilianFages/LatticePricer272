@@ -14,14 +14,16 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
-from frontend.diagnostics_fields import render_market_fields, render_option_pair
+from frontend.diagnostics_fields import (
+    render_market_fields, render_option_pair, render_reference_import,
+)
 from frontend.comparison_service import (
     ComparisonReport,
     compare_models,
     comparison_csv,
     display_rows,
 )
-from frontend.contract_workflow import assess_transfer, get_reference
+from frontend.diagnostics_contract import import_saved_reference
 from frontend.workspace_policy import COMPARISON_THRESHOLDS
 from frontend.dividend_input import parse_dividends
 from frontend.pricing_service import (
@@ -46,24 +48,8 @@ DEFAULT_MODELS = (
 def apply_reference_to_comparison(
     state: MutableMapping[str, Any],
 ) -> tuple[bool, tuple[str, ...]]:
-    """Atomically prefill a comparison ticket; never run pricing.
-
-    Comparison architectures and benchmark-only choices are deliberately
-    independent of the saved ticket's model. A rejected import changes nothing.
-    """
-    reference = get_reference(state)
-    if reference is None:
-        return False, ("No reference contract saved in Pricing Terminal.",)
-    check = assess_transfer(reference, "model_comparison")
-    if not check.exact:
-        return False, check.issues
-    generation = state.get("cmp_import_nonce", 0)
-    if not isinstance(generation, int) or generation < 0:
-        raise ValueError("Invalid comparison widget generation.")
-    state["cmp_reference_seed"] = reference
-    state["cmp_import_nonce"] = generation + 1
-    state["last_comparison_report"] = None
-    return True, ()
+    """Explicit import without pricing or changes to benchmark choices."""
+    return import_saved_reference(state, "Compare models")
 
 
 def comparison_dividend_rows(seed: PricingRequest | None) -> list[dict[str, float]]:
@@ -84,39 +70,9 @@ def _comparison_default(field: str, fallback: Any) -> Any:
     return getattr(seed, field) if isinstance(seed, PricingRequest) else fallback
 
 
-def _on_import_comparison_reference() -> None:
-    imported, issues = apply_reference_to_comparison(st.session_state)
-    st.session_state["cmp_import_feedback"] = (
-        ("success", "Reference contract imported into the form. Run comparison when ready.")
-        if imported else ("warning", "Import unavailable: " + " ".join(issues))
-    )
-
-
 def _render_comparison_import() -> None:
-    """Explicit prefill, with no hidden repricing and no stale output panel."""
-    st.markdown('<div class="desk-section">Reference contract · optional</div>',
-                unsafe_allow_html=True)
-    reference = get_reference(st.session_state)
-    if reference is None:
-        st.caption("Save a successfully priced contract in Pricing Terminal first.")
-    st.button(
-        "Import reference contract",
-        on_click=_on_import_comparison_reference,
-        disabled=reference is None,
-        key="cmp_import_contract",
-        width="stretch",
-        help="Copy contract/market, N, threshold and all dividends. "
-             "Selected architectures, repetitions and price reference stay unchanged.",
-    )
-    feedback = st.session_state.get("cmp_import_feedback")
-    if feedback is not None:
-        level, message = feedback
-        if level == "success":
-            st.success(message)
-        else:
-            st.warning(message)
-    st.caption("Import fills the ticket only. Model selection and benchmark "
-               "settings stay independent; no valuation runs automatically.")
+    """Explicit ticket prefill; pricing remains button-triggered."""
+    render_reference_import("Compare models")
 
 
 

@@ -19,6 +19,7 @@ import math
 from dataclasses import dataclass, replace
 from typing import Callable
 
+from src.black_scholes_terms import standardized_terms
 from src.pricing_errors import PricingInputError
 from src.risk.contracts import (
     PricingFunction,
@@ -98,8 +99,7 @@ def analytic_bs_greeks(request: PricingRequest) -> dict[str, float] | None:
         request.maturity,
     )
     root_t = math.sqrt(t)
-    d1 = (math.log(s / k) + (r + sigma * sigma / 2) * t) / (sigma * root_t)
-    d2 = d1 - sigma * root_t
+    d1, d2 = standardized_terms(s, k, r, sigma, t)
     normal_cdf = lambda x: 0.5 * math.erfc(-x / math.sqrt(2.0))
     density = math.exp(-d1 * d1 / 2) / math.sqrt(2 * math.pi)
     disc_strike = k * math.exp(-r * t)

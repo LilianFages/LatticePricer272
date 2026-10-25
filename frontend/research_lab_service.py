@@ -139,6 +139,27 @@ def comparable_cases(frame: pd.DataFrame) -> pd.DataFrame:
     ].copy()
 
 
+def _valid_cost_observations(
+    frame: pd.DataFrame,
+    time_col: str,
+    error_col: str,
+    *,
+    missing_message: str,
+) -> pd.DataFrame:
+    """Filter observed nonnegative errors and strictly positive runtimes.
+
+    Missing and nonnumeric values remain excluded, never imputed as zero.
+    The source DataFrame and its schema are not modified.
+    """
+    if time_col not in frame.columns or error_col not in frame.columns:
+        raise DatasetError(missing_message)
+    data = frame.copy()
+    data[time_col] = pd.to_numeric(data[time_col], errors="coerce")
+    data[error_col] = pd.to_numeric(data[error_col], errors="coerce")
+    data = data.dropna(subset=[time_col, error_col])
+    return data.loc[data[time_col].gt(0) & data[error_col].ge(0)].copy()
+
+
 def observed_pareto(
     frame: pd.DataFrame,
     time_col: str = "max_median_runtime_seconds",
@@ -149,13 +170,9 @@ def observed_pareto(
     Equal coordinates are retained as equivalent configurations. No interpolation,
     extrapolation or asymptotic convergence claim is implied.
     """
-    if time_col not in frame.columns or error_col not in frame.columns:
-        raise DatasetError("Missing Pareto axes")
-    data = frame.copy()
-    data[time_col] = pd.to_numeric(data[time_col], errors="coerce")
-    data[error_col] = pd.to_numeric(data[error_col], errors="coerce")
-    data = data.dropna(subset=[time_col, error_col])
-    data = data[(data[time_col] > 0) & (data[error_col] >= 0)].copy()
+    data = _valid_cost_observations(
+        frame, time_col, error_col, missing_message="Missing Pareto axes",
+    )
     if data.empty:
         return data
     times = data[time_col].to_numpy()
@@ -172,13 +189,10 @@ def observed_pareto(
 
 def frontier_thresholds(frame: pd.DataFrame, targets: tuple[float, ...]) -> pd.DataFrame:
     """Fastest OBSERVED point achieving each selected error threshold."""
-    if "max_median_runtime_seconds" not in frame or "worst_absolute_error" not in frame:
-        raise DatasetError("Missing observed pricing cost/error columns")
-    valid = frame.copy()
-    valid["worst_absolute_error"] = pd.to_numeric(valid["worst_absolute_error"], errors="coerce")
-    valid["max_median_runtime_seconds"] = pd.to_numeric(valid["max_median_runtime_seconds"], errors="coerce")
-    valid = valid.dropna(subset=["worst_absolute_error", "max_median_runtime_seconds"])
-    valid = valid[(valid["worst_absolute_error"] >= 0) & (valid["max_median_runtime_seconds"] > 0)]
+    valid = _valid_cost_observations(
+        frame, "max_median_runtime_seconds", "worst_absolute_error",
+        missing_message="Missing observed pricing cost/error columns",
+    )
     records: list[dict] = []
     for target in targets:
         matched = valid.loc[valid["worst_absolute_error"] <= target]

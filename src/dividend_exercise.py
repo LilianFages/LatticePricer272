@@ -18,6 +18,7 @@ import math
 from dataclasses import dataclass
 from typing import Protocol
 
+from src.black_scholes_terms import standardized_terms
 from src.dividend import CashDividend
 from src.dividend_timing import dividend_grid_step, dividend_time_in_step
 from src.node import Node
@@ -117,17 +118,15 @@ def _exercise_at_ex_date(
             return max(discount_strike - spot, 0.0)
         raise TypeError("Unsupported vanilla option type.")
 
-    root_time = math.sqrt(time)
-    sigma_root = volatility * root_time
     if effective_strike == 0.0:
         if isinstance(option, CallOption):
             return spot
         if isinstance(option, PutOption):
             return 0.0
         raise TypeError("Unsupported vanilla option type.")
-    d1 = (math.log(spot / effective_strike)
-          + (rate + 0.5 * volatility ** 2) * time) / sigma_root
-    d2 = d1 - sigma_root
+    d1, d2 = standardized_terms(
+        spot, effective_strike, rate, volatility, time,
+    )
     cdf = lambda x: 0.5 * math.erfc(-x / math.sqrt(2.0))
     if isinstance(option, CallOption):
         return max(0.0, spot * cdf(d1) - discount_strike * cdf(d2))

@@ -1,4 +1,4 @@
-"""05 / Research Lab — interactive explorer of completed reproducible experiments.
+"""Archived research evidence — interactive inspection of completed experiments.
 
 No engines run automatically. All figures use repository CSV exports and expose
 filters / downloadable rows. The source dataset is documented on each tab.
@@ -553,30 +553,6 @@ def _library() -> None:
              help="Blank source fields are preserved as missing, not replaced with zero.")
     _source(name)
     _render_research_library_data(frame, name, missing)
-
-
-def render_research_lab_page() -> None:
-    st.markdown('<div class="desk-kicker">Research lab / 05</div>', unsafe_allow_html=True)
-    st.markdown('<div class="desk-title">Research Lab · Empirical Evidence</div>', unsafe_allow_html=True)
-    st.markdown('<div class="desk-subtitle">Saved experimental results · reproducible filters · '
-                'explicit numerical limitations</div>', unsafe_allow_html=True)
-    overview, pruning, accuracy, scaling, temporal, library = st.tabs([
-        "Overview", "Pruning robustness", "Accuracy vs cost", "Complexity",
-        "Temporal exercise", "Data library",
-    ])
-    with overview:
-        # Keep research tabs in the established order and avoid recomputation.
-        _overview()
-    with pruning:
-        _pruning()
-    with accuracy:
-        _accuracy()
-    with scaling:
-        _scaling()
-    with temporal:
-        _temporal()
-    with library:
-        _library()
 
 
 # Optional access to historical CSV-backed analyses. Kept separate from the

@@ -11,25 +11,31 @@ def test_three_unique_workspaces():
     assert WORKSPACES == (
         "01 / Pricing terminal", "02 / Model diagnostics", "03 / Quant research"
     )
+    assert len(set(WORKSPACES)) == len(WORKSPACES)
     assert len(STUDIES) == len(set(STUDIES)) == 4
     assert DIAGNOSTIC_MODES == ("Compare models", "Explore lattice")
 
 
-@pytest.mark.parametrize("old, expected", [
-    ("03 / Quant analytics", "03 / Quant research"),
-    ("04 / Research lab", "03 / Quant research"),
-    ("04 / Quant analytics", "03 / Quant research"),
-    ("05 / Research lab", "03 / Quant research"),
-    ("02 / Model comparison", "02 / Model diagnostics"),
-    ("03 / Lattice explorer", "02 / Model diagnostics"),
+@pytest.mark.parametrize("old, expected, selected_view", [
+    ("03 / Quant analytics", "03 / Quant research", None),
+    ("04 / Research lab", "03 / Quant research", None),
+    ("04 / Quant analytics", "03 / Quant research", None),
+    ("05 / Research lab", "03 / Quant research", None),
+    ("02 / Model comparison", "02 / Model diagnostics", "Compare models"),
+    ("03 / Lattice explorer", "02 / Model diagnostics", "Explore lattice"),
 ])
-def test_legacy_workspace_migrates_without_calculation(old, expected):
+def test_legacy_workspace_migrates_without_calculation(old, expected, selected_view):
+    """Migrate the page and subview without discarding cached results."""
     state = {"lattice_workspace": old, "qa_conv_result": object(),
              "qa_efficiency_result": object(), "qa_exb_result": object(),
              "qa_stab_result": object(), "lattice_explorer_result": object()}
     before = {key: state[key] for key in state if key != "lattice_workspace"}
     migrate_navigation_state(state)
     assert state["lattice_workspace"] == expected
+    if selected_view is None:
+        assert "model_diagnostics_view" not in state
+    else:
+        assert state["model_diagnostics_view"] == selected_view
     for key, value in before.items():
         assert state[key] is value
     previous = state.copy()
@@ -37,10 +43,18 @@ def test_legacy_workspace_migrates_without_calculation(old, expected):
     assert state == previous
 
 
-def test_new_workspace_is_stable():
-    state = {"lattice_workspace": "03 / Quant research"}
+@pytest.mark.parametrize("workspace, selected_view", [
+    ("03 / Quant research", None),
+    ("02 / Model diagnostics", "Explore lattice"),
+])
+def test_new_workspace_is_stable(workspace, selected_view):
+    """Current page and its selected investigation must survive migration."""
+    state = {"lattice_workspace": workspace}
+    if selected_view is not None:
+        state["model_diagnostics_view"] = selected_view
+    original = state.copy()
     migrate_navigation_state(state)
-    assert state == {"lattice_workspace": "03 / Quant research"}
+    assert state == original
 
 
 def test_research_has_no_duplicate_analytics_tabs():

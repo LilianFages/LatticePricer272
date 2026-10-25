@@ -107,3 +107,97 @@ def test_live_20_step_geometry_sums_probability_mass():
     assert all(abs(total - 1.) < 1e-9 for total in tree.column_masses)
     assert tree.displayed_nodes > 0
     assert tree.nodes[0].option_value == pytest.approx(tree.model_price)
+
+
+class ReferenceImportUI:
+    """Small Streamlit double: rendering never invokes callbacks."""
+
+    def __init__(self):
+        self.session_state = {}
+        self.buttons = []
+        self.messages = []
+
+    def markdown(self, text, **kwargs):
+        self.messages.append(("heading", text))
+
+    def caption(self, text):
+        self.messages.append(("caption", text))
+
+    def success(self, text):
+        self.messages.append(("success", text))
+
+    def warning(self, text):
+        self.messages.append(("warning", text))
+
+    def button(self, label, **kwargs):
+        self.buttons.append((label, kwargs))
+        return False
+
+
+@pytest.mark.parametrize("mode,key,feedback_key", [
+    ("Compare models", "cmp_import_contract", "cmp_import_feedback"),
+    ("Explore lattice", "lx_import_reference", "explorer_import_feedback"),
+])
+def test_shared_reference_import_keeps_keys_and_does_not_price(
+    monkeypatch, mode, key, feedback_key,
+):
+    ui = ReferenceImportUI()
+    monkeypatch.setattr(fields, "st", ui)
+    calls = []
+    monkeypatch.setattr(fields, "import_saved_reference",
+                        lambda *args: calls.append(args))
+    fields.render_reference_import(mode)
+    assert not calls
+    assert len(ui.buttons) == 1
+    label, options = ui.buttons[0]
+    assert label == "Import reference contract"
+    assert options["key"] == key
+    assert options["disabled"] is True
+    assert options["args"] == (mode,)
+    assert options["on_click"] is fields.on_reference_import
+    assert options["width"] == "stretch"
+    assert any(kind == "caption" and "Pricing Terminal" in text
+               for kind, text in ui.messages)
+    ui.session_state[feedback_key] = ("warning", "Import unavailable")
+    fields.render_reference_import(mode)
+    assert ("warning", "Import unavailable") in ui.messages
+
+
+@pytest.mark.parametrize("mode,feedback_key", [
+    ("Compare models", "cmp_import_feedback"),
+    ("Explore lattice", "explorer_import_feedback"),
+])
+def test_shared_import_feedback_keeps_failure_atomic(monkeypatch, mode, feedback_key):
+    ui = ReferenceImportUI()
+    ui.session_state["other_result"] = object()
+    previous_result = ui.session_state["other_result"]
+    monkeypatch.setattr(fields, "st", ui)
+    calls = []
+
+    def reject(state, chosen_mode):
+        calls.append((state, chosen_mode))
+        return False, ("Threshold not offered",)
+
+    monkeypatch.setattr(fields, "import_saved_reference", reject)
+    fields.on_reference_import(mode)
+    assert calls == [(ui.session_state, mode)]
+    assert ui.session_state[feedback_key] == (
+        "warning", "Import unavailable: Threshold not offered",
+    )
+    assert ui.session_state["other_result"] is previous_result
+
+
+def test_shared_import_displays_success_without_new_pricing(monkeypatch):
+    ui = ReferenceImportUI()
+    monkeypatch.setattr(fields, "st", ui)
+    monkeypatch.setattr(fields, "import_saved_reference",
+                        lambda state, mode: (True, ()))
+    fields.on_reference_import("Compare models")
+    assert ui.session_state["cmp_import_feedback"][0] == "success"
+    fields.render_reference_import("Compare models")
+    assert any(kind == "success" for kind, _ in ui.messages)
+
+
+def test_unknown_diagnostic_import_mode_is_rejected():
+    with pytest.raises(ValueError, match="Unknown diagnostic import mode"):
+        fields._reference_import_settings("unknown")

@@ -5,7 +5,10 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
-from frontend.analytics_views import _contract_fields, _get_request
+from frontend.research_contract import (
+    build_research_request as _get_request,
+    render_research_contract_fields as _contract_fields,
+)
 from frontend.pricing_service import PricingInputError
 from frontend.research_efficiency_service import (
     ALLOCATION, BRANCH, FULL, EFFICIENCY_MODELS,

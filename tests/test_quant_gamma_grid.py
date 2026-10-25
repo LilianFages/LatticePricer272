@@ -8,7 +8,7 @@ import pytest
 
 from frontend.greeks_service import GreekBumps, calculate_greeks, select_gamma_bump
 from frontend.pricing_service import PricingRequest
-from frontend import quant_analytics as qa
+from frontend import analytics_views as views
 
 
 def test_grid_spacing_trinomial_atm_100_steps():
@@ -68,44 +68,78 @@ def test_gamma_bump_independent_of_delta_and_metadata():
 
 @pytest.mark.parametrize(
     ("gamma_choice", "expected"),
-    [("Auto · grid-aware", None), (5.0, 5.0)],
+    [
+        ("Grid-aware (adaptive)", None),
+        ("Fixed ±3.5%", 3.5),
+        ("Fixed ±5%", 5.0),
+    ],
 )
-def test_greek_ticket_forwards_gamma_choice(monkeypatch, gamma_choice, expected):
-    """The user-selected Gamma bump reaches the pricing request settings."""
-    from types import SimpleNamespace
+def test_active_risk_numerics_forwards_gamma_choice(monkeypatch, gamma_choice, expected):
+    """The live workspace, not the retired Greeks page, forwards Gamma's N bump."""
     from contextlib import nullcontext
 
+    request = PricingRequest()
+    observed = {}
+    state = {}
+
     monkeypatch.setattr(
-        qa,
-        "st",
+        views, "st",
         SimpleNamespace(
-            form=lambda *_a, **_k: nullcontext(),
-            form_submit_button=lambda *_a, **_k: True,
+            columns=lambda *_a, **_kw: (nullcontext(), nullcontext()),
+            markdown=lambda *_a, **_kw: None,
+            spinner=lambda *_a, **_kw: nullcontext(),
+            session_state=state,
         ),
     )
     monkeypatch.setattr(
-        qa, "_greek_contract_fields",
-        lambda: ("Call", "European", "Trinomial · Allocation pruning"),
+        views, "_greeks_stability_input_form",
+        lambda: ({"example": "saved"}, "Trinomial · Allocation pruning",
+                 (1.0, 0.5), (80, 40), 1e-18, gamma_choice, True),
     )
-    monkeypatch.setattr(
-        qa, "_greek_market_fields",
-        lambda: (100.0, 100.0, 20.0, 2.0, 1.0),
-    )
-    monkeypatch.setattr(qa, "_greek_lattice_fields", lambda model: (100, 1e-18))
-    monkeypatch.setattr(
-        qa, "_greek_bump_fields",
-        lambda: (1.0, 0.5, 10.0, gamma_choice),
-    )
-    monkeypatch.setattr(qa, "_greek_dividend_fields", lambda: None)
-    monkeypatch.setattr(qa, "parse_dividends", lambda frame: ())
+    monkeypatch.setattr(views, "_get_request", lambda *_a: request)
 
-    submitted, request, bumps, error = qa._greeks_ticket()
-    assert submitted is True
-    assert error is None
-    assert request is not None
-    assert bumps is not None
-    assert bumps.gamma_spot_pct == expected
-    assert (bumps.spot_pct, bumps.vol_pp, bumps.rate_bp) == (1.0, 0.5, 10.0)
+    def record_study(actual_request, bumps, depths, *, gamma_bump_pct):
+        observed.update(request=actual_request, bumps=bumps,
+                        depths=depths, gamma_bump_pct=gamma_bump_pct)
+        return ()
+
+    monkeypatch.setattr(views, "greeks_stability", record_study)
+    monkeypatch.setattr(views, "_render_stability_results", lambda saved: None)
+
+    views.render_greeks_stability_tab()
+    assert observed["request"] is request
+    assert observed["bumps"] == (0.5, 1.0)
+    assert observed["depths"] == (40, 80)
+    assert observed["gamma_bump_pct"] == expected
+    assert state["qa_stab_result"] == ((), request)
+
+
+def test_active_risk_numerics_does_not_reprice_on_view_rerun(monkeypatch):
+    """Charts and display state must never launch fresh lattice pricing."""
+    from contextlib import nullcontext
+
+    previous = (("cached",), PricingRequest())
+    displayed = []
+    monkeypatch.setattr(
+        views, "st",
+        SimpleNamespace(
+            columns=lambda *_a, **_kw: (nullcontext(), nullcontext()),
+            markdown=lambda *_a, **_kw: None,
+            session_state={"qa_stab_result": previous},
+        ),
+    )
+    monkeypatch.setattr(
+        views, "_greeks_stability_input_form",
+        lambda: ({}, "Trinomial · Allocation pruning",
+                 (1.0,), (40, 80), 1e-18, "Grid-aware (adaptive)", False),
+    )
+    monkeypatch.setattr(
+        views, "greeks_stability",
+        lambda *_a, **_kw: (_ for _ in ()).throw(AssertionError("Unexpected repricing")),
+    )
+    monkeypatch.setattr(views, "_render_stability_results", displayed.append)
+    views.render_greeks_stability_tab()
+    assert displayed == [previous]
 
 
 def test_invalid_manual_width_rejected():

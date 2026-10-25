@@ -13,7 +13,6 @@ from frontend.research_lab_service import (
     load_dataset,
     missingness_by_column,
     missingness_diagnostics,
-    observed_pareto,
 )
 
 
@@ -104,14 +103,6 @@ def test_csv_remains_unimputed_after_provenance_check():
     assert pd.isna(frame.loc[2, "absolute_gap"])
 
 
-# Only observed trade-off points are eligible for Pareto filtering.
-def test_frontier_still_computed_from_observed_points():
-    data = pd.DataFrame({
-        "model": ["A", "B", "C"],
-        "max_median_runtime_seconds": [.01, .02, .03],
-        "worst_absolute_error": [.02, .01, .015],
-    })
-    assert set(observed_pareto(data)["model"]) == {"A", "B"}
 
 
 # Catalogue registration must preserve dataset names and locations.
