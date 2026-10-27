@@ -103,25 +103,8 @@ def clear_reference(state: MutableMapping[str, Any]) -> bool:
     return was_saved
 
 
-def assess_transfer(request: PricingRequest, target: str) -> TransferCheck:
-    """Check *exact* transfer; never clamp N or silently drop dividends.
-
-    This is a request-level preflight, not a promise that any numerical engine
-    will successfully price the contract. Individual study-grid controls and
-    model-specific failures are handled by the destination workspace.
-    """
-    if target not in TARGETS:
-        raise ValueError(f"Unknown contract destination: {target}.")
-    if not isinstance(request, PricingRequest):
-        raise TypeError("Reference contract must be a PricingRequest.")
-    validate_request(request)
-
-    issues: list[str] = []
-    if target == "research_lab":
-        return TransferCheck(target, (
-            "Research Lab reads archived experiments, not live pricing contracts.",
-        ))
-
+def _collect_destination_limits(request: PricingRequest, target: str, issues: list[str]) -> None:
+    """Report destination-specific grid, dividend and pruning constraints."""
     if target == "lattice_explorer":
         if not 2 <= request.steps <= MAX_VISUAL_STEPS:
             issues.append(
@@ -165,7 +148,9 @@ def assess_transfer(request: PricingRequest, target: str) -> TransferCheck:
                 "The reference pruning threshold is not offered in Quant Analytics."
             )
 
-    # These bounds are shared by the contract fields in the target UI forms.
+
+def _collect_market_limits(request: PricingRequest, target: str, issues: list[str]) -> None:
+    """Report shared form limits without modifying the pricing request."""
     if request.volatility > 5.0:
         issues.append("The target volatility input is limited to 500%.")
     if not -0.5 <= request.rate <= 1.0:
@@ -179,4 +164,31 @@ def assess_transfer(request: PricingRequest, target: str) -> TransferCheck:
             issues.append("The target spot and strike inputs are capped at EUR 10,000,000.")
         if request.maturity > 100.0:
             issues.append("The target maturity input is capped at 100 years.")
+
+
+def assess_transfer(request: PricingRequest, target: str) -> TransferCheck:
+    """Check *exact* transfer; never clamp N or silently drop dividends.
+
+    This is a request-level preflight, not a promise that any numerical engine
+    will successfully price the contract. Individual study-grid controls and
+    model-specific failures are handled by the destination workspace.
+    """
+    if target not in TARGETS:
+        raise ValueError(f"Unknown contract destination: {target}.")
+    if not isinstance(request, PricingRequest):
+        raise TypeError("Reference contract must be a PricingRequest.")
+    validate_request(request)
+
+    issues: list[str] = []
+    if target == "research_lab":
+        return TransferCheck(target, (
+            "Research Lab reads archived experiments, not live pricing contracts.",
+        ))
+
+    _collect_destination_limits(request, target, issues)
+
+    # These bounds are shared by the contract fields in the target UI forms.
+    _collect_market_limits(request, target, issues)
     return TransferCheck(target, tuple(issues))
+
+# LOT_5C5_STRUCTURAL_CLEANUP

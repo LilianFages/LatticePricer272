@@ -46,6 +46,33 @@ def migrate_navigation_state(state: MutableMapping[str, Any]) -> None:
 
 
 
+def _handoff_visual_steps(request: Any, mode: str) -> int:
+    """Ask for an explicit N adjustment only outside the visual depth range."""
+    proposed_steps = request.steps
+    if mode == "Explore lattice" and not 2 <= request.steps <= MAX_VISUAL_STEPS:
+        st.info(f"Lattice inspection requires 2 ≤ N ≤ {MAX_VISUAL_STEPS}. "
+                "Choose a new visual depth explicitly.")
+        proposed_steps = st.selectbox(
+            "New visualization depth (N)", range(2, MAX_VISUAL_STEPS + 1), index=3,
+            key="diagnostics_transfer_visual_steps",
+        )
+    return proposed_steps
+
+
+def _handoff_threshold(request: Any, mode: str, available: tuple[float, ...]) -> float:
+    """Offer only allowed pruning thresholds; preserve the original widget key."""
+    proposed_threshold = request.pruning_threshold
+    if proposed_threshold not in available:
+        st.info("The original pruning threshold is unavailable in this investigation.")
+        proposed_threshold = st.selectbox(
+            "New pruning threshold", available,
+            index=available.index(1e-18),
+            format_func=lambda value: "0 (off)" if value == 0.0 else f"{value:.0e}",
+            key=f"diagnostics_transfer_threshold_{mode.replace(' ', '_')}",
+        )
+    return proposed_threshold
+
+
 def _render_shared_ticket_handoff(mode: str) -> None:
     """Opt-in transfer of the last *submitted* contract across investigations."""
     from frontend.diagnostics_contract import THRESHOLDS, apply_handoff, plan_handoff
@@ -62,25 +89,12 @@ def _render_shared_ticket_handoff(mode: str) -> None:
             f"S={request.spot:g} € · K={request.strike:g} € · N={request.steps} · "
             f"{len(request.dividends)} dividend(s). No pricing runs until submission."
         )
-        proposed_steps = request.steps
-        if mode == "Explore lattice" and not 2 <= request.steps <= MAX_VISUAL_STEPS:
-            st.info(f"Lattice inspection requires 2 ≤ N ≤ {MAX_VISUAL_STEPS}. "
-                    "Choose a new visual depth explicitly.")
-            proposed_steps = st.selectbox(
-                "New visualization depth (N)", range(2, MAX_VISUAL_STEPS + 1), index=3,
-                key="diagnostics_transfer_visual_steps",
-            )
+        proposed_steps = _handoff_visual_steps(request, mode)
 
-        proposed_threshold = request.pruning_threshold
         available = THRESHOLDS[mode]
-        if proposed_threshold not in available:
-            st.info("The original pruning threshold is unavailable in this investigation.")
-            proposed_threshold = st.selectbox(
-                "New pruning threshold", available,
-                index=available.index(1e-18),
-                format_func=lambda value: "0 (off)" if value == 0.0 else f"{value:.0e}",
-                key=f"diagnostics_transfer_threshold_{mode.replace(' ', '_')}",
-            )
+        proposed_threshold = _handoff_threshold(
+            request, mode, available,
+        )
 
         planned, issues = plan_handoff(
             request, mode, steps=proposed_steps, threshold=proposed_threshold,
@@ -127,3 +141,5 @@ def render_model_diagnostics_page() -> None:
         )
         from frontend.lattice_explorer import render_lattice_explorer_page
         render_lattice_explorer_page(embedded=True)
+
+# LOT_5C5_STRUCTURAL_CLEANUP

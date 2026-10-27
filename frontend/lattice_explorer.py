@@ -336,7 +336,10 @@ def focus_lattice_snapshot(
                    allocated_geometry=allocated)
 
 
-def _render_lattice_explanations(snapshot: LatticeSnapshot, all_allocated: bool, show_links: bool, overview: bool, spot_band: tuple[float, float] | None) -> None:
+def _render_lattice_explanations(
+    snapshot: LatticeSnapshot, all_allocated: bool, show_links: bool,
+    overview: bool, spot_band: tuple[float, float] | None,
+) -> None:
     """Keep graph disclosures and dividend exercise qualifications together."""
     if spot_band is not None:
         st.caption("Focused lattice · every node and connection inside the "
@@ -637,6 +640,16 @@ def _explorer_detail_controls(snapshots: list[LatticeSnapshot]) -> tuple:
     return step_window, spot_band, overview, show_links
 
 
+def _explorer_shared_domain(snapshots: list[LatticeSnapshot], show_all: bool, step_window: tuple[int, int] | None, spot_band: tuple[float, float] | None) -> tuple[float, float]:
+    """Use the same price-axis bounds across both comparison panels."""
+    domain = _plot_domain(snapshots, show_all, step_window)
+    if spot_band is not None:
+        lo, hi = spot_band
+        pad = (hi - lo) * 0.04
+        domain = (max(0.0, lo - pad), hi + pad)
+    return domain
+
+
 def _explorer_plot_panels(
     stored: list, snapshots: list[LatticeSnapshot], view: str,
     show_all: bool, step_window: tuple | None, spot_band: tuple | None,
@@ -644,11 +657,9 @@ def _explorer_plot_panels(
 ) -> None:
     """Display actual stored lattice snapshots on one comparable domain."""
     max_links = None  # Display every genuine edge inside the local corridor.
-    domain = _plot_domain(snapshots, show_all, step_window)
-    if spot_band is not None:
-        lo, hi = spot_band
-        pad = (hi - lo) * 0.04
-        domain = (max(0.0, lo - pad), hi + pad)
+    domain = _explorer_shared_domain(
+        snapshots, show_all, step_window, spot_band,
+    )
     if view == "Side by side":
         columns = st.columns(2, gap="large")
         selected_indices = (0, 1)
@@ -698,7 +709,7 @@ def _build_explorer_model_snapshots(
     base: PricingRequest,
     first: str,
     second: str,
-) -> object:
+) -> list[tuple[str, LatticeSnapshot | None, str | None]]:
     """Construct both independent lattices and preserve failure reporting."""
     results: list[tuple[str, LatticeSnapshot | None, str | None]] = []
     for model in (first, second):
@@ -756,3 +767,5 @@ def render_lattice_explorer_page(*, embedded: bool = False) -> None:
 # LOT_5C3_GUARDED_REFACTOR
 
 # LOT_5C4_GUARDED_REFACTOR
+
+# LOT_5C5_STRUCTURAL_CLEANUP

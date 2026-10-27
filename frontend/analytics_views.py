@@ -38,8 +38,10 @@ def _threshold(key: str) -> float:
                         format_func=lambda x: "off" if not x else f"{x:.0e}")
 
 
-def _line_chart(data: pd.DataFrame, *, x: str, y: str, group: str,
-                x_label: str, y_label: str, log_y: bool = False, height: int = 310):
+def _line_chart(
+    data: pd.DataFrame, *, x: str, y: str, group: str,
+    x_label: str, y_label: str, log_y: bool = False, height: int = 310,
+) -> alt.Chart:
     scale = alt.Scale(type="log", zero=False) if log_y else alt.Scale(zero=False)
     return (alt.Chart(data).mark_line(point=alt.OverlayMarkDef(size=55), strokeWidth=2.2)
             .encode(x=alt.X(f"{x}:Q", title=x_label, scale=alt.Scale(zero=False)),
@@ -60,7 +62,7 @@ def _pricing_frame(points: tuple[PricingObservation, ...]) -> pd.DataFrame:
     } for p in points])
 
 
-def _status(data: pd.DataFrame):
+def _status(data: pd.DataFrame) -> None:
     failures = data[data["status"] != "ok"]
     if not failures.empty:
         st.warning(f"{len(failures)} scenarios were not priced. They are excluded from charts, not set to zero.")
@@ -413,3 +415,5 @@ def render_greeks_stability_tab() -> None:
         _render_stability_results(saved)
 
 # LOT_5C4_GUARDED_REFACTOR
+
+# LOT_5C5_STRUCTURAL_CLEANUP
