@@ -24,6 +24,7 @@ from src.allocation_pruned_trinomial_tree import AllocationPrunedTrinomialTree
 from src.dividend import CashDividend
 from src.hybrid_tree import HybridTree
 from src.node import Node, TrunkNode
+from src.lattice_graph import count_reachable_nodes as _count_priced_nodes
 from src.option import CallOption
 from src.recursive_pricer import RecursivePricer
 from src.trinomial_tree import TrinomialTree
@@ -81,25 +82,8 @@ def count_column_nodes(top: Node) -> int:
 
 
 def count_reachable_nodes(root: Node) -> int:
-    """Count distinct nodes reachable through pricing transitions."""
-    visited: set[int] = set()
-    pending = [root]
-
-    while pending:
-        node = pending.pop()
-        identifier = id(node)
-
-        if identifier in visited:
-            continue
-
-        visited.add(identifier)
-
-        for successor in (node.next_up, node.next_mid, node.next_down):
-            if successor is not None:
-                pending.append(successor)
-
-    return len(visited)
-
+    """Retain the experiment API, delegate the shared pricing-graph traversal."""
+    return _count_priced_nodes(root)
 
 class TimedTrinomialTree(TrinomialTree):
     """Instrument the existing trinomial without changing its formulas."""

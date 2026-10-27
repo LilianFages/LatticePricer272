@@ -1,4 +1,4 @@
-"""Lot 4A: three pages, four live investigations, preserved legacy navigation."""
+"""Phase 6A: three scientific sections, archived evidence, stable migration."""
 from pathlib import Path
 
 import pytest
@@ -12,8 +12,9 @@ def test_three_unique_workspaces():
         "01 / Pricing terminal", "02 / Model diagnostics", "03 / Quant research"
     )
     assert len(set(WORKSPACES)) == len(WORKSPACES)
-    assert len(STUDIES) == len(set(STUDIES)) == 4
+    assert len(STUDIES) == len(set(STUDIES)) == 3
     assert DIAGNOSTIC_MODES == ("Compare models", "Explore lattice")
+
 
 
 @pytest.mark.parametrize("old, expected, selected_view", [
@@ -58,24 +59,40 @@ def test_new_workspace_is_stable(workspace, selected_view):
 
 
 def test_research_has_no_duplicate_analytics_tabs():
-    assert STUDIES == ("Numerical accuracy", "Computational efficiency",
-                       "Optimal stopping", "Risk numerics")
+    assert STUDIES == (
+        "Numerical reliability", "Computational efficiency",
+        "Exercise & dividends",
+    )
     assert "Greeks snapshot" not in STUDIES
     assert "Market sensitivities" not in STUDIES
     assert "Data library" not in STUDIES
     assert "Data library" in ARCHIVE_CHOICES
 
 
+
 def test_research_page_routes_to_existing_studies():
     from inspect import getsource
-    from frontend.quant_research import render_quant_research_page
-    source = getsource(render_quant_research_page)
-    for action in ("render_convergence_tab", "render_efficiency_tab",
-                   "render_exercise_boundary_tab", "render_greeks_stability_tab"):
-        assert action in source
-    assert "render_sensitivity_tab()" in source
-    assert "_render_quant_greeks_tab" not in source
-    assert "calculate_greeks(" not in source
+    from frontend import quant_research as research
+
+    page = getsource(research.render_quant_research_page)
+    for handler in (
+        "_render_numerical_reliability()",
+        "_render_computational_efficiency()",
+        "_render_exercise_dividends()",
+        "_render_archived_evidence()",
+    ):
+        assert handler in page
+
+    numerical = getsource(research._render_numerical_reliability)
+    assert "render_convergence_tab()" in numerical
+    assert "render_greeks_stability_tab()" in numerical
+    assert "render_sensitivity_tab()" in numerical
+    assert "quant_research_numerical_view" in numerical
+    assert "render_efficiency_tab()" in getsource(research._render_computational_efficiency)
+    assert "render_exercise_boundary_tab()" in getsource(research._render_exercise_dividends)
+    assert "_render_quant_greeks_tab" not in numerical
+    assert "calculate_greeks(" not in numerical
+
 
 
 def test_archive_selection_only_uses_existing_legacy_renderers():
@@ -92,3 +109,36 @@ def test_app_has_only_new_workspace_route():
     assert 'if workspace == "03 / Quant research"' in code
     assert 'if workspace == "03 / Quant analytics"' not in code
     assert 'if workspace == "04 / Research lab"' not in code
+
+
+def test_archive_taxonomy_preserves_every_legacy_choice():
+    from frontend import quant_research as research
+
+    assigned = [choice for group in research.ARCHIVE_GROUPS.values() for choice in group]
+    assert len(assigned) == len(set(assigned)) == len(ARCHIVE_CHOICES) == 6
+    assert set(assigned) == set(ARCHIVE_CHOICES)
+    assert research.ARCHIVE_GROUPS["Exercise & dividends"] == ("Temporal exercise",)
+    for choice in ARCHIVE_CHOICES:
+        label = research._archive_label(choice)
+        assert label.endswith(f" · {choice}")
+
+
+def test_archive_keeps_streamlit_keys_and_opt_in_loading():
+    from inspect import getsource
+    from frontend import quant_research as research
+
+    source = getsource(research._render_archived_evidence)
+    assert 'key="quant_research_archive_visible"' in source
+    assert 'key="quant_research_archive_choice"' in source
+    assert "render_research_archive(choice)" in source
+    assert "if st.toggle(" in source
+    assert "format_func=_archive_label" in source
+
+
+def test_numerical_reliability_has_exactly_three_existing_studies():
+    from frontend import quant_research as research
+
+    assert research.RELIABILITY_VIEWS == (
+        "Pricing convergence", "Greeks robustness", "Market scenarios",
+    )
+    assert len(set(research.RELIABILITY_VIEWS)) == 3

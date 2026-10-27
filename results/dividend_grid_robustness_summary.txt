@@ -1,0 +1,14 @@
+LatticePricer272 / Phase 6C / Dividend ex-date grid robustness
+Configurations: 26; valid: 26; failed: 0.
+Contracts: S0=100.0, K=100.0, r=0.02, sigma=0.2, T=1.0.
+Dividend: cash D=3.0 at base ex-date t=0.5 years.
+GRID cohort: hold real contract fixed and vary lattice depth N.
+DATE cohort: hold N fixed and change the true contractual ex-date.
+European parity: C-P=S0-PV(dividend)-K*exp(-r*T).
+Gap-to-finest: difference to largest successful sampled N per model, NOT exact error.
+Date-shift put: finite price change under a DIFFERENT dividend contract, NOT error.
+Early premium: American put minus European put, same model and N.
+Interpret across-grid oscillations as observations, NOT proved convergence rates.
+Measured values depend on model and pruning convention; no market calibration.
+Hybrid: largest |parity residual|=6.48370246e-13 EUR; smallest American premium=0.211673666 EUR.
+Trinomial · Allocation pruning: largest |parity residual|=7.78044296e-13 EUR; smallest American premium=0.208382723 EUR.

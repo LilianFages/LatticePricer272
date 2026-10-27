@@ -21,6 +21,7 @@ from src.dividend_timing import dividend_grid_step
 from src.hybrid_tree import HybridTree
 from src.iterative_backward_pricer import IterativeBackwardPricer
 from src.node import Node
+from src.lattice_graph import count_reachable_nodes as _count_priced_nodes
 from src.option import CallOption, PutOption
 from src.recursive_pricer import RecursivePricer
 from src.trinomial_tree import TrinomialTree
@@ -205,20 +206,8 @@ def _build_tree(request: PricingRequest):
 
 
 def count_reachable_nodes(root: Node) -> int:
-    """Count unique nodes *reachable through pricing transitions*, not allocations."""
-    seen: set[int] = set()
-    pending = [root]
-    while pending:
-        node = pending.pop()
-        key = id(node)
-        if key in seen:
-            continue
-        seen.add(key)
-        for child in (node.next_up, node.next_mid, node.next_down):
-            if child is not None:
-                pending.append(child)
-    return len(seen)
-
+    """Count unique nodes through pricing transitions, excluding allocations."""
+    return _count_priced_nodes(root)
 
 def price_contract(
     request: PricingRequest,

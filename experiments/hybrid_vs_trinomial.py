@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 from src.dividend import CashDividend
 from src.hybrid_tree import HybridTree
 from src.node import Node
+from src.lattice_graph import count_reachable_nodes as _count_priced_nodes
 from src.option import CallOption
 from src.recursive_pricer import RecursivePricer
 from src.trinomial_tree import TrinomialTree
@@ -115,38 +116,8 @@ def build_trinomial(
 def count_reachable_nodes(
     root: Node
 ) -> int:
-    """Count distinct nodes reachable through lattice branches."""
-    visited: set[int] = set()
-    pending_nodes: list[Node] = [
-        root
-    ]
-
-    while pending_nodes:
-        node = pending_nodes.pop()
-        node_id = id(node)
-
-        if node_id in visited:
-            continue
-
-        visited.add(
-            node_id
-        )
-
-        for next_node in (
-            # Track reachable nodes without double-counting recombining successors.
-            node.next_up,
-            node.next_mid,
-            node.next_down,
-        ):
-            if next_node is not None:
-                pending_nodes.append(
-                    next_node
-                )
-
-    return len(
-        visited
-    )
-
+    """Count unique priced nodes, retaining the public benchmark API."""
+    return _count_priced_nodes(root)
 
 def price_hybrid(
     nb_steps: int

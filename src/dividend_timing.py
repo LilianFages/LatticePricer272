@@ -8,6 +8,9 @@ ex-dates keep their original timing for dividend transition moments.
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
+
+from src.dividend import CashDividend
 
 BOUNDARY_ULPS = 8
 
@@ -59,3 +62,17 @@ def dividend_time_in_step(time: float, start: float, end: float) -> float:
     if time < end:
         return time
     raise ValueError("Dividend must occur inside the time step.")
+
+
+def dividend_for_lattice_step(
+    dividends: Sequence[CashDividend], step: int, maturity: float, steps: int,
+) -> CashDividend | None:
+    """Find one cash event on this right-closed step; preserve duplicate errors."""
+    found: CashDividend | None = None
+    for dividend in dividends:
+        if dividend_grid_step(dividend.time, maturity, steps) != step:
+            continue
+        if found is not None:
+            raise ValueError("Only one dividend per time step is supported.")
+        found = dividend
+    return found

@@ -46,6 +46,18 @@ class TransitionMoments:
         )
 
     @staticmethod
+    def at_lattice_step(
+        spot: float, rate: float, volatility: float, step: int,
+        dt: float, dividend: CashDividend | None = None,
+    ) -> tuple[float, float]:
+        """Evaluate the existing moment formula on an exact lattice interval."""
+        return TransitionMoments.compute(
+            spot=spot, rate=rate, volatility=volatility,
+            step_start=(step - 1) * dt, step_end=step * dt,
+            dividend=dividend,
+        )
+
+    @staticmethod
     def _without_dividend(
         spot: float,
         rate: float,

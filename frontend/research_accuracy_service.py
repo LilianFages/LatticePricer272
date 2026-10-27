@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import Sequence
 
 from frontend.analytics_service import ConvergenceResult
+from src.observed_frontier import nondominated_indices
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,7 +25,7 @@ class AccuracyCostPoint:
 
 
 def accuracy_cost_points(outcome: ConvergenceResult) -> tuple[AccuracyCostPoint, ...]:
-    """Compute empirical global nondominance, skipping failed observations."""
+    """Compute observed nondominance; preserve the existing failure filters."""
     reference = outcome.reference_price
     if reference is None or not math.isfinite(reference):
         return ()
@@ -38,15 +39,12 @@ def accuracy_cost_points(outcome: ConvergenceResult) -> tuple[AccuracyCostPoint,
             continue
         observations.append((point.model, int(n), float(price),
                              float(elapsed), abs(float(price) - reference)))
-    result = []
-    for index, (model, n, price, elapsed, gap) in enumerate(observations):
-        dominated = any(
-            j != index and t <= elapsed and e <= gap and (t < elapsed or e < gap)
-            for j, (_, _, _, t, e) in enumerate(observations)
-        )
-        result.append(AccuracyCostPoint(model, n, price, elapsed, gap, not dominated))
-    return tuple(result)
-
+    pairs = [(elapsed, gap) for _, _, _, elapsed, gap in observations]
+    frontier = set(nondominated_indices(pairs))
+    return tuple(
+        AccuracyCostPoint(model, n, price, elapsed, gap, index in frontier)
+        for index, (model, n, price, elapsed, gap) in enumerate(observations)
+    )
 
 def best_observed_under_target(
     points: Sequence[AccuracyCostPoint], target_eur: float,

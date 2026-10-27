@@ -26,6 +26,8 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
+from src.observed_frontier import nondominated_indices
+
 from experiments.accuracy_vs_cost import (
     MODELS,
     MODEL_LABELS,
@@ -284,23 +286,11 @@ def aggregate_cross_strike(
 
 
 def pareto_multi(rows: list[Aggregate]) -> list[Aggregate]:
-    """Non-dominated configurations minimizing worst error and max latency."""
-    front = []
-    for candidate in rows:
-        if any(
-            other is not candidate
-            and other.max_median_runtime_seconds <= candidate.max_median_runtime_seconds
-            and other.worst_absolute_error <= candidate.worst_absolute_error
-            and (
-                other.max_median_runtime_seconds < candidate.max_median_runtime_seconds
-                or other.worst_absolute_error < candidate.worst_absolute_error
-            )
-            for other in rows
-        ):
-            continue
-        front.append(candidate)
+    """Observed multi-strike frontier with the original two-key ordering."""
+    pairs = [(row.max_median_runtime_seconds, row.worst_absolute_error)
+             for row in rows]
+    front = [rows[index] for index in nondominated_indices(pairs)]
     return sorted(front, key=lambda r: (r.max_median_runtime_seconds, r.worst_absolute_error))
-
 
 def target_choices(rows: list[Aggregate], targets: tuple[float, ...] = TARGET_ERRORS) -> list[dict]:
     """Select fastest feasible (model, N) for all strikes at once."""

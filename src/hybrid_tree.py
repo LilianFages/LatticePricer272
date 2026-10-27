@@ -2,7 +2,7 @@ import math
 from typing import Self
 
 from src.dividend import CashDividend
-from src.dividend_timing import dividend_grid_step
+from src.dividend_timing import dividend_for_lattice_step
 from src.node import (
     Node, TrunkNode, bottom_node, middle_successors,
     nearest_geometric_exponent,
@@ -189,18 +189,10 @@ class HybridTree:
         self: Self,
         step: int
     ) -> CashDividend | None:
-        """Find the cash event within the right-closed lattice interval."""
-        dividend_in_step: CashDividend | None = None
-        for dividend in self.dividends:
-            if dividend_grid_step(
-                dividend.time, self.maturity, self.nb_steps
-            ) != step:
-                continue
-            if dividend_in_step is not None:
-                raise ValueError("Only one dividend per time step is supported.")
-            dividend_in_step = dividend
-        return dividend_in_step
-
+        """Find the single event for one right-closed lattice interval."""
+        return dividend_for_lattice_step(
+            self.dividends, step, self.maturity, self.nb_steps,
+        )
 
     def _transition_moments(
         self: Self,
@@ -208,23 +200,10 @@ class HybridTree:
         step: int,
         dividend: CashDividend | None
     ) -> tuple[float, float]:
-        """Return local expected value and variance."""
-        step_start = (
-            step - 1
-        ) * self.dt
-
-        step_end = (
-            step
-            * self.dt
-        )
-
-        return TransitionMoments.compute(
-            spot=node.price,
-            rate=self.rate,
-            volatility=self.volatility,
-            step_start=step_start,
-            step_end=step_end,
-            dividend=dividend,
+        """Return moments on the same exact lattice time interval."""
+        return TransitionMoments.at_lattice_step(
+            spot=node.price, rate=self.rate, volatility=self.volatility,
+            step=step, dt=self.dt, dividend=dividend,
         )
 
     def _next_forward(
@@ -233,25 +212,11 @@ class HybridTree:
         step: int,
         dividend: CashDividend | None
     ) -> float:
-        """Return the forward-adjusted central price."""
-        step_start = (
-            step - 1
-        ) * self.dt
-
-        step_end = (
-            step
-            * self.dt
+        """Return the same forward-adjusted central price."""
+        expected_value, _ = TransitionMoments.at_lattice_step(
+            spot=current_forward, rate=self.rate, volatility=self.volatility,
+            step=step, dt=self.dt, dividend=dividend,
         )
-
-        expected_value, _ = TransitionMoments.compute(
-            spot=current_forward,
-            rate=self.rate,
-            volatility=self.volatility,
-            step_start=step_start,
-            step_end=step_end,
-            dividend=dividend,
-        )
-
         return expected_value
 
     def _set_binomial_probabilities(

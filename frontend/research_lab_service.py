@@ -10,6 +10,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from src.observed_frontier import nondominated_indices
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -165,27 +167,15 @@ def observed_pareto(
     time_col: str = "max_median_runtime_seconds",
     error_col: str = "worst_absolute_error",
 ) -> pd.DataFrame:
-    """Non-dominated measured points (minimize runtime AND error).
-
-    Equal coordinates are retained as equivalent configurations. No interpolation,
-    extrapolation or asymptotic convergence claim is implied.
-    """
+    """Pareto over valid observed rows, retaining equivalent coordinates."""
     data = _valid_cost_observations(
         frame, time_col, error_col, missing_message="Missing Pareto axes",
     )
     if data.empty:
         return data
-    times = data[time_col].to_numpy()
-    errors = data[error_col].to_numpy()
-    keep = []
-    for idx in range(len(data)):
-        dominates = (
-            (times <= times[idx]) & (errors <= errors[idx])
-            & ((times < times[idx]) | (errors < errors[idx]))
-        )
-        keep.append(not dominates.any())
-    return data.loc[keep].sort_values([time_col, error_col]).reset_index(drop=True)
-
+    pairs = list(zip(data[time_col].to_numpy(), data[error_col].to_numpy()))
+    keep = nondominated_indices(pairs)
+    return data.iloc[list(keep)].sort_values([time_col, error_col]).reset_index(drop=True)
 
 def frontier_thresholds(frame: pd.DataFrame, targets: tuple[float, ...]) -> pd.DataFrame:
     """Fastest OBSERVED point achieving each selected error threshold."""

@@ -33,6 +33,7 @@ from src.binomial_tree import BinomialTree
 from src.black_scholes import BlackScholesPricer
 from src.option import CallOption, Option, PutOption
 from src.recursive_pricer import RecursivePricer
+from src.observed_frontier import nondominated_indices
 from src.trinomial_tree import TrinomialTree
 
 
@@ -327,38 +328,17 @@ def contract_results(
 
 
 def pareto_front(results: list[Result]) -> list[Result]:
-    """Non-dominated accuracy/time points (minimize both axes).
-
-    A point is dominated if another costs no more time and has no greater
-    pricing error, with at least one strict improvement.
-    """
+    """Pareto over measured successful error/runtime pairs; retain tie order."""
     good = [
         row for row in results
         if row.status == "success"
         and row.median_runtime_seconds is not None
         and row.absolute_error is not None
     ]
-    front = []
-    for point in good:
-        assert point.absolute_error is not None
-        assert point.median_runtime_seconds is not None
-        dominated = any(
-            other is not point
-            and other.median_runtime_seconds is not None
-            and other.absolute_error is not None
-            and other.median_runtime_seconds <= point.median_runtime_seconds
-            and other.absolute_error <= point.absolute_error
-            and (
-                other.median_runtime_seconds < point.median_runtime_seconds
-                or other.absolute_error < point.absolute_error
-            )
-            for other in good
-        )
-        # Keep non-dominated observed error/runtime trade-offs only.
-        if not dominated:
-            front.append(point)
+    pairs = [(float(row.median_runtime_seconds), float(row.absolute_error))
+             for row in good]
+    front = [good[index] for index in nondominated_indices(pairs)]
     return sorted(front, key=lambda row: float(row.median_runtime_seconds))
-
 
 def fastest_at_error_target(
     results: list[Result], target: float
