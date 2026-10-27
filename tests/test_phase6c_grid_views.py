@@ -55,3 +55,38 @@ def test_failed_rows_may_have_unpriced_measures() -> None:
     frame.loc[0, "status"] = "failed"
     frame.loc[0, "european_put"] = None
     assert validate_study_frame(frame).loc[0, "status"] == "failed"
+
+# Final-release evidence checks reject malformed observations rather than
+# letting Altair silently hide non-finite values or duplicate measurements.
+@pytest.mark.parametrize("field,value,reason", [
+    ("steps", 25.5, "lattice steps"),
+    ("steps", float("inf"), "lattice steps"),
+    ("date_shift_days", 0.25, "day shifts"),
+    ("dividend_time", 1.5, "ex-dates"),
+    ("european_put", float("inf"), "non-finite"),
+    ("european_call", -0.3, "Negative"),
+    ("early_exercise_premium", .5, "inconsistent"),
+])
+def test_phase6d_rejects_corrupted_evidence(field, value, reason) -> None:
+    frame = _valid()
+    if field in ("steps", "date_shift_days"):
+        frame[field] = frame[field].astype(float)
+    frame.loc[0, field] = value
+    with pytest.raises(ValueError, match=f"(?i){reason}"):
+        validate_study_frame(frame)
+
+
+def test_phase6d_rejects_duplicate_recorded_case() -> None:
+    frame = pd.concat([_valid(), _valid()], ignore_index=True)
+    with pytest.raises(ValueError, match="Duplicate"):
+        validate_study_frame(frame)
+
+
+def test_phase6d_accepts_numeric_failed_coordinates_without_prices() -> None:
+    frame = _valid()
+    frame.loc[0, "status"] = "failed"
+    for field in ("european_put", "american_put", "european_call",
+                  "early_exercise_premium", "parity_residual"):
+        frame.loc[0, field] = float("nan")
+    frame.loc[0, "failure"] = "model declined this lattice"
+    assert validate_study_frame(frame).loc[0, "status"] == "failed"

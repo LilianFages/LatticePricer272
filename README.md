@@ -61,3 +61,27 @@ python -m experiments.option_value_exercise_by_dates --steps 100
 These commands can generate files; review their corresponding protocols and output paths first. Do **not** indiscriminately rerun full historical benchmarks or overwrite versioned results when you only want to explore the dashboard.
 
 For the current Quant Research organization, see [`docs/Quant_Research_Phase6.md`](docs/Quant_Research_Phase6.md). Existing detailed protocols include `docs/Accuracy_vs_Cost_protocol.md`, `docs/Accuracy_vs_Cost_Phase2_protocol.md` and `docs/Temporal_Experiments_Protocol.md`. Older `Frontend_*` notes are retained as historical release documentation; they do not necessarily describe the current navigation.
+
+## Final release verification (Phase 6D)
+
+After the normal test suite, run the **read-only** scientific and dependency
+check against committed experiment evidence:
+
+```bash
+python -m pytest -q
+python -m scripts.release_audit
+```
+
+The release audit checks the 26 recorded Phase 6C configurations (complete
+experimental grid, European call-put parity, American early-exercise premium,
+finite-N reference gaps and contractual ex-date price shifts), their exported
+summary and PNGs, and static first-party imports. It never reprices options,
+rewrites CSVs or updates figures. This complements rather than replaces full
+`pytest` and desktop Streamlit acceptance tests.
+
+For the authoritative current documentation, see
+[`docs/README.md`](docs/README.md),
+[`docs/Release_Protocol.md`](docs/Release_Protocol.md) and
+[`docs/Architecture_Snapshot.md`](docs/Architecture_Snapshot.md).
+The current **Exercise & dividends** section also offers the recorded
+[dividend-grid robustness study](docs/Dividend_Grid_Robustness_Protocol.md).

@@ -14,3 +14,9 @@ __pycache__/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Temporary verification artefacts (not versioned research evidence)
+checkstyle_report*.txt
+checkstyle_report*.html
+results/phase6c_quick/
+.phase6d_backups/

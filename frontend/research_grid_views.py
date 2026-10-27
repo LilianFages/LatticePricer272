@@ -5,6 +5,7 @@ study exports produce an informative empty state, not generated demo numbers.
 """
 from __future__ import annotations
 
+import math
 from pathlib import Path
 
 import altair as alt
@@ -42,8 +43,34 @@ def validate_study_frame(frame: pd.DataFrame) -> pd.DataFrame:
                             "american_put", "european_call", "parity_residual",
                             "early_exercise_premium"]].isna().any().any()):
         raise ValueError("Successful phase 6C case has missing mandatory measures.")
+    # Missing failed prices remain NaN, but infinite successful results or
+    # malformed grid coordinates cannot be treated as recorded observations.
     if (verified["steps"].isna().any() or verified["date_shift_days"].isna().any()):
         raise ValueError("Phase 6C export has invalid grid coordinates.")
+    steps = verified["steps"]
+    shifts = verified["date_shift_days"]
+    if (not steps.map(math.isfinite).all() or not shifts.map(math.isfinite).all()
+            or not steps.between(1, 350).all()
+            or not steps.eq(steps.round()).all()
+            or not shifts.eq(shifts.round()).all()):
+        raise ValueError("Phase 6C export has invalid lattice steps or day shifts.")
+    dates = verified["dividend_time"].dropna()
+    if not dates.map(math.isfinite).all() or not dates.between(0, 1, inclusive="right").all():
+        raise ValueError("Phase 6C export contains invalid ex-dates.")
+    for field in numeric:
+        nonmissing = verified[field].dropna()
+        if not nonmissing.map(math.isfinite).all():
+            raise ValueError(f"Phase 6C export contains non-finite {field}.")
+    if verified.duplicated(subset=["panel", "model", "steps", "date_shift_days"]).any():
+        raise ValueError("Duplicate Phase 6C configuration in recorded evidence.")
+    if (verified.loc[good, ["european_put", "american_put", "european_call"]]
+            .lt(-1e-10).any().any()):
+        raise ValueError("Negative successful option premium in Phase 6C evidence.")
+    premium_gap = (verified.loc[good, "american_put"]
+                   - verified.loc[good, "european_put"]
+                   - verified.loc[good, "early_exercise_premium"])
+    if premium_gap.abs().gt(1e-8).any():
+        raise ValueError("Inconsistent Phase 6C early-exercise premium.")
     return verified
 
 
@@ -87,11 +114,21 @@ def render_grid_robustness() -> None:
                  .encode(x=alt.X("steps:Q", title="Lattice steps N"),
                          y=alt.Y("european_put:Q", title="European put (€)",
                                  scale=alt.Scale(zero=False)),
-                         color=alt.Color("model:N", title="Engine"),
+                         color=alt.Color(
+                             "model:N", title=None,
+                             scale=alt.Scale(
+                                 domain=["Hybrid", "Trinomial · Allocation pruning"],
+                                 range=["#79BCE8", "#E0AE74"],
+                             ),
+                             legend=alt.Legend(
+                                 orient="bottom", direction="horizontal",
+                                 columns=2, labelLimit=330,
+                             ),
+                         ),
                          tooltip=["model:N", "steps:Q", "dividend_time:Q",
                                   alt.Tooltip("european_put:Q", format=".7f"),
                                   alt.Tooltip("gap_to_finest_sample:Q", format="+.7f")]))
-        st.altair_chart(chart.properties(height=305), width="stretch")
+        st.altair_chart(chart.properties(height=325), width="stretch")
         st.caption("Gap to finest sampled N uses the largest *successful* N for "
                    "each model; this is not a proven reference or true error.")
     else:
@@ -107,10 +144,20 @@ def render_grid_robustness() -> None:
                  .encode(x=alt.X("date_shift_days:Q", title="Ex-date shift (days)"),
                          y=alt.Y("date_shift_put:Q", title="European put change (€)",
                                  scale=alt.Scale(zero=False)),
-                         color=alt.Color("model:N", title="Engine"),
+                         color=alt.Color(
+                             "model:N", title=None,
+                             scale=alt.Scale(
+                                 domain=["Hybrid", "Trinomial · Allocation pruning"],
+                                 range=["#79BCE8", "#E0AE74"],
+                             ),
+                             legend=alt.Legend(
+                                 orient="bottom", direction="horizontal",
+                                 columns=2, labelLimit=330,
+                             ),
+                         ),
                          tooltip=["model:N", "date_shift_days:Q", "steps:Q",
                                   alt.Tooltip("date_shift_put:Q", format="+.7f")]))
-        st.altair_chart(chart.properties(height=305), width="stretch")
+        st.altair_chart(chart.properties(height=325), width="stretch")
     else:
         st.warning("No comparable ex-date-shift observations.")
 
