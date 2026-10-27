@@ -46,6 +46,7 @@ def make_request(*, ex_date: float = 0.6, **kwargs) -> PricingRequest:
     return replace(basic, **kwargs)
 
 
+# A deterministic reference isolates dividend-event timing from tree approximation.
 @pytest.mark.parametrize("model", MODELS)
 @pytest.mark.parametrize("algorithm", ALGORITHMS)
 @pytest.mark.parametrize("ex_date", (0.26, 0.49, 0.50, 0.51, 0.60, 0.74))
@@ -59,6 +60,7 @@ def test_deterministic_offgrid_cash_exercise_matches_independent_reference(
     assert actual == pytest.approx(exact, abs=1e-8, rel=1e-10)
 
 
+# American contracts retain their exercise dominance across off-grid events.
 @pytest.mark.parametrize("model", MODELS)
 @pytest.mark.parametrize("algorithm", ALGORITHMS)
 def test_offgrid_stochastic_american_is_not_below_european(
@@ -83,6 +85,7 @@ def test_offgrid_american_recursive_backward_parity(model: str) -> None:
     assert a == pytest.approx(b, abs=1e-10, rel=1e-11)
 
 
+# One-day roll-down must preserve real ex-date timing in the calendar workflow.
 @pytest.mark.parametrize("algorithm", ALGORITHMS)
 def test_calendar_one_day_theta_no_longer_jumps_at_offgrid_event(algorithm: str) -> None:
     ex_date = 182 / 365
@@ -121,6 +124,7 @@ def test_full_desk_risk_theta_matches_deterministic_reference(algorithm: str) ->
     assert abs(snap.value("Theta")) < 0.05
 
 
+# Multiple cash events must compose without double counting discounted payments.
 @pytest.mark.parametrize("model", MODELS)
 @pytest.mark.parametrize("algorithm", ALGORITHMS)
 @pytest.mark.parametrize("kind, strike", (("Call", 100.0), ("Put", 160.0)))
@@ -151,6 +155,7 @@ def test_dividend_at_expiry_preserves_pre_jump_exercise(
     assert actual == pytest.approx(exact, abs=1e-8, rel=1e-10)
 
 
+# Event mapping is an exercise convention, not an extra dividend schedule.
 def test_event_mapping_keeps_actual_time_without_adding_extra_dividends() -> None:
     for tree_class in (HybridTree, TrinomialTree):
         tree = tree_class(
@@ -173,6 +178,7 @@ def test_event_bridge_is_identity_for_european_or_no_cash() -> None:
     assert before_dividend_value(child, 9.1, american, None) == 9.1
 
 
+# Nonanticipativity forbids exercise decisions based on future child prices.
 def test_nonanticipative_exercise_uses_parent_spot_not_future_child() -> None:
     parent = Node(120.0)
     option = CallOption(strike=100.0, is_american=True)
@@ -206,6 +212,7 @@ def test_stochastic_warning_does_not_claim_exact_bridge() -> None:
     assert warning and "conservative lower bound" in warning and "Check convergence" in warning
 
 
+# Zero-volatility cases provide a strong independent event bridge benchmark.
 def test_zero_volatility_offgrid_audit_benchmark_has_no_model_gap() -> None:
     request = make_request(ex_date=0.6)
     result = price_contract(request, algorithm="Recursive")
@@ -226,6 +233,7 @@ def test_aligned_stochastic_exdate_has_no_offgrid_warning(
     assert assess_dividend_exercise(request, result.price).warning is None
 
 
+# Post-dividend put exercise uses the adjusted stock state consistently.
 @pytest.mark.parametrize("model", MODELS)
 @pytest.mark.parametrize("algorithm", ALGORITHMS)
 def test_offgrid_single_dividend_put_post_jump_matches_reference(
@@ -291,3 +299,5 @@ def test_zero_strike_call_with_dividend_uses_shifted_strike() -> None:
         rate=0.05, volatility=0.2, maturity=0.1,
     )
     assert actual == pytest.approx(expected, rel=1e-12, abs=1e-12)
+
+# LOT_5C3_GUARDED_REFACTOR

@@ -13,18 +13,13 @@ import streamlit as st
 
 from frontend.pricing_service import PricingInputError, PricingResult, price_contract
 from frontend.trading_risk import (
-    GREEK_NAMES, GREEK_UNITS, DeskRiskSnapshot, calculate_stock_hedge,
+    GREEK_NAMES, GREEK_UNITS, DeskRiskSnapshot, StockHedge, calculate_stock_hedge,
     compute_greek_curve, greek_table,
 )
 
 
-def _show_curve(result: PricingResult, snapshot: DeskRiskSnapshot) -> None:
-    st.markdown('<div class="desk-section">Greek curve · on demand</div>', unsafe_allow_html=True)
-    chosen = st.selectbox(
-        "Greek to visualize", GREEK_NAMES, key="desk_selected_greek",
-        help="A curve shows the selected Greek at several spots, not the payoff.",
-    )
-    # Every curve request is explicit: no repricing just to switch the selector.
+def _compute_greek_curve_on_demand(result: PricingResult, snapshot: DeskRiskSnapshot, chosen: str) -> None:
+    """Compute the requested five-spot curve only on explicit user action."""
     if st.button("Calculate selected Greek curve · 5 spots", key="desk_plot_greek",
                  width="stretch"):
         st.session_state.pop("desk_greek_curve", None)
@@ -42,13 +37,10 @@ def _show_curve(result: PricingResult, snapshot: DeskRiskSnapshot) -> None:
                 st.session_state["desk_greek_curve"] = (
                     result.request, result.algorithm, chosen, points,
                 )
-    cached = st.session_state.get("desk_greek_curve")
-    if not (isinstance(cached, tuple) and len(cached) == 4
-            and cached[0] == result.request
-            and cached[1] == result.algorithm and cached[2] == chosen):
-        st.caption("Select a Greek and click Calculate to display its spot-sensitivity curve.")
-        return
-    _, _, _, points = cached
+
+
+def _render_greek_curve_chart(points: tuple, chosen: str) -> None:
+    """Render measured points without replacing failed scenarios by zero."""
     successful = [{"Spot (€)": point.spot, "Greek value": point.value}
                   for point in points if point.value is not None]
     if len(successful) >= 2:
@@ -69,6 +61,10 @@ def _show_curve(result: PricingResult, snapshot: DeskRiskSnapshot) -> None:
         st.altair_chart(chart, width="stretch")
     else:
         st.warning("Not enough successful scenarios to plot a curve.")
+
+
+def _render_greek_curve_warnings(points: tuple) -> None:
+    """Describe failed pricing scenarios and bump discretization."""
     failed = [point for point in points if point.error is not None]
     if failed:
         st.warning(
@@ -81,6 +77,46 @@ def _show_curve(result: PricingResult, snapshot: DeskRiskSnapshot) -> None:
     st.caption(
         "Five separate risk snapshots at spot ±10% (fixed expiry, model and N). "
         "Bump-based tree Greeks can oscillate with spot and discretization."
+    )
+
+
+def _show_curve(result: PricingResult, snapshot: DeskRiskSnapshot) -> None:
+    st.markdown('<div class="desk-section">Greek curve · on demand</div>', unsafe_allow_html=True)
+    chosen = st.selectbox(
+        "Greek to visualize", GREEK_NAMES, key="desk_selected_greek",
+        help="A curve shows the selected Greek at several spots, not the payoff.",
+    )
+    # Every curve request is explicit: no repricing just to switch the selector.
+    _compute_greek_curve_on_demand(result, snapshot, chosen)
+    cached = st.session_state.get("desk_greek_curve")
+    if not (isinstance(cached, tuple) and len(cached) == 4
+            and cached[0] == result.request
+            and cached[1] == result.algorithm and cached[2] == chosen):
+        st.caption("Select a Greek and click Calculate to display its spot-sensitivity curve.")
+        return
+    _, _, _, points = cached
+    _render_greek_curve_chart(points, chosen)
+    _render_greek_curve_warnings(points)
+
+
+def _render_delta_hedge_trade(hedge: StockHedge) -> None:
+    """Show the signed whole-share trade and residual exposure."""
+    label = (
+        f"{hedge.instruction} {abs(hedge.rounded_trade):,} shares"
+        if hedge.instruction != "HOLD" else "HOLD · no shares to trade"
+    )
+    st.metric("Delta-neutral trade · whole shares", label)
+    a, b = st.columns(2)
+    a.metric("Exact trade · signed shares", f"{hedge.exact_trade:+,.4f}")
+    b.metric(
+        "Residual delta after rounded trade",
+        f"{hedge.residual_delta_shares:+,.4f} shares",
+    )
+    st.caption(
+        f"Option position delta: {hedge.option_delta_shares:+,.4f} share-equivalents. "
+        f"Target stock position: {hedge.target_shares:+,.4f} shares. "
+        "This is a model-based theoretical hedge, not a trading "
+        "instruction or an executed order."
     )
 
 
@@ -116,23 +152,7 @@ def _show_delta_hedge(snapshot: DeskRiskSnapshot) -> None:
         except ValueError as exc:
             st.error(str(exc))
             return
-        label = (
-            f"{hedge.instruction} {abs(hedge.rounded_trade):,} shares"
-            if hedge.instruction != "HOLD" else "HOLD · no shares to trade"
-        )
-        st.metric("Delta-neutral trade · whole shares", label)
-        a, b = st.columns(2)
-        a.metric("Exact trade · signed shares", f"{hedge.exact_trade:+,.4f}")
-        b.metric(
-            "Residual delta after rounded trade",
-            f"{hedge.residual_delta_shares:+,.4f} shares",
-        )
-        st.caption(
-            f"Option position delta: {hedge.option_delta_shares:+,.4f} share-equivalents. "
-            f"Target stock position: {hedge.target_shares:+,.4f} shares. "
-            "This is a model-based theoretical hedge, not a trading "
-            "instruction or an executed order."
-        )
+        _render_delta_hedge_trade(hedge)
 
 
 def render_desk_risk(result: PricingResult) -> None:
@@ -172,3 +192,5 @@ def render_desk_risk(result: PricingResult) -> None:
                 st.warning(warning)
     _show_curve(result, snapshot)
     _show_delta_hedge(snapshot)
+
+# LOT_5C3_GUARDED_REFACTOR

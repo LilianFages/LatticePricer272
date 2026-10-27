@@ -12,6 +12,7 @@ from frontend.lattice_explorer_service import MAX_VISUAL_STEPS
 from frontend.pricing_service import DividendInput, PricingRequest
 
 
+# Handoff must preserve the full financial contract, not merely visible widgets.
 def test_exact_comparison_to_explorer_handoff() -> None:
     req = PricingRequest(steps=5, option_type="Put", exercise="American")
     planned, issues = plan_handoff(req, "Explore lattice")
@@ -32,6 +33,7 @@ def test_large_depth_never_silently_clamped() -> None:
 
 
 
+# Incompatible display thresholds require explicit user choices.
 def test_threshold_is_not_silently_changed() -> None:
     request = PricingRequest(steps=5, pruning_threshold=1e-3)
     planned, issues = plan_handoff(request, "Compare models")
@@ -51,6 +53,7 @@ def test_never_silently_discard_dividends() -> None:
     assert planned.dividends == divs
 
 
+# Rejected imports must be atomic and keep all previous cached state.
 def test_atomic_rejection_preserves_state() -> None:
     original = PricingRequest(steps=5)
     state = {"explorer_reference_seed": original, "explorer_import_nonce": 2}
@@ -81,6 +84,7 @@ def test_apply_comparison_keeps_benchmark_choices_and_clears_stale_result() -> N
     assert state["cmp_repetitions"] == 3
 
 
+# Widget generations prevent stale Streamlit keys after a transfer.
 def test_invalid_nonce_rejected_without_mutation() -> None:
     state = {"cmp_import_nonce": "wrong"}
     before = state.copy()
@@ -90,7 +94,7 @@ def test_invalid_nonce_rejected_without_mutation() -> None:
 
 
 def test_transfer_never_prices(monkeypatch: pytest.MonkeyPatch) -> None:
-    def forbidden(*args, **kwargs):
+    def forbidden(*args: object, **kwargs: object) -> None:
         raise AssertionError("Unexpected pricing")
     monkeypatch.setattr("frontend.pricing_service.price_contract", forbidden)
     req = PricingRequest(steps=5)
@@ -104,11 +108,12 @@ def test_unknown_destination_rejected() -> None:
         plan_handoff(PricingRequest(), "Unknown")
 
 
+# Imported references preserve identity while invalidating destination-only output.
 @pytest.mark.parametrize("destination,seed,nonce,stale", [
     ("Compare models", "cmp_reference_seed", "cmp_import_nonce", "last_comparison_report"),
     ("Explore lattice", "explorer_reference_seed", "explorer_import_nonce", "lattice_explorer_result"),
 ])
-def test_import_exact_identity_and_clear_stale_output(destination, seed, nonce, stale):
+def test_import_exact_identity_and_clear_stale_output(destination: str, seed: str, nonce: str, stale: str) -> None:
     request = PricingRequest(steps=5, option_type="Put", exercise="American")
     state = {stale: "old output", "cmp_models": ("Binomial",),
              "lx_left_model": "Hybrid"}
@@ -123,15 +128,16 @@ def test_import_exact_identity_and_clear_stale_output(destination, seed, nonce, 
 
 
 @pytest.mark.parametrize("destination", ["Compare models", "Explore lattice"])
-def test_absent_reference_does_not_mutate_state(destination):
+def test_absent_reference_does_not_mutate_state(destination: str) -> None:
     state = {"last_comparison_report": object(), "lattice_explorer_result": object()}
     before = state.copy()
     assert import_saved_reference(state, destination)[0] is False
     assert state == before
 
 
+# Repeated imports must not disturb unrelated workspace generations.
 @pytest.mark.parametrize("destination", ["Compare models", "Explore lattice"])
-def test_repeated_import_rotates_only_destination_generation(destination):
+def test_repeated_import_rotates_only_destination_generation(destination: str) -> None:
     state = {}
     request = PricingRequest(steps=5)
     save_reference(state, request)
@@ -142,7 +148,7 @@ def test_repeated_import_rotates_only_destination_generation(destination):
     assert state[key] == 2
 
 
-def test_explorer_cannot_silently_drop_second_dividend():
+def test_explorer_cannot_silently_drop_second_dividend() -> None:
     original = PricingRequest(steps=5)
     state = {"lattice_explorer_result": "old"}
     save_reference(state, original)
@@ -154,11 +160,12 @@ def test_explorer_cannot_silently_drop_second_dividend():
     assert state == before
 
 
+# Bad generations cannot leave partially imported contracts behind.
 @pytest.mark.parametrize("destination,nonce", [
     ("Compare models", "cmp_import_nonce"),
     ("Explore lattice", "explorer_import_nonce"),
 ])
-def test_invalid_nonce_does_not_partially_import(destination, nonce):
+def test_invalid_nonce_does_not_partially_import(destination: str, nonce: str) -> None:
     state = {nonce: "invalid"}
     save_reference(state, PricingRequest(steps=5))
     before = state.copy()
@@ -167,10 +174,12 @@ def test_invalid_nonce_does_not_partially_import(destination, nonce):
     assert state == before
 
 
-def test_import_refuses_unknown_destination_without_mutation():
+def test_import_refuses_unknown_destination_without_mutation() -> None:
     state = {}
     save_reference(state, PricingRequest(steps=5))
     before = state.copy()
     with pytest.raises(ValueError, match="Unknown"):
         import_saved_reference(state, "Unknown")
     assert state == before
+
+# LOT_5C3_GUARDED_REFACTOR

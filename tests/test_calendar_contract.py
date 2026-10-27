@@ -16,6 +16,7 @@ START = date(2026, 9, 1)
 EXPIRY = date(2027, 6, 28)
 
 
+# Calendar maturity follows ACT/365F rather than an implicit rounded year.
 def test_expiry_is_calendar_driven() -> None:
     resolved = ContractCalendar(START, EXPIRY).resolve()
     assert resolved.maturity == pytest.approx(300 / 365)
@@ -32,6 +33,7 @@ def test_single_cash_dividend_uses_ex_date() -> None:
     assert resolved.dividends[0].amount == 4.0
 
 
+# Date sorting must not mutate the caller-provided cash schedule.
 def test_multiple_dividends_are_sorted_without_changing_input() -> None:
     late = DatedCashDividend(date(2027, 4, 21), 4.0)
     early = DatedCashDividend(date(2026, 12, 1), 1.0)
@@ -46,6 +48,7 @@ def test_leap_year_uses_fixed_365_denominator() -> None:
     assert calendar.resolve().maturity == pytest.approx(2 / 365)
 
 
+# A single calendar day is a valid strictly positive maturity.
 def test_one_day_maturity() -> None:
     calendar = ContractCalendar(date(2026, 9, 1), date(2026, 9, 2))
     assert calendar.resolve().maturity == pytest.approx(1 / 365)
@@ -59,6 +62,7 @@ def test_dividend_at_expiry_is_preserved() -> None:
     assert resolved.dividends[0].time == resolved.maturity
 
 
+# Ex-date and expiry validation prevents retrospective event schedules.
 @pytest.mark.parametrize("expiry", [START, date(2026, 8, 31)])
 def test_nonfuture_expiry_is_rejected(expiry: date) -> None:
     with pytest.raises(CalendarInputError, match="later"):
@@ -81,6 +85,7 @@ def test_invalid_dividend_amount_is_rejected(amount: object) -> None:
         ).resolve()
 
 
+# Duplicate ex-dates cannot be represented as separate cash events.
 def test_duplicate_ex_dates_are_rejected() -> None:
     same = date(2027, 4, 21)
     with pytest.raises(CalendarInputError, match="same ex-date"):
@@ -108,6 +113,7 @@ def test_invalid_dividend_date_type_is_rejected() -> None:
         ).resolve()
 
 
+# Strict type validation protects the downstream lattice conversion.
 def test_invalid_dividend_entry_type_is_rejected() -> None:
     with pytest.raises(CalendarInputError, match="Each dividend"):
         ContractCalendar(START, EXPIRY, ((date(2027, 4, 21), 2.0),)).resolve()
@@ -117,3 +123,5 @@ def test_calendar_is_frozen() -> None:
     calendar = ContractCalendar(START, EXPIRY)
     with pytest.raises(FrozenInstanceError):
         calendar.expiry_date = date(2027, 7, 1)
+
+# LOT_5C3_GUARDED_REFACTOR

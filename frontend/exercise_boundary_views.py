@@ -23,6 +23,7 @@ STATE_COLORS = ["#89cdf2", "#e9b765", "#b4bac7", "#64758d"]
 STATE_NAMES = ["Continuation", "Early exercise", "Maturity · ITM", "Maturity · OTM"]
 
 
+# A boundary is an envelope of exercised nodes; gaps must not be interpolated.
 def _boundary_chart(study: ExerciseStudy) -> alt.Chart:
     """Do not connect across dates with no boundary; envelopes aren't continuous guarantees."""
     rows = []
@@ -179,6 +180,7 @@ def _render_exercise_summary(study: ExerciseStudy) -> None:
                "undefined dates are not interpolated; expiry is excluded.")
 
 
+# Connected segments require adjacent valid ex-date boundary observations.
 def _dividend_comparison_frame(comparison: DividendExerciseComparison) -> pd.DataFrame:
     """Discontinuous boundary envelopes must never be connected across gaps."""
     rows: list[dict] = []
@@ -263,6 +265,7 @@ def _dividend_comparison_chart(comparison: DividendExerciseComparison, kind: str
     return alt.layer(chart, events).properties(height=290).interactive()
 
 
+# Same market inputs isolate the cash-dividend effect, not an equal-forward effect.
 def _render_dividend_comparison(comparison: DividendExerciseComparison) -> None:
     """An explicit two-panel comparison, not nested inside nodal diagnostics."""
     st.markdown('<div class="desk-section">02 · Dividend impact</div>',
@@ -305,6 +308,7 @@ def _render_dividend_comparison(comparison: DividendExerciseComparison) -> None:
 
 # LOT_3C1_STOPPING_LAYOUT: editorial layout, unchanged financial analytics.
 
+# Keep date-level stopping mass and full-node exports separate from chart sampling.
 def _render_exercise_secondary_details(study: ExerciseStudy) -> None:
     """Detailed data and Snell diagnostics outside the primary chart grid."""
     with st.expander("Snell process · discounted mean option value", expanded=False):
@@ -364,9 +368,8 @@ def _exercise_numerical_fields(model: str) -> tuple:
     return (n, threshold, comparison, submitted)
 
 
-def _exercise_contract_fields() -> tuple:
-    st.markdown('<div class="desk-section">01 · Contract & market</div>',
-                unsafe_allow_html=True)
+def _exercise_market_fields() -> tuple:
+    """Collect the contract and market without changing widget keys."""
     c1, c2 = st.columns(2)
     kind = c1.selectbox("Option", ("Put", "Call"), key="qa_exb_kind")
     style = c2.selectbox("Exercise", ("American", "European"), key="qa_exb_style")
@@ -384,6 +387,11 @@ def _exercise_contract_fields() -> tuple:
                            value=2., key="qa_exb_rate")
     maturity = st.number_input("Maturity · years", min_value=0.01, value=1.,
                                key="qa_exb_maturity")
+    return kind, style, model, spot, strike, vol, rate, maturity
+
+
+def _exercise_dividend_editor() -> pd.DataFrame:
+    """Keep the discrete-dividend editor isolated from contract fields."""
     with st.expander("Cash dividends · optional"):
         st.caption("Use actual discrete cash payments: date in years from today, amount in €/share.")
         data = st.data_editor(
@@ -396,6 +404,14 @@ def _exercise_contract_fields() -> tuple:
                 "amount": st.column_config.NumberColumn("Cash · €", format="%.2f"),
             },
         )
+    return data
+
+
+def _exercise_contract_fields() -> tuple:
+    st.markdown('<div class="desk-section">01 · Contract & market</div>',
+                unsafe_allow_html=True)
+    kind, style, model, spot, strike, vol, rate, maturity = _exercise_market_fields()
+    data = _exercise_dividend_editor()
     return (kind, style, model, spot, strike, vol, rate, maturity, data)
 
 
@@ -404,6 +420,54 @@ def _exercise_boundary_input_form() -> tuple:
         kind, style, model, spot, strike, vol, rate, maturity, data = _exercise_contract_fields()
         n, threshold, comparison, submitted = _exercise_numerical_fields(model)
     return (kind, style, model, spot, strike, vol, rate, maturity, data, n, threshold, comparison, submitted)
+
+
+def _submit_exercise_analysis(inputs: tuple, submitted: bool) -> None:
+    """Run the same validation and engine path only on submit."""
+    kind, style, model, spot, strike, vol, rate, maturity, data, n, threshold, comparison = inputs
+    if submitted:
+        st.session_state.pop("qa_exb_result", None)
+        st.session_state.pop("qa_exb_comparison", None)
+        try:
+            request = PricingRequest(
+                spot=float(spot), strike=float(strike), volatility=float(vol)/100,
+                rate=float(rate)/100, maturity=float(maturity), steps=int(n),
+                model=model, option_type=kind, exercise=style,
+                pruning_threshold=threshold, dividends=parse_dividends(data),
+            )
+            with st.spinner("Building, pricing and propagating exercise probabilities..."):
+                if comparison:
+                    pair = compare_dividend_exercise(request)
+                    st.session_state["qa_exb_result"] = pair.with_dividends
+                    st.session_state["qa_exb_comparison"] = pair
+                else:
+                    st.session_state["qa_exb_result"] = run_exercise_study(request)
+        except (PricingInputError, RuntimeError, ValueError, ArithmeticError,
+                # Retain user guidance and explanatory captions.
+                OverflowError, ZeroDivisionError) as exc:
+            st.error(f"Exercise analysis unavailable: {exc}")
+
+
+def _show_exercise_results() -> None:
+    """Show the cached stopping study, comparisons and node charts."""
+    study: ExerciseStudy | None = st.session_state.get("qa_exb_result")
+    if study is None:
+        st.info('Select a contract and calculate the exercise boundary and stopping '
+            'distribution. Calculations run only on request.')
+        return
+    _render_exercise_summary(study)
+    pair = st.session_state.get("qa_exb_comparison")
+    if pair is not None:
+        _render_dividend_comparison(pair)
+
+    st.markdown('<div class="desk-section">03 · Node-level diagnostics</div>',
+                unsafe_allow_html=True)
+    left_chart, right_chart = st.columns([1.10, 1.0], gap="large")
+    with left_chart:
+        _render_exercise_lattice_map(study)
+    with right_chart:
+        _render_exercise_stopping_details(study)
+    _render_exercise_secondary_details(study)
 
 
 def render_exercise_boundary_tab() -> None:
@@ -415,42 +479,10 @@ def render_exercise_boundary_tab() -> None:
     with right:
         st.markdown('<div class="desk-section">Optimal stopping diagnostics</div>',
                     unsafe_allow_html=True)
-        if submitted:
-            st.session_state.pop("qa_exb_result", None)
-            st.session_state.pop("qa_exb_comparison", None)
-            try:
-                request = PricingRequest(
-                    spot=float(spot), strike=float(strike), volatility=float(vol)/100,
-                    rate=float(rate)/100, maturity=float(maturity), steps=int(n),
-                    model=model, option_type=kind, exercise=style,
-                    pruning_threshold=threshold, dividends=parse_dividends(data),
-                )
-                with st.spinner("Building, pricing and propagating exercise probabilities..."):
-                    if comparison:
-                        pair = compare_dividend_exercise(request)
-                        st.session_state["qa_exb_result"] = pair.with_dividends
-                        st.session_state["qa_exb_comparison"] = pair
-                    else:
-                        st.session_state["qa_exb_result"] = run_exercise_study(request)
-            except (PricingInputError, RuntimeError, ValueError, ArithmeticError,
-                    # Retain user guidance and explanatory captions.
-                    OverflowError, ZeroDivisionError) as exc:
-                st.error(f"Exercise analysis unavailable: {exc}")
-        study: ExerciseStudy | None = st.session_state.get("qa_exb_result")
-        if study is None:
-            st.info('Select a contract and calculate the exercise boundary and stopping '
-                'distribution. Calculations run only on request.')
-            return
-        _render_exercise_summary(study)
-        pair = st.session_state.get("qa_exb_comparison")
-        if pair is not None:
-            _render_dividend_comparison(pair)
+        _submit_exercise_analysis(
+            (kind, style, model, spot, strike, vol, rate, maturity, data,
+             n, threshold, comparison), submitted,
+        )
+        _show_exercise_results()
 
-        st.markdown('<div class="desk-section">03 · Node-level diagnostics</div>',
-                    unsafe_allow_html=True)
-        left_chart, right_chart = st.columns([1.10, 1.0], gap="large")
-        with left_chart:
-            _render_exercise_lattice_map(study)
-        with right_chart:
-            _render_exercise_stopping_details(study)
-        _render_exercise_secondary_details(study)
+# LOT_5C3_GUARDED_REFACTOR

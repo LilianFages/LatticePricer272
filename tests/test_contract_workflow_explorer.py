@@ -16,6 +16,7 @@ def _valid(**overrides) -> PricingRequest:
     return replace(PricingRequest(steps=5), **overrides)
 
 
+# No saved reference means no implicit mutation of lattice explorer state.
 def test_absent_reference_never_changes_explorer() -> None:
     state = {"lattice_explorer_result": "old geometry", "lx_left_model": "Binomial"}
     before = state.copy()
@@ -48,6 +49,7 @@ def test_small_grid_import_is_exact_and_clears_obsolete_geometry() -> None:
     assert get_reference(state) is request
 
 
+# Reimport rotates widget IDs so cached controls cannot override the new contract.
 def test_reimport_switches_seed_and_generates_fresh_widget_ids() -> None:
     state = {}
     first = _valid(spot=95.0)
@@ -60,6 +62,7 @@ def test_reimport_switches_seed_and_generates_fresh_widget_ids() -> None:
     assert state["explorer_reference_seed"] is second
 
 
+# The explorer accepts only supported cash-dividend schedules without truncation.
 def test_rejected_multiple_dividends_are_never_dropped() -> None:
     request = _valid(dividends=(DividendInput(.25, 2.0), DividendInput(.75, 3.0)))
     state = {"lattice_explorer_result": "old", "explorer_import_nonce": 7}
@@ -81,6 +84,7 @@ def test_nonselectable_threshold_is_not_silently_replaced(threshold: float) -> N
     assert state == previous
 
 
+# Successful imports retain the actual dividend time and amount.
 def test_single_cash_dividend_is_transferred_exactly() -> None:
     request = _valid(dividends=(DividendInput(.4, 2.3),))
     state = {}
@@ -107,6 +111,7 @@ def test_model_comparison_choices_and_explorer_views_remain_independent() -> Non
     assert all(state[key] == value for key, value in original_choices.items())
 
 
+# Unsupported depth must fail visibly instead of silently changing N.
 def test_low_depth_is_rejected_without_clamping() -> None:
     state = {}
     save_reference(state, _valid(steps=1))
@@ -123,6 +128,7 @@ def test_dividend_below_editor_minimum_rejected_without_rounding() -> None:
     assert "explorer_reference_seed" not in state
 
 
+# Workspace navigation does not execute the financial engine.
 def test_import_does_not_call_tree_or_pricer(monkeypatch) -> None:
     def forbidden(*args, **kwargs):
         raise AssertionError("An import cannot build, price or compare lattices.")
@@ -140,3 +146,5 @@ def test_explorer_import_preserves_current_reference_after_clear_of_results() ->
     assert apply_reference_to_explorer(state)[0]
     assert get_reference(state) is request
     assert "lattice_explorer_result" not in state
+
+# LOT_5C3_GUARDED_REFACTOR

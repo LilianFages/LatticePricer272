@@ -31,6 +31,7 @@ def contract(**changes: object) -> PricingRequest:
     return replace(base, **changes)
 
 
+# Aligned deterministic events test the pre-ex-date optimal exercise decision.
 @pytest.mark.parametrize("model", FAMILIES)
 @pytest.mark.parametrize("algorithm", ALGORITHMS)
 @pytest.mark.parametrize("steps", (2, 4, 10))
@@ -60,6 +61,7 @@ def test_aligned_stochastic_american_call_has_event_value(
     assert assess_dividend_exercise(request, value).warning is None
 
 
+# Off-grid dividend warnings must not introduce algorithm disagreement.
 @pytest.mark.parametrize("model", FAMILIES)
 @pytest.mark.parametrize("algorithm", ALGORITHMS)
 def test_off_grid_warns_and_preserves_recursive_backward_parity(
@@ -90,6 +92,7 @@ def test_parity_on_grid_dividends_with_american_put(model: str) -> None:
     assert recursive.price >= 0.0
 
 
+# Event-time boundaries are explicit and must not be fabricated on the lattice.
 def test_exact_time_boundary_rejects_off_grid_date() -> None:
     assert aligned_event_step(0.50, 1.0, 4) == 2
     assert aligned_event_step(0.60, 1.0, 4) is None
@@ -101,6 +104,7 @@ def test_no_dividend_and_non_american_have_no_event_warning() -> None:
     assert assess_dividend_exercise(contract(exercise="European"), 20.0).warning is None
 
 
+# The deterministic reference distinguishes before/after dividend decisions.
 def test_deterministic_reference_identifies_post_dividend_put() -> None:
     request = contract(spot=100.0, strike=105.0, option_type="Put",
                        dividends=(DividendInput(time=0.5, amount=10.0),))
@@ -117,6 +121,7 @@ def test_reference_does_not_modify_frozen_request() -> None:
     assert original == request
 
 
+# Dividend event logic must not alter the no-dividend binomial baseline.
 @pytest.mark.parametrize("algorithm", ALGORITHMS)
 @pytest.mark.parametrize("option_type", ("Call", "Put"))
 def test_binomial_american_without_dividend_unchanged(
@@ -142,3 +147,5 @@ def test_aligned_american_exceeds_european_at_sigma_zero(
         replace(request, exercise="European"), algorithm=algorithm,
     ).price
     assert american > european + 1.0
+
+# LOT_5C3_GUARDED_REFACTOR

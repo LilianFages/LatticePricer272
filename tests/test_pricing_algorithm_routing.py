@@ -16,6 +16,7 @@ from frontend.pricing_service import (
     DividendInput,
     PricingInputError,
     PricingRequest,
+    PricingResult,
     price_contract,
     ticket_csv,
 )
@@ -52,6 +53,7 @@ def make_request(
     )
 
 
+# Recursive and backward algorithms should agree on prices and node accounting.
 @pytest.mark.parametrize("model", MODELS)
 @pytest.mark.parametrize("option_type", ("Call", "Put"))
 @pytest.mark.parametrize("exercise", ("European", "American"))
@@ -70,6 +72,7 @@ def test_public_api_parity_no_dividends(
     assert recursive.pruned_transitions == backward.pruned_transitions
 
 
+# Cash-dividend parity also guards ex-date event ordering across engines.
 @pytest.mark.parametrize("model", MODELS[1:])
 @pytest.mark.parametrize("option_type", ("Call", "Put"))
 @pytest.mark.parametrize("exercise", ("European", "American"))
@@ -89,6 +92,7 @@ def test_public_api_parity_cash_dividends(
     assert recursive.pruned_transitions == backward.pruned_transitions
 
 
+# Backward pricing is opt-in and must not change the public default.
 def test_default_stays_recursive() -> None:
     request = PricingRequest(steps=8)
     default = price_contract(request)
@@ -110,6 +114,7 @@ def test_csv_exports_executed_algorithm() -> None:
     assert fields["price"] == str(result.price)
 
 
+# Algorithm selection is execution metadata, never mutable contract state.
 def test_immutable_request_is_shared_between_methods() -> None:
     request = PricingRequest(
         model="Hybrid", steps=14, option_type="Put", exercise="American",
@@ -122,6 +127,7 @@ def test_immutable_request_is_shared_between_methods() -> None:
     assert not hasattr(request, "algorithm")
 
 
+# Every Greek shock must use the chosen pricing algorithm consistently.
 @pytest.mark.parametrize("algorithm", PRICING_ALGORITHMS)
 def test_seven_greeks_use_injected_pricing_algorithm(algorithm: str) -> None:
     request = PricingRequest(
@@ -129,7 +135,7 @@ def test_seven_greeks_use_injected_pricing_algorithm(algorithm: str) -> None:
     )
     observed: list[str] = []
 
-    def observed_pricer(shocked: PricingRequest):
+    def observed_pricer(shocked: PricingRequest) -> PricingResult:
         value = price_contract(shocked, algorithm=algorithm)
         observed.append(value.algorithm)
         return value
@@ -162,11 +168,12 @@ def test_greek_values_agree_across_algorithms() -> None:
             assert math.isclose(r_value, b_value, rel_tol=1e-7, abs_tol=1e-7)
 
 
+# The callback must propagate through selected-curve repricing.
 def test_selected_greek_curve_uses_backward_callback() -> None:
     request = PricingRequest(model="Binomial", steps=9)
     seen = []
 
-    def backward(shocked: PricingRequest):
+    def backward(shocked: PricingRequest) -> PricingResult:
         result = price_contract(shocked, algorithm="Backward")
         seen.append(result.algorithm)
         return result
@@ -184,3 +191,5 @@ def test_binomial_cash_dividend_restriction_remains() -> None:
     )
     with pytest.raises(PricingInputError, match="BinomialTree"):
         price_contract(request, algorithm="Backward")
+
+# LOT_5C3_GUARDED_REFACTOR

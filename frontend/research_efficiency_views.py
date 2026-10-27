@@ -19,6 +19,7 @@ N_CHOICES = (10, 20, 30, 40, 60, 80, 100, 125, 150)
 THRESHOLDS = (1e-18, 1e-12, 1e-9, 1e-5, 1e-3)
 
 
+# Experimental N-grid, timing repetitions and Python memory are explicit user choices.
 def _form() -> tuple:
     with st.form("qa_efficiency_form"):
         fields = _contract_fields("qa_eff")
@@ -147,6 +148,7 @@ def _overlapping_allocation_ns(valid: pd.DataFrame) -> tuple[int, ...]:
     return tuple(sorted(int(n) for n in coincident))
 
 
+# Full and Branch traces overlap at identical allocations; layer width makes both visible.
 def _allocation_nodes_chart(valid: pd.DataFrame) -> alt.LayerChart:
     """Keep coincident Full/Branch lines visible through width and dash contrast.
 
@@ -193,6 +195,7 @@ def _allocation_nodes_chart(valid: pd.DataFrame) -> alt.LayerChart:
     return alt.layer(*layers).properties(height=EFFICIENCY_CHART_HEIGHT).interactive()
 
 
+# The horizontal 1× reference denotes equal measured latency, not theoretical complexity.
 def _speedup_baseline_chart(data: pd.DataFrame) -> alt.LayerChart:
     """Real measured speed-up series with a clearly marked full-tree 1x level."""
     x = alt.X("N:Q", title="N", scale=alt.Scale(zero=False))
@@ -246,20 +249,8 @@ def _speedup_baseline_chart(data: pd.DataFrame) -> alt.LayerChart:
     ).interactive()
 
 
-def _results(report: EfficiencyReport) -> None:
-    frame = _frame(report)
-    valid = frame[frame["Status"] == "ok"].copy()
-    st.markdown('<div class="desk-section">Allocation & runtime scaling</div>',
-                unsafe_allow_html=True)
-    if len(valid) != len(frame):
-        with st.expander(f"{len(frame)-len(valid)} unavailable configuration(s)",
-                         expanded=True):
-            st.dataframe(frame[frame["Status"] != "ok"][["Model", "N", "Status"]],
-                         hide_index=True, width="stretch")
-    if valid.empty:
-        st.error("No model completed. Review the contract and dividend schedule.")
-        return
-
+def _render_efficiency_summary(valid: pd.DataFrame) -> None:
+    """Show allocated savings, gaps and latency at largest N."""
     latest_n = int(valid["N"].max())
     optimal = valid[(valid["N"] == latest_n) & (valid["Model"] == ALLOCATION)]
     maximum_gap = valid["Gap to full (€)"].dropna().max()
@@ -275,6 +266,9 @@ def _results(report: EfficiencyReport) -> None:
         st.caption(f"Max same-N price gap across valid scenarios: "
                    f"{_price_gap_label(maximum_gap)}")
 
+
+def _render_efficiency_charts(valid: pd.DataFrame) -> None:
+    """Compare actual allocations and pricing latencies."""
     a, b = st.columns(2, gap="large")
     with a:
         st.altair_chart(_allocation_nodes_chart(valid), width="stretch")
@@ -286,6 +280,9 @@ def _results(report: EfficiencyReport) -> None:
     with b:
         st.altair_chart(_chart(valid, "N", "Median latency (ms)"), width="stretch")
 
+
+def _render_efficiency_resources(valid: pd.DataFrame, report: EfficiencyReport) -> None:
+    """Display measured speed-ups and optional memory use."""
     st.markdown('<div class="desk-section">Relative speed & resource use</div>',
                 unsafe_allow_html=True)
     speedup = _speedup_frame(valid)
@@ -312,6 +309,9 @@ def _results(report: EfficiencyReport) -> None:
             st.caption("Peak Python memory was not requested; enable profiling "
                        "in the form to add this diagnostic.")
 
+
+def _render_efficiency_details(frame: pd.DataFrame, report: EfficiencyReport) -> None:
+    """Explain observation semantics and export the full table."""
     st.caption("Speed-up = median full-tree latency / median pruned-model latency "
                "at the same N. Above 1× means faster; below 1× means slower. "
                "Small timing differences are sensitive to local CPU noise.")
@@ -328,6 +328,27 @@ def _results(report: EfficiencyReport) -> None:
                            width="stretch")
 
 
+def _results(report: EfficiencyReport) -> None:
+    frame = _frame(report)
+    valid = frame[frame["Status"] == "ok"].copy()
+    st.markdown('<div class="desk-section">Allocation & runtime scaling</div>',
+                unsafe_allow_html=True)
+    if len(valid) != len(frame):
+        with st.expander(f"{len(frame)-len(valid)} unavailable configuration(s)",
+                         expanded=True):
+            st.dataframe(frame[frame["Status"] != "ok"][["Model", "N", "Status"]],
+                         hide_index=True, width="stretch")
+    if valid.empty:
+        st.error("No model completed. Review the contract and dividend schedule.")
+        return
+
+    _render_efficiency_summary(valid)
+    _render_efficiency_charts(valid)
+    _render_efficiency_resources(valid, report)
+    _render_efficiency_details(frame, report)
+
+
+# Only the submit action invokes the pricing study; display changes reuse cached results.
 def render_efficiency_tab() -> None:
     st.markdown("**Pruning Efficiency Lab**")
     st.caption("Explore the computational savings of branch and allocation "
@@ -355,3 +376,5 @@ def render_efficiency_tab() -> None:
         elif not submitted:
             st.info("Choose the N grid and pruning threshold, then run the study. "
                     "No models are priced when adjusting display controls.")
+
+# LOT_5C3_GUARDED_REFACTOR

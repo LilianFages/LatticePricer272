@@ -5,13 +5,14 @@ No pricing occurs on view toggles, zoom or report exploration.
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 
 import altair as alt
 import pandas as pd
 import streamlit as st
 
 from frontend.greeks_service import analytic_bs_greeks
-from frontend.research_risk_numerics import observations, summarize_stability
+from frontend.research_risk_numerics import StabilitySummary, observations, summarize_stability
 
 
 GREEKS = ("Delta", "Gamma")
@@ -54,15 +55,8 @@ def _fmt(value: float | None, digits: int = 6) -> str:
     return "N/A" if value is None else f"{value:.{digits}g}"
 
 
-def render_risk_numerics(rows: tuple, request: object, export_csv) -> None:
-    """Two coordinated sweeps, not a duplicate of the trading Greek snapshot."""
-    try:
-        analytic = analytic_bs_greeks(request)
-    except (ValueError, OverflowError, ZeroDivisionError):
-        analytic = None
-    if not analytic or any(not math.isfinite(analytic[g]) for g in GREEKS):
-        analytic = None
-    stats = summarize_stability(rows, analytic)
+def _render_risk_overview(stats: StabilitySummary, analytic: dict[str, float] | None) -> bool:
+    """Show numerical spans and select analytical deviation when available."""
     st.markdown('<div class="desk-section">Observed numerical robustness</div>',
                 unsafe_allow_html=True)
     a, b, c = st.columns(3)
@@ -80,6 +74,11 @@ def render_risk_numerics(rows: tuple, request: object, export_csv) -> None:
         deviation = False
         st.caption("Black–Scholes comparison is unavailable for this contract. "
                    "Observed variation is not a quantified error against the true value.")
+    return deviation
+
+
+def _render_risk_charts(rows: tuple, analytic: dict[str, float] | None, deviation: bool) -> None:
+    """Show bump-width and lattice-depth Greeks without repricing."""
     st.caption("The bump sweep holds N fixed and uses equal Delta/Gamma spot shocks. "
                "The N sweep holds Delta's bump at ±1%; Gamma follows the selected "
                "adaptive or fixed scheme. Orange dashed line = Black–Scholes when valid.")
@@ -95,6 +94,10 @@ def render_risk_numerics(rows: tuple, request: object, export_csv) -> None:
                     st.info(f"No valid {greek} observations in this sweep.")
                 else:
                     st.altair_chart(chart, width="stretch")
+
+
+def _render_risk_methodology(rows: tuple, stats: StabilitySummary, export_csv: Callable) -> None:
+    """Explain numerical limits and export the measured sweeps."""
     if stats.near_zero_n_gamma:
         st.warning(f"Near-zero Gamma at {stats.near_zero_n_gamma} N settings "
                    "despite nonzero analytic Black–Scholes Gamma. "
@@ -118,3 +121,17 @@ def render_risk_numerics(rows: tuple, request: object, export_csv) -> None:
         st.download_button("Export risk numerics · CSV", export_csv(rows),
                            file_name="lattice272_risk_numerics.csv", mime="text/csv",
                            width="stretch")
+
+
+def render_risk_numerics(rows: tuple, request: object, export_csv) -> None:
+    """Two coordinated sweeps, not a duplicate of the trading Greek snapshot."""
+    try:
+        analytic = analytic_bs_greeks(request)
+    except (ValueError, OverflowError, ZeroDivisionError):
+        analytic = None
+    if not analytic or any(not math.isfinite(analytic[g]) for g in GREEKS):
+        analytic = None
+    stats = summarize_stability(rows, analytic)
+    deviation = _render_risk_overview(stats, analytic)
+    _render_risk_charts(rows, analytic, deviation)
+    _render_risk_methodology(rows, stats, export_csv)

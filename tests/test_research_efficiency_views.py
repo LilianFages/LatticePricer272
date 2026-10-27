@@ -21,7 +21,7 @@ from frontend.research_efficiency_views import (
 )
 
 
-def _spec():
+def _spec() -> dict:
     sample = pd.DataFrame({
         "Model": ["Trinomial · Full", "Trinomial · Allocation pruning"],
         "N": [20, 40],
@@ -31,13 +31,14 @@ def _spec():
 
 
 
-def test_efficiency_chart_is_taller_than_previous_layout():
+# Chart geometry and legends are part of the stable presentation contract.
+def test_efficiency_chart_is_taller_than_previous_layout() -> None:
     assert EFFICIENCY_CHART_HEIGHT == 305
     assert _spec()["height"] == EFFICIENCY_CHART_HEIGHT
 
 
 
-def test_legend_uses_compact_bottom_layout():
+def test_legend_uses_compact_bottom_layout() -> None:
     legend = _spec()["encoding"]["color"]["legend"]
     assert legend["orient"] == "bottom"
     assert legend["direction"] == "horizontal"
@@ -47,7 +48,7 @@ def test_legend_uses_compact_bottom_layout():
 
 
 
-def test_price_scale_keeps_nonzero_origin_and_tooltips():
+def test_price_scale_keeps_nonzero_origin_and_tooltips() -> None:
     spec = _spec()
     assert spec["encoding"]["y"]["scale"]["zero"] is False
     assert spec["encoding"]["x"]["field"] == "N"
@@ -56,7 +57,8 @@ def test_price_scale_keeps_nonzero_origin_and_tooltips():
 
 
 
-def test_explicit_chart_height_is_still_supported():
+# Explicit chart heights must override the default without rewriting the plot.
+def test_explicit_chart_height_is_still_supported() -> None:
     sample = pd.DataFrame({
         "Model": ["Trinomial · Full"], "N": [20], "Allocated nodes": [441],
     })
@@ -64,7 +66,7 @@ def test_explicit_chart_height_is_still_supported():
 
 
 
-def _points():
+def _points() -> pd.DataFrame:
     return pd.DataFrame({
         "Model": [FULL, BRANCH, ALLOCATION] * 2,
         "N": [20, 20, 20, 40, 40, 40],
@@ -73,7 +75,8 @@ def _points():
 
 
 
-def test_overlap_is_exact_and_at_equal_n():
+# Full and Branch allocation counts are only comparable at identical N.
+def test_overlap_is_exact_and_at_equal_n() -> None:
     assert _overlapping_allocation_ns(_points()) == (20, 40)
     sample = _points()
     sample.loc[(sample["Model"] == BRANCH) & (sample["N"] == 40), "Allocated nodes"] = 900
@@ -81,14 +84,14 @@ def test_overlap_is_exact_and_at_equal_n():
 
 
 
-def test_no_silent_pairing_of_ambiguous_or_missing_levels():
+def test_no_silent_pairing_of_ambiguous_or_missing_levels() -> None:
     sample = _points()
     assert _overlapping_allocation_ns(pd.concat([sample, sample.iloc[:1]])) == ()
     assert _overlapping_allocation_ns(sample[sample["Model"] == ALLOCATION]) == ()
 
 
 
-def test_full_is_wider_under_dashed_branch_with_untruncated_legend():
+def test_full_is_wider_under_dashed_branch_with_untruncated_legend() -> None:
     spec = _allocation_nodes_chart(_points()).to_dict()
     layers = spec["layer"]
     assert len(layers) == 3
@@ -100,7 +103,8 @@ def test_full_is_wider_under_dashed_branch_with_untruncated_legend():
 
 
 
-def test_speedup_baseline_is_one_and_line_is_still_measured():
+# The full-tree baseline is measured, not an inferred asymptotic ratio.
+def test_speedup_baseline_is_one_and_line_is_still_measured() -> None:
     sample = pd.DataFrame({
         "Model": [BRANCH, ALLOCATION], "N": [20, 20],
         "Speed-up (×)": [1.15, 1.35],
@@ -117,7 +121,7 @@ def test_speedup_baseline_is_one_and_line_is_still_measured():
 
 
 
-def _latencies():
+def _latencies() -> pd.DataFrame:
     return pd.DataFrame([
         {"Model": FULL, "N": 20, "Median latency (ms)": 10.},
         {"Model": BRANCH, "N": 20, "Median latency (ms)": 5.},
@@ -129,7 +133,8 @@ def _latencies():
 
 
 
-def test_speedup_uses_only_same_n_full_medians():
+# Speed-up is a positive latency ratio at identical lattice depth.
+def test_speedup_uses_only_same_n_full_medians() -> None:
     rows = _speedup_frame(_latencies())
     observed = {(r["Model"], r["N"]): r["Speed-up (×)"]
                 for _, r in rows.iterrows()}
@@ -141,7 +146,7 @@ def test_speedup_uses_only_same_n_full_medians():
 
 
 
-def test_speedup_excludes_missing_zero_and_duplicate_full_baselines():
+def test_speedup_excludes_missing_zero_and_duplicate_full_baselines() -> None:
     frame = _latencies()
     frame.loc[(frame["Model"] == FULL) & (frame["N"] == 40),
               "Median latency (ms)"] = 0.
@@ -151,7 +156,8 @@ def test_speedup_excludes_missing_zero_and_duplicate_full_baselines():
 
 
 
-def test_speedup_rejects_zero_or_nonfinite_pruned_latency():
+# Zero and nonfinite latencies cannot produce meaningful performance ratios.
+def test_speedup_rejects_zero_or_nonfinite_pruned_latency() -> None:
     frame = _latencies()
     frame.loc[(frame["Model"] == BRANCH) & (frame["N"] == 20),
               "Median latency (ms)"] = 0.
@@ -166,5 +172,7 @@ def test_speedup_rejects_zero_or_nonfinite_pruned_latency():
     (0., "0 €"), (None, "N/A"), (float("nan"), "N/A"),
     (1e-9, "1.00e-09 €"), (0.0001, "0.000100 €"),
 ])
-def test_gap_display_preserves_nonzero_precision(value, expected):
+def test_gap_display_preserves_nonzero_precision(value: float | None, expected: str) -> None:
     assert _price_gap_label(value) == expected
+
+# LOT_5C3_GUARDED_REFACTOR

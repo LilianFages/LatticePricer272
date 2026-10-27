@@ -57,10 +57,12 @@ def test_original_probabilities_chart_has_bottom_legend():
 
 
 def test_sections_keep_explicit_comparison_and_nodal_grid():
-    src = inspect.getsource(views.render_exercise_boundary_tab)
-    assert "_render_dividend_comparison(pair)" in src
-    assert "st.columns([1.10, 1.0]" in src
-    assert "_render_exercise_secondary_details(study)" in src
+    entrypoint = inspect.getsource(views.render_exercise_boundary_tab)
+    results = inspect.getsource(views._show_exercise_results)
+    assert "_show_exercise_results()" in entrypoint
+    assert "_render_dividend_comparison(pair)" in results
+    assert "st.columns([1.10, 1.0]" in results
+    assert "_render_exercise_secondary_details(study)" in results
 
 
 def test_no_repricing_or_computation_added_to_layout_renderers():

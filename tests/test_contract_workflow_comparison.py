@@ -14,6 +14,7 @@ from frontend.model_comparison import (
 from frontend.pricing_service import DividendInput, PricingRequest
 
 
+# The comparison workspace stays unchanged when no reference exists.
 def test_no_reference_does_not_touch_existing_comparison_state() -> None:
     state = {"cmp_models": ("Binomial",), "last_comparison_report": "old"}
     before = state.copy()
@@ -35,6 +36,7 @@ def test_default_reference_imports_exactly_without_pricing() -> None:
     assert get_reference(state) is req
 
 
+# Benchmark choices belong to the destination workspace, not the transferred ticket.
 def test_comparison_benchmark_settings_are_not_overwritten() -> None:
     req = PricingRequest(option_type="Put", exercise="American", steps=75)
     state = {
@@ -65,6 +67,7 @@ def test_repeated_explicit_import_increments_widget_generation() -> None:
     assert state["cmp_reference_seed"] is second
 
 
+# Rejected handoffs preserve all previous state and numerical settings.
 def test_incompatible_threshold_rejected_atomically() -> None:
     state = {
         "cmp_import_nonce": 3,
@@ -90,6 +93,7 @@ def test_out_of_bounds_contract_rejected_without_truncation() -> None:
     assert bad.maturity == 110.0
 
 
+# The comparison engine supports the complete multi-dividend schedule.
 def test_two_cash_dividends_are_transferred_without_loss() -> None:
     dividends = (DividendInput(0.25, 2.0), DividendInput(0.75, 3.0))
     req = PricingRequest(steps=100, dividends=dividends)
@@ -107,6 +111,7 @@ def test_no_dividends_keeps_existing_empty_row_semantics() -> None:
     assert parse_dividends(pd.DataFrame(rows)) == ()
 
 
+# Importing reference metadata must not initiate valuation.
 def test_import_is_never_a_pricing_or_comparison_trigger(monkeypatch) -> None:
     def forbidden(*args, **kwargs):
         raise AssertionError("Import must not price contracts")
@@ -125,3 +130,5 @@ def test_reference_engine_does_not_overwrite_comparison_model_selection() -> Non
     assert apply_reference_to_comparison(state)[0]
     assert state["cmp_models"] == ("Binomial",)
     assert state["cmp_reference_seed"].model == req.model
+
+# LOT_5C3_GUARDED_REFACTOR

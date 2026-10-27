@@ -541,15 +541,8 @@ def _has_ghost_allocations(snapshots: list[LatticeSnapshot]) -> bool:
     return any(snapshot.unreached_allocations > 0 for snapshot in snapshots)
 
 
-def _render_explorer_geometry(stored: list) -> None:
-    """Draw shared-domain lattice plots without rebuilding models."""
-    snapshots = [snap for _, snap, _ in stored if snap is not None]
-    st.markdown('<div class="desk-section">03 · Priced lattice geometry</div>', unsafe_allow_html=True)
-    st.caption(
-        "Explore: wheel/trackpad to zoom · drag to pan · hover for node data · "
-        "chart full-screen icon (top right) to enlarge. Focus left/right expands one model."
-    )
-    _pruning_comparison(stored)
+def _explorer_display_controls(snapshots: list[LatticeSnapshot]) -> tuple[str, bool]:
+    """Choose focus and allocated-node visibility without rebuilding lattices."""
     aa, bb = st.columns([1, 1.25])
     view = aa.radio(
         "Workspace view", ("Side by side", "Focus left", "Focus right"),
@@ -565,6 +558,53 @@ def _render_explorer_geometry(stored: list) -> None:
     else:
         bb.caption("Display nodes: all allocated nodes are already connected.")
         show_all = False
+    return view, show_all
+
+
+def _explorer_local_window(snapshots: list[LatticeSnapshot]) -> tuple:
+    """Choose the exact time/spot corridor and genuine visible transitions."""
+    max_steps = min(snap.request.steps for snap in snapshots)
+    center = st.slider(
+        "Inspect around time step", min_value=0, max_value=max_steps,
+        value=max_steps // 2, step=1,
+        key="lattice_v25_center_step",
+    )
+    radius = st.select_slider(
+        "Window half-width (steps)", options=(2, 3, 4, 5),
+        value=3, key="lattice_v25_window_radius",
+    )
+    step_window = (max(0, center - radius), min(max_steps, center + radius))
+    left_focus, right_focus = st.columns(2)
+    focus_spot = left_focus.number_input(
+        "Spot focus (€)", min_value=0.01,
+        value=float(snapshots[0].request.spot), step=5.0,
+        format="%.2f", key="lattice_v28_focus_spot",
+        help="Move the local lattice view up or down the spot axis.",
+    )
+    width_pct = right_focus.select_slider(
+        "Visible spot range (±%)", options=(5, 10, 15, 20, 25),
+        value=15, key="lattice_v28_spot_radius",
+        help="Only real nodes and links inside this spot interval are drawn.",
+    )
+    spot_band = (
+        max(0.0, focus_spot * (1 - width_pct / 100)),
+        focus_spot * (1 + width_pct / 100),
+    )
+    show_links = st.checkbox(
+        "Show all visible transitions (exact)",
+        value=False, key="lattice_v25_window_links",
+        help="Draws every actual edge connecting nodes inside "
+             "the chosen time and spot rectangle, with no link sampling.",
+    )
+    st.caption("Detailed window: original nodes and complete "
+               "transitions in the selected time AND spot intervals. "
+               "Move Spot focus to explore other regions; Node inspector "
+               "still provides the entire priced tree.")
+    return step_window, spot_band, show_links
+
+
+def _explorer_detail_controls(snapshots: list[LatticeSnapshot]) -> tuple:
+    """Configure fast overview or exact local window; preserve widget order."""
     large_tree = any(snap.request.steps >= 20 for snap in snapshots)
     step_window = None
     spot_band = None
@@ -586,43 +626,12 @@ def _render_explorer_geometry(stored: list) -> None:
                        "dividend-adjacent layers are retained. Every value remains "
                        "available in Node inspector or Detailed time window.")
         else:
-            max_steps = min(snap.request.steps for snap in snapshots)
-            center = st.slider(
-                "Inspect around time step", min_value=0, max_value=max_steps,
-                value=max_steps // 2, step=1,
-                key="lattice_v25_center_step",
-            )
-            radius = st.select_slider(
-                "Window half-width (steps)", options=(2, 3, 4, 5),
-                value=3, key="lattice_v25_window_radius",
-            )
-            step_window = (max(0, center - radius), min(max_steps, center + radius))
-            left_focus, right_focus = st.columns(2)
-            focus_spot = left_focus.number_input(
-                "Spot focus (€)", min_value=0.01,
-                value=float(snapshots[0].request.spot), step=5.0,
-                format="%.2f", key="lattice_v28_focus_spot",
-                help="Move the local lattice view up or down the spot axis.",
-            )
-            width_pct = right_focus.select_slider(
-                "Visible spot range (±%)", options=(5, 10, 15, 20, 25),
-                value=15, key="lattice_v28_spot_radius",
-                help="Only real nodes and links inside this spot interval are drawn.",
-            )
-            spot_band = (
-                max(0.0, focus_spot * (1 - width_pct / 100)),
-                focus_spot * (1 + width_pct / 100),
-            )
-            show_links = st.checkbox(
-                "Show all visible transitions (exact)",
-                value=False, key="lattice_v25_window_links",
-                help="Draws every actual edge connecting nodes inside "
-                     "the chosen time and spot rectangle, with no link sampling.",
-            )
-            st.caption("Detailed window: original nodes and complete "
-                       "transitions in the selected time AND spot intervals. "
-                       "Move Spot focus to explore other regions; Node inspector "
-                       "still provides the entire priced tree.")
+            step_window, spot_band, show_links = _explorer_local_window(snapshots)
+    return step_window, spot_band, overview, show_links
+
+
+def _explorer_plot_panels(stored: list, snapshots: list[LatticeSnapshot], view: str, show_all: bool, step_window: tuple | None, spot_band: tuple | None, overview: bool, show_links: bool) -> None:
+    """Display actual stored lattice snapshots on one comparable domain."""
     max_links = None  # Display every genuine edge inside the local corridor.
     domain = _plot_domain(snapshots, show_all, step_window)
     if spot_band is not None:
@@ -657,6 +666,20 @@ def _render_explorer_geometry(stored: list) -> None:
         "are drawn only when their probability is positive. Early exercise is "
         "flagged where immediate exercise strictly dominates continuation."
     )
+
+
+def _render_explorer_geometry(stored: list) -> None:
+    """Draw shared-domain lattice plots without rebuilding models."""
+    snapshots = [snap for _, snap, _ in stored if snap is not None]
+    st.markdown('<div class="desk-section">03 · Priced lattice geometry</div>', unsafe_allow_html=True)
+    st.caption(
+        "Explore: wheel/trackpad to zoom · drag to pan · hover for node data · "
+        "chart full-screen icon (top right) to enlarge. Focus left/right expands one model."
+    )
+    _pruning_comparison(stored)
+    view, show_all = _explorer_display_controls(snapshots)
+    step_window, spot_band, overview, show_links = _explorer_detail_controls(snapshots)
+    _explorer_plot_panels(stored, snapshots, view, show_all, step_window, spot_band, overview, show_links)
 
 
 
@@ -718,3 +741,5 @@ def render_lattice_explorer_page(*, embedded: bool = False) -> None:
                 "Each chart will display the actual priced lattice geometry.")
         return
     _render_explorer_geometry(stored)
+
+# LOT_5C3_GUARDED_REFACTOR
