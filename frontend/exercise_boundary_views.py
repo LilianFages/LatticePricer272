@@ -306,7 +306,7 @@ def _render_dividend_comparison(comparison: DividendExerciseComparison) -> None:
             )
 
 
-# LOT_3C1_STOPPING_LAYOUT: editorial layout, unchanged financial analytics.
+# Editorial layout; financial analytics are unchanged.
 
 # Keep date-level stopping mass and full-node exports separate from chart sampling.
 def _render_exercise_secondary_details(study: ExerciseStudy) -> None:
@@ -484,5 +484,3 @@ def render_exercise_boundary_tab() -> None:
              n, threshold, comparison), submitted,
         )
         _show_exercise_results()
-
-# LOT_5C3_GUARDED_REFACTOR

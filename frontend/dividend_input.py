@@ -85,5 +85,3 @@ def parse_cash_dividends(
 def parse_dividends(frame: pd.DataFrame) -> tuple[DividendInput, ...]:
     """Backward-compatible public name for Model Comparison and analytics."""
     return parse_cash_dividends(frame, context="analysis")
-
-# LOT_5C5_STRUCTURAL_CLEANUP

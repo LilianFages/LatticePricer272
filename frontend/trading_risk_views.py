@@ -192,5 +192,3 @@ def render_desk_risk(result: PricingResult) -> None:
                 st.warning(warning)
     _show_curve(result, snapshot)
     _show_delta_hedge(snapshot)
-
-# LOT_5C3_GUARDED_REFACTOR

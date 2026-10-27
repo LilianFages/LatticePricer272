@@ -1,5 +1,10 @@
 # Phase 6A — Quant Research: three scientific questions
 
+> Historical Phase 6A implementation record. Phases 6B–6D have since
+> been completed. For current release checks and architecture, consult
+> [Release Protocol](Release_Protocol.md) and
+> [Architecture Snapshot](Architecture_Snapshot.md).
+
 ## Scope / baseline
 
 Based on branch `lilian` at commit `4dc5ffd144712f19d930803d5c01e23785974597`.
@@ -47,6 +52,6 @@ The new within-section selector is `quant_research_numerical_view`. Existing res
 7. Test two contracts: a European call without dividends and an American put with a valid cash dividend. Check that reference language and stopping conventions remain correct.
 8. Stage only `frontend/quant_research.py`, `tests/test_quant_research_navigation.py`, `README.md` and `docs/Quant_Research_Phase6.md`; commit only after tests **and** Streamlit review.
 
-## Next work
+## Historical roadmap (subsequently completed)
 
 **6B:** dependency/duplication analysis (particularly common tree operations, counted node reachability and offline pricing/benchmark boilerplate), then controlled refactors with dedicated invariant tests. **6C:** evaluate one complementary quantitative experiment on exact-grid vs off-grid ex-dividend timing and its effect on option values, Greeks and convergence, without altering transition conventions. **6D:** documentation pruning, evidence provenance and final reproducibility review. Do not delete old experiments, CSVs or historic docs before proving they are no longer referenced.

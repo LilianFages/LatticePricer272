@@ -141,5 +141,3 @@ def render_model_diagnostics_page() -> None:
         )
         from frontend.lattice_explorer import render_lattice_explorer_page
         render_lattice_explorer_page(embedded=True)
-
-# LOT_5C5_STRUCTURAL_CLEANUP

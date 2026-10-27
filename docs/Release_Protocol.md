@@ -101,5 +101,5 @@ changes with `git diff --cached --stat` and `git diff --cached --check` before
 commit. After visual review and green tests, push `lilian` and optionally tag
 an agreed version (do not overwrite an existing tag).
 
-Historical `docs/Frontend_*` files document prior iterations. They are not
+Historical `docs/archive/Frontend_*` files document prior iterations. They are not
 current source of truth for navigation. Use the README and this protocol.

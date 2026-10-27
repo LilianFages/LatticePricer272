@@ -190,5 +190,3 @@ def assess_transfer(request: PricingRequest, target: str) -> TransferCheck:
     # These bounds are shared by the contract fields in the target UI forms.
     _collect_market_limits(request, target, issues)
     return TransferCheck(target, tuple(issues))
-
-# LOT_5C5_STRUCTURAL_CLEANUP

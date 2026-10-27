@@ -376,5 +376,3 @@ def render_efficiency_tab() -> None:
         elif not submitted:
             st.info("Choose the N grid and pruning threshold, then run the study. "
                     "No models are priced when adjusting display controls.")
-
-# LOT_5C3_GUARDED_REFACTOR

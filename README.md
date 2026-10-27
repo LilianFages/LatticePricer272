@@ -60,7 +60,7 @@ python -m experiments.option_value_exercise_by_dates --steps 100
 
 These commands can generate files; review their corresponding protocols and output paths first. Do **not** indiscriminately rerun full historical benchmarks or overwrite versioned results when you only want to explore the dashboard.
 
-For the current Quant Research organization, see [`docs/Quant_Research_Phase6.md`](docs/Quant_Research_Phase6.md). Existing detailed protocols include `docs/Accuracy_vs_Cost_protocol.md`, `docs/Accuracy_vs_Cost_Phase2_protocol.md` and `docs/Temporal_Experiments_Protocol.md`. Older `Frontend_*` notes are retained as historical release documentation; they do not necessarily describe the current navigation.
+For the current Quant Research organization, see [`docs/Quant_Research_Phase6.md`](docs/Quant_Research_Phase6.md). Existing detailed protocols include `docs/Accuracy_vs_Cost_protocol.md`, `docs/Accuracy_vs_Cost_Phase2_protocol.md` and `docs/Temporal_Experiments_Protocol.md`. Older frontend notes are preserved in [docs/archive/](docs/archive/README.md) as historical release documentation; they do not describe the current navigation.
 
 ## Final release verification (Phase 6D)
 

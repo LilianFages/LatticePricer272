@@ -763,9 +763,3 @@ def render_lattice_explorer_page(*, embedded: bool = False) -> None:
                 "Each chart will display the actual priced lattice geometry.")
         return
     _render_explorer_geometry(stored)
-
-# LOT_5C3_GUARDED_REFACTOR
-
-# LOT_5C4_GUARDED_REFACTOR
-
-# LOT_5C5_STRUCTURAL_CLEANUP

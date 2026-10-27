@@ -333,7 +333,7 @@ def _render_sidebar() -> str:
         _render_reference_sidebar()
         st.divider()
         st.markdown("**RESEARCH**")
-        st.caption("Four live investigations · optional historical evidence")
+        st.caption("Five live investigations · optional historical evidence")
         st.divider()
         st.caption("Local Python engine · no market-data feed")
         st.caption("Model output is theoretical, not an executable quote.")
@@ -483,5 +483,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
-# LOT_5C4_GUARDED_REFACTOR

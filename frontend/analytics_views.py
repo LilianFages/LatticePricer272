@@ -413,7 +413,3 @@ def render_greeks_stability_tab() -> None:
                     "Results are explored without additional pricing.")
             return
         _render_stability_results(saved)
-
-# LOT_5C4_GUARDED_REFACTOR
-
-# LOT_5C5_STRUCTURAL_CLEANUP

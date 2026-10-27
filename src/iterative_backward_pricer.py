@@ -125,5 +125,3 @@ class IterativeBackwardPricer:
             earlier.update(following)
 
         return levels
-
-# LOT_5C4_GUARDED_REFACTOR

@@ -121,5 +121,3 @@ def _require_date(value: object, name: str) -> None:
     """Reject datetime values: a date-based ticket must not hide a time zone."""
     if not isinstance(value, date) or isinstance(value, datetime):
         raise CalendarInputError(f"{name} must be a calendar date.")
-
-# LOT_5C4_GUARDED_REFACTOR

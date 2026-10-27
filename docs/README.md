@@ -20,9 +20,9 @@
 
 ## Historical design and release records
 
-Files beginning `Frontend_` describe successive implementations and should
-be treated as historical release evidence, **not current navigation guides**.
-They remain tracked to preserve the traceability of prior development.
+The [historical frontend archive](archive/README.md) preserves the eleven
+successive frontend implementation records. These documents are historical
+evidence, **not current navigation or installation guides**.
 Course/reference PDF documents are also preserved.
 
 Each versioned CSV/figure in `results/` corresponds to a specific experiment

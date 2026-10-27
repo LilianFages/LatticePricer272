@@ -140,5 +140,3 @@ def representative_transitions(
             indices.add(special)
         chosen.extend(layer[i] for i in sorted(indices))
     return tuple(chosen)
-
-# LOT_5C4_GUARDED_REFACTOR
