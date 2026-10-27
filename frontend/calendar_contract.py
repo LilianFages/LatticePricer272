@@ -58,21 +58,8 @@ class ContractCalendar:
     expiry_date: date
     dividends: tuple[DatedCashDividend, ...] = ()
 
-    def resolve(self) -> ResolvedCalendar:
-        """Validate the calendar and return engine-compatible year fractions.
-
-        This operation neither reprices a contract nor modifies any lattice.
-        A subsequent PricingRequest validation must still check whether two
-        dividends fall into the same time step for the selected N.
-        """
-        _require_date(self.valuation_date, "Valuation date")
-        _require_date(self.expiry_date, "Expiry date")
-        if self.expiry_date <= self.valuation_date:
-            raise CalendarInputError(
-                "Expiry date must be later than valuation date."
-            )
-
-        maturity_days = (self.expiry_date - self.valuation_date).days
+    def _resolved_dividends(self) -> tuple[RelativeCashDividend, ...]:
+        """Validate and convert all dated cashflows in ACT/365F time."""
         dividends: list[RelativeCashDividend] = []
         seen_dates: set[date] = set()
 
@@ -106,9 +93,27 @@ class ContractCalendar:
             dividends.append(RelativeCashDividend(days / DAYS_PER_YEAR, amount))
 
         dividends.sort(key=lambda item: item.time)
+        return tuple(dividends)
+
+    def resolve(self) -> ResolvedCalendar:
+        """Validate the calendar and return engine-compatible year fractions.
+
+        This operation neither reprices a contract nor modifies any lattice.
+        A subsequent PricingRequest validation must still check whether two
+        dividends fall into the same time step for the selected N.
+        """
+        _require_date(self.valuation_date, "Valuation date")
+        _require_date(self.expiry_date, "Expiry date")
+        if self.expiry_date <= self.valuation_date:
+            raise CalendarInputError(
+                "Expiry date must be later than valuation date."
+            )
+
+        maturity_days = (self.expiry_date - self.valuation_date).days
+        dividends = self._resolved_dividends()
         return ResolvedCalendar(
             maturity=maturity_days / DAYS_PER_YEAR,
-            dividends=tuple(dividends),
+            dividends=dividends,
         )
 
 
@@ -116,3 +121,5 @@ def _require_date(value: object, name: str) -> None:
     """Reject datetime values: a date-based ticket must not hide a time zone."""
     if not isinstance(value, date) or isinstance(value, datetime):
         raise CalendarInputError(f"{name} must be a calendar date.")
+
+# LOT_5C4_GUARDED_REFACTOR

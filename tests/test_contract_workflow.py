@@ -15,6 +15,7 @@ from frontend.contract_workflow import (
 from frontend.pricing_service import PricingInputError, PricingRequest, PricingResult
 
 
+# Reference lifecycle: explicit save/read/clear and immutable ownership.
 def test_save_read_clear_reference() -> None:
     state: dict = {}
     request = PricingRequest(option_type="Put", exercise="American")
@@ -62,6 +63,7 @@ def test_reference_save_does_not_run_pricer(monkeypatch: pytest.MonkeyPatch) -> 
     assert get_reference(state) is request
 
 
+# Transfers must preserve contract values or report an explicit incompatibility.
 @pytest.mark.parametrize("target", [
     "model_comparison", "quant_analytics", "exercise_boundary",
 ])
@@ -111,6 +113,7 @@ def _result(request: PricingRequest) -> PricingResult:
     )
 
 
+# Only an already completed pricing result may become the shared reference.
 def test_successful_pricing_ticket_can_be_saved() -> None:
     request = PricingRequest(
         option_type="Put", exercise="American", steps=30,
@@ -169,3 +172,5 @@ def test_saving_already_priced_result_never_calls_engine(monkeypatch) -> None:
 
     monkeypatch.setattr("frontend.pricing_service.price_contract", forbidden)
     assert save_reference_from_last_result(state) is request
+
+# LOT_5C4_GUARDED_REFACTOR

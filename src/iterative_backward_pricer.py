@@ -41,50 +41,58 @@ class IterativeBackwardPricer:
             layer = levels[step]
             ex_dividend = event_dividends.get(step + 1)
             for node in layer:
-                next_up = node.next_up
-                next_down = node.next_down
-                if next_up is None or next_down is None:
-                    raise RuntimeError("Incomplete lattice.")
-                if node.up_probability is None or node.down_probability is None:
-                    raise RuntimeError("Missing transition probabilities.")
-                if next_up.option_value is None or next_down.option_value is None:
-                    raise RuntimeError("Unpriced successor in backward induction.")
-
-                expected_value = (
-                    node.up_probability
-                    * before_dividend_value(
-                        next_up, next_up.option_value, option, ex_dividend,
-                    )
-                    + node.down_probability
-                    * before_dividend_value(
-                        next_down, next_down.option_value, option, ex_dividend,
-                    )
-                )
-                if node.next_mid is not None:
-                    if node.mid_probability is None:
-                        raise RuntimeError("Missing middle transition probability.")
-                    if node.next_mid.option_value is None:
-                        raise RuntimeError("Unpriced middle successor.")
-                    expected_value += (
-                        node.mid_probability
-                        * before_dividend_value(
-                            node.next_mid, node.next_mid.option_value,
-                            option, ex_dividend,
-                        )
-                    )
-                hold_value = discount_factor * expected_value
-                hold_value = offgrid_exercise_bound(
-                    node, hold_value, option, ex_dividend,
-                )
-                node.option_value = option.value_at_node(
-                    spot=node.price,
-                    hold_value=hold_value,
-                )
+                self._price_node(node, option, discount_factor, ex_dividend)
 
         value = tree.root.option_value
         if value is None:
             raise RuntimeError("Root option value was not calculated.")
         return value
+
+    @staticmethod
+    def _price_node(
+        node: Node, option: Option, discount_factor: float, ex_dividend: object,
+    ) -> None:
+        """Apply the original complete two/three-branch induction to one node."""
+        next_up = node.next_up
+        next_down = node.next_down
+        if next_up is None or next_down is None:
+            raise RuntimeError("Incomplete lattice.")
+        if node.up_probability is None or node.down_probability is None:
+            raise RuntimeError("Missing transition probabilities.")
+        if next_up.option_value is None or next_down.option_value is None:
+            raise RuntimeError("Unpriced successor in backward induction.")
+
+        expected_value = (
+            node.up_probability
+            * before_dividend_value(
+                next_up, next_up.option_value, option, ex_dividend,
+            )
+            + node.down_probability
+            * before_dividend_value(
+                next_down, next_down.option_value, option, ex_dividend,
+            )
+        )
+        if node.next_mid is not None:
+            if node.mid_probability is None:
+                raise RuntimeError("Missing middle transition probability.")
+            if node.next_mid.option_value is None:
+                raise RuntimeError("Unpriced middle successor.")
+            expected_value += (
+                node.mid_probability
+                * before_dividend_value(
+                    node.next_mid, node.next_mid.option_value,
+                    option, ex_dividend,
+                )
+            )
+        hold_value = discount_factor * expected_value
+        hold_value = offgrid_exercise_bound(
+            node, hold_value, option, ex_dividend,
+        )
+        node.option_value = option.value_at_node(
+            spot=node.price,
+            hold_value=hold_value,
+        )
+
 
     @staticmethod
     def _reachable_levels(root: Node, steps: int) -> list[list[Node]]:
@@ -117,3 +125,5 @@ class IterativeBackwardPricer:
             earlier.update(following)
 
         return levels
+
+# LOT_5C4_GUARDED_REFACTOR

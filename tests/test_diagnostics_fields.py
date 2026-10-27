@@ -37,6 +37,7 @@ def _defaults(field, fallback):
                    field, fallback)
 
 
+# Shared diagnostic editors must preserve their original Streamlit keys.
 def test_common_editor_keeps_both_existing_widget_names(monkeypatch):
     ui = FakeStreamlit()
     monkeypatch.setattr(fields, "st", ui)
@@ -80,6 +81,7 @@ def test_explorer_keeps_its_key_family_and_default_option(monkeypatch):
     ]
 
 
+# Exploration depth and transfer guards remain explicit and bounded.
 def test_visual_depth_extended_but_still_bounded():
     assert MAX_VISUAL_STEPS == 100
     assert assess_transfer(PricingRequest(steps=100), "lattice_explorer").exact
@@ -134,6 +136,7 @@ class ReferenceImportUI:
         return False
 
 
+# Reference import is state-only, with no implicit repricing.
 @pytest.mark.parametrize("mode,key,feedback_key", [
     ("Compare models", "cmp_import_contract", "cmp_import_feedback"),
     ("Explore lattice", "lx_import_reference", "explorer_import_feedback"),
@@ -163,6 +166,7 @@ def test_shared_reference_import_keeps_keys_and_does_not_price(
     assert ("warning", "Import unavailable") in ui.messages
 
 
+# A failed import must never leave partly changed session state.
 @pytest.mark.parametrize("mode,feedback_key", [
     ("Compare models", "cmp_import_feedback"),
     ("Explore lattice", "explorer_import_feedback"),
@@ -201,3 +205,5 @@ def test_shared_import_displays_success_without_new_pricing(monkeypatch):
 def test_unknown_diagnostic_import_mode_is_rejected():
     with pytest.raises(ValueError, match="Unknown diagnostic import mode"):
         fields._reference_import_settings("unknown")
+
+# LOT_5C4_GUARDED_REFACTOR

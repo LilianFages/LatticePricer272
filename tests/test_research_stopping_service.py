@@ -17,6 +17,7 @@ def _request(**kwargs):
     return replace(base, **kwargs)
 
 
+# Comparison must share a contract and discretization without mutation.
 def test_same_market_and_grid_without_mutating_original():
     observed = []
 
@@ -35,6 +36,7 @@ def test_same_market_and_grid_without_mutating_original():
     assert result.node_exercise_difference == pytest.approx(-.05)
 
 
+# Invalid comparisons fail before a lattice is built or priced.
 def test_no_dividends_rejected_without_pricing():
     calls = []
     with pytest.raises(PricingInputError, match="Add at least one"):
@@ -67,6 +69,7 @@ def test_analyzer_failure_is_not_silenced():
         compare_dividend_exercise(_request(), analyzer=fail)
 
 
+# Valid dividend events remain explicit in both comparison scenarios.
 def test_two_cashflow_events_preserved_in_dividend_case():
     req = _request(steps=20, dividends=(DividendInput(.25, 2.), DividendInput(.75, 1.)))
     seen = []
@@ -91,3 +94,5 @@ def test_real_engine_comparison_uses_two_valid_studies():
     assert len(result.without_dividends.dates) == 21
     assert result.with_dividends.worst_probability_mass_error < 2e-10
     assert result.without_dividends.worst_probability_mass_error < 2e-10
+
+# LOT_5C4_GUARDED_REFACTOR

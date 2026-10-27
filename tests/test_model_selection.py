@@ -8,6 +8,7 @@ from frontend.model_selection import (
 from frontend.pricing_service import MODELS, PricingInputError, PricingRequest
 
 
+# Model routing: pricing families and non-pruned defaults must remain distinct.
 def test_three_distinct_families():
     assert FAMILIES == ("Binomial", "Hybrid", "Trinomial")
 
@@ -28,6 +29,7 @@ def test_trinomial_full_requires_no_pruning():
     )
 
 
+# Trinomial pruning selections must retain exact method and threshold.
 def test_trinomial_on_defaults_to_allocation():
     assert resolve_model_selection("Trinomial", True) == (
         "Trinomial · Allocation pruning", 1e-18,
@@ -46,6 +48,7 @@ def test_trinomial_allocation_preserves_threshold():
     )
 
 
+# Reject ambiguous, unsupported, or non-finite pruning configurations.
 @pytest.mark.parametrize("threshold", PRUNING_THRESHOLDS)
 def test_all_supported_thresholds_map_identically(threshold):
     _, selected = resolve_model_selection("Trinomial", True, "Branch", threshold)
@@ -81,6 +84,7 @@ def test_pruning_must_be_a_boolean(pruning):
         resolve_model_selection("Trinomial", pruning)
 
 
+# Backwards-compatible engine coverage after translating UI selections.
 @pytest.mark.parametrize(
     ("family", "enabled", "method"),
     [
@@ -104,3 +108,5 @@ def test_full_is_never_mislabeled_as_pruned_when_off():
             "Trinomial", False, method, 1e-12,
         )
         assert model == "Trinomial · Full" and threshold == 1e-18
+
+# LOT_5C4_GUARDED_REFACTOR

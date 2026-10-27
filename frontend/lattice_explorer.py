@@ -336,6 +336,33 @@ def focus_lattice_snapshot(
                    allocated_geometry=allocated)
 
 
+def _render_lattice_explanations(snapshot: LatticeSnapshot, all_allocated: bool, show_links: bool, overview: bool, spot_band: tuple[float, float] | None) -> None:
+    """Keep graph disclosures and dividend exercise qualifications together."""
+    if spot_band is not None:
+        st.caption("Focused lattice · every node and connection inside the "
+                   f"spot interval [{spot_band[0]:.2f}, {spot_band[1]:.2f}] €. "
+                   "No sampled or invented paths. Node inspector retains "
+                   "access to the complete tree.")
+    if overview:
+        st.caption("Fast overview: sampled time layers and representative "
+                   "priced nodes, retaining the extreme spots and exercise "
+                   "states. Detailed window shows every local priced node.")
+    st.caption(
+        f"Unreached allocated objects: **{snapshot.unreached_allocations}**. "
+        + ("Hollow grey circles = allocated but not reached. " if all_allocated else "")
+        + ("Dashed rose links = simplified outgoing transitions. "
+           "Only positive-probability links are drawn. " if show_links else
+           "Individual transition links are hidden for responsiveness; "
+           "all connected node values remain visible. ")
+    )
+    if snapshot.request.exercise == "American" and snapshot.request.dividends:
+        st.caption(
+            "Exercise markers represent decisions at lattice nodes only. "
+            "Pre/post dividend-event exercise is reflected in model values, "
+            "but not drawn as an exercise node."
+        )
+
+
 def _render_snapshot(
     snapshot: LatticeSnapshot,
     prefix: str,
@@ -383,29 +410,9 @@ def _render_snapshot(
                        max_links=max_links),
                 width="stretch", key=f"{prefix}_chart",
             )
-    if spot_band is not None:
-        st.caption("Focused lattice · every node and connection inside the "
-                   f"spot interval [{spot_band[0]:.2f}, {spot_band[1]:.2f}] €. "
-                   "No sampled or invented paths. Node inspector retains "
-                   "access to the complete tree.")
-    if overview:
-        st.caption("Fast overview: sampled time layers and representative "
-                   "priced nodes, retaining the extreme spots and exercise "
-                   "states. Detailed window shows every local priced node.")
-    st.caption(
-        f"Unreached allocated objects: **{snapshot.unreached_allocations}**. "
-        + ("Hollow grey circles = allocated but not reached. " if all_allocated else "")
-        + ("Dashed rose links = simplified outgoing transitions. "
-           "Only positive-probability links are drawn. " if show_links else
-           "Individual transition links are hidden for responsiveness; "
-           "all connected node values remain visible. ")
+    _render_lattice_explanations(
+        snapshot, all_allocated, show_links, overview, spot_band,
     )
-    if snapshot.request.exercise == "American" and snapshot.request.dividends:
-        st.caption(
-            "Exercise markers represent decisions at lattice nodes only. "
-            "Pre/post dividend-event exercise is reflected in model values, "
-            "but not drawn as an exercise node."
-        )
     with st.expander("Node inspector", expanded=False):
         _display_node_details(snapshot, prefix)
 
@@ -630,7 +637,11 @@ def _explorer_detail_controls(snapshots: list[LatticeSnapshot]) -> tuple:
     return step_window, spot_band, overview, show_links
 
 
-def _explorer_plot_panels(stored: list, snapshots: list[LatticeSnapshot], view: str, show_all: bool, step_window: tuple | None, spot_band: tuple | None, overview: bool, show_links: bool) -> None:
+def _explorer_plot_panels(
+    stored: list, snapshots: list[LatticeSnapshot], view: str,
+    show_all: bool, step_window: tuple | None, spot_band: tuple | None,
+    overview: bool, show_links: bool,
+) -> None:
     """Display actual stored lattice snapshots on one comparable domain."""
     max_links = None  # Display every genuine edge inside the local corridor.
     domain = _plot_domain(snapshots, show_all, step_window)
@@ -743,3 +754,5 @@ def render_lattice_explorer_page(*, embedded: bool = False) -> None:
     _render_explorer_geometry(stored)
 
 # LOT_5C3_GUARDED_REFACTOR
+
+# LOT_5C4_GUARDED_REFACTOR

@@ -30,6 +30,7 @@ from frontend.pricing_service import (
     DividendInput,
     PricingInputError,
     PricingRequest,
+    PricingResult,
     PRICING_ALGORITHMS,
     price_contract,
 )
@@ -284,6 +285,36 @@ def _initialize_session_state() -> None:
         st.session_state["pricing_history"] = []
 
 
+def _render_reference_sidebar() -> None:
+    """Display saved reference contract without touching session state."""
+    reference = get_reference(st.session_state)
+    if reference is None:
+        st.caption("No reference saved yet.")
+    else:
+        st.caption(
+            f"{reference.exercise} {reference.option_type} · "
+            f"S={reference.spot:g} € · K={reference.strike:g} €"
+        )
+        st.caption(
+            f"{reference.model} · N={reference.steps} · "
+            f"{len(reference.dividends)} cash dividend(s)"
+        )
+        reference_calendar = get_reference_calendar(st.session_state)
+        if reference_calendar is not None:
+            st.caption(
+                f"Dates: {reference_calendar.valuation_date:%d/%m/%Y} → "
+                f"{reference_calendar.expiry_date:%d/%m/%Y} · ACT/365F"
+            )
+        st.button(
+            "Clear reference",
+            on_click=clear_reference,
+            args=(st.session_state,),
+            key="reference_contract_clear",
+            width="stretch",
+            help="Remove only the shared reference, not your pricing results.",
+        )
+
+
 def _render_sidebar() -> str:
     from frontend.model_diagnostics import WORKSPACES
     with st.sidebar:
@@ -299,32 +330,7 @@ def _render_sidebar() -> str:
         )
         st.divider()
         st.markdown("**REFERENCE CONTRACT**")
-        reference = get_reference(st.session_state)
-        if reference is None:
-            st.caption("No reference saved yet.")
-        else:
-            st.caption(
-                f"{reference.exercise} {reference.option_type} · "
-                f"S={reference.spot:g} € · K={reference.strike:g} €"
-            )
-            st.caption(
-                f"{reference.model} · N={reference.steps} · "
-                f"{len(reference.dividends)} cash dividend(s)"
-            )
-            reference_calendar = get_reference_calendar(st.session_state)
-            if reference_calendar is not None:
-                st.caption(
-                    f"Dates: {reference_calendar.valuation_date:%d/%m/%Y} → "
-                    f"{reference_calendar.expiry_date:%d/%m/%Y} · ACT/365F"
-                )
-            st.button(
-                "Clear reference",
-                on_click=clear_reference,
-                args=(st.session_state,),
-                key="reference_contract_clear",
-                width="stretch",
-                help="Remove only the shared reference, not your pricing results.",
-            )
+        _render_reference_sidebar()
         st.divider()
         st.markdown("**RESEARCH**")
         st.caption("Four live investigations · optional historical evidence")
@@ -336,6 +342,20 @@ def _render_sidebar() -> str:
             st.button("↺ Reset ticket to defaults", on_click=reset_ticket, width="stretch",
                       help="Reset inputs and the displayed result; session blotter is retained.")
     return workspace
+
+
+def _record_pricing_history(request: PricingRequest, result: PricingResult, selected_algorithm: str) -> None:
+    """Store at most twelve successful valuations in the session blotter."""
+    history = st.session_state["pricing_history"]
+    history.insert(0, {
+        "Model": request.model, "Engine": selected_algorithm,
+        "Type": request.option_type,
+        "Exercise": request.exercise, "K": request.strike,
+        "N": request.steps, "Divs": len(request.dividends),
+        "Price (€)": round(result.price, 8),
+        "Time (ms)": round(result.elapsed_ms, 2),
+    })
+    del history[12:]
 
 
 def _process_pricing_submission(
@@ -374,16 +394,7 @@ def _process_pricing_submission(
             st.session_state["last_pricing_calendar"] = st.session_state.get(
                 "ticket_submitted_calendar"
             )
-            history = st.session_state["pricing_history"]
-            history.insert(0, {
-                "Model": request.model, "Engine": selected_algorithm,
-                "Type": request.option_type,
-                "Exercise": request.exercise, "K": request.strike,
-                "N": request.steps, "Divs": len(request.dividends),
-                "Price (€)": round(result.price, 8),
-                "Time (ms)": round(result.elapsed_ms, 2),
-            })
-            del history[12:]
+            _record_pricing_history(request, result, selected_algorithm)
         except (PricingInputError, ValueError, RuntimeError, OverflowError,
                 ZeroDivisionError) as exc:
             # Render navigation and global page chrome without changing active widgets.
@@ -472,3 +483,5 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+# LOT_5C4_GUARDED_REFACTOR

@@ -6,6 +6,32 @@ import math
 import pandas as pd
 
 
+def _representative_layer(group: pd.DataFrame, per_step: int) -> pd.DataFrame:
+    """Keep extremes and exercise states when downsampling one layer."""
+    group = group.sort_values("stock", ascending=False).reset_index(drop=True)
+    n = len(group)
+    if n <= per_step:
+        return group
+    anchors = {0, n - 1}
+    if "state" in group:
+        for _, same_state in group.groupby("state", sort=False):
+            anchors.add(int(same_state.index[0]))
+            anchors.add(int(same_state.index[-1]))
+    if len(anchors) > per_step:
+        # Engine states are at most four; this protects against new labels.
+        anchors = set(sorted(anchors)[:per_step - 1]) | {n - 1}
+    for i in range(per_step):
+        if len(anchors) >= per_step:
+            break
+        anchors.add(round(i * (n - 1) / (per_step - 1)))
+    if len(anchors) < per_step:
+        for i in range(n):
+            if len(anchors) >= per_step:
+                break
+            anchors.add(i)
+    return group.iloc[sorted(anchors)]
+
+
 def select_chart_rows(
     frame: pd.DataFrame,
     *,
@@ -30,29 +56,7 @@ def select_chart_rows(
         raise ValueError("At least two representative points per step are required.")
     chunks: list[pd.DataFrame] = []
     for _, group in frame.groupby("step", sort=True):
-        group = group.sort_values("stock", ascending=False).reset_index(drop=True)
-        n = len(group)
-        if n <= per_step:
-            chunks.append(group)
-            continue
-        anchors = {0, n - 1}
-        if "state" in group:
-            for _, same_state in group.groupby("state", sort=False):
-                anchors.add(int(same_state.index[0]))
-                anchors.add(int(same_state.index[-1]))
-        if len(anchors) > per_step:
-            # Engine states are at most four; this protects against new labels.
-            anchors = set(sorted(anchors)[:per_step - 1]) | {n - 1}
-        for i in range(per_step):
-            if len(anchors) >= per_step:
-                break
-            anchors.add(round(i * (n - 1) / (per_step - 1)))
-        if len(anchors) < per_step:
-            for i in range(n):
-                if len(anchors) >= per_step:
-                    break
-                anchors.add(i)
-        chunks.append(group.iloc[sorted(anchors)])
+        chunks.append(_representative_layer(group, per_step))
     return pd.concat(chunks, ignore_index=True)
 
 
@@ -136,3 +140,5 @@ def representative_transitions(
             indices.add(special)
         chosen.extend(layer[i] for i in sorted(indices))
     return tuple(chosen)
+
+# LOT_5C4_GUARDED_REFACTOR

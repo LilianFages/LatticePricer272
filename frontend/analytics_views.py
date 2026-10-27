@@ -237,11 +237,29 @@ def _accuracy_cost_chart(rows: pd.DataFrame, *, pareto_only: bool,
     return alt.layer(envelope, points, highlighted).properties(height=325).interactive()
 
 
+def _render_accuracy_target_result(points: tuple, target: float) -> None:
+    """Render fastest observed qualifying setting, not an interpolated optimum."""
+    from frontend.research_accuracy_service import best_observed_under_target
+    winner = best_observed_under_target(points, float(target))
+    if winner is None:
+        st.info(f"No sampled configuration achieved an absolute gap ≤ {target:g} €.")
+    else:
+        a, b, c = st.columns(3)
+        # Keep full, unabridged model names in the data while avoiding clipped KPI text.
+        display_model = (winner.model.replace("Trinomial · Allocation pruning", "Allocation pruning")
+                         .replace("Trinomial · Branch pruning", "Branch pruning")
+                         .replace("Trinomial · Full", "Full trinomial"))
+        a.metric("Fastest eligible model", display_model)
+        b.metric("Time steps", f"N={winner.steps}")
+        c.metric("Observed runtime", f"{winner.runtime_ms:.2f} ms")
+        st.caption(f"Observed gap: {winner.absolute_gap:.6f} €. "
+                   "The target is checked only against this run's reference. "
+                   f"Full model name: {winner.model}.")
+
+
 def _render_accuracy_cost_tradeoff(outcome: ConvergenceResult) -> None:
     """Observed Pareto candidates, a global frontier and on-demand target search."""
-    from frontend.research_accuracy_service import (
-        accuracy_cost_points, best_observed_under_target,
-    )
+    from frontend.research_accuracy_service import accuracy_cost_points
 
     st.markdown('<div class="desk-section">Accuracy vs computational cost</div>',
                 unsafe_allow_html=True)
@@ -273,21 +291,7 @@ def _render_accuracy_cost_tradeoff(outcome: ConvergenceResult) -> None:
                "models; outlined points are the sampled nondominated candidates. "
                "Connecting segments are a visual guide, not an attainable continuous "
                "set of model configurations.")
-    winner = best_observed_under_target(points, float(target))
-    if winner is None:
-        st.info(f"No sampled configuration achieved an absolute gap ≤ {target:g} €.")
-    else:
-        a, b, c = st.columns(3)
-        # Keep full, unabridged model names in the data while avoiding clipped KPI text.
-        display_model = (winner.model.replace("Trinomial · Allocation pruning", "Allocation pruning")
-                         .replace("Trinomial · Branch pruning", "Branch pruning")
-                         .replace("Trinomial · Full", "Full trinomial"))
-        a.metric("Fastest eligible model", display_model)
-        b.metric("Time steps", f"N={winner.steps}")
-        c.metric("Observed runtime", f"{winner.runtime_ms:.2f} ms")
-        st.caption(f"Observed gap: {winner.absolute_gap:.6f} €. "
-                   "The target is checked only against this run's reference. "
-                   f"Full model name: {winner.model}.")
+    _render_accuracy_target_result(points, float(target))
     st.caption("Pareto candidates are nondominated among the sampled settings "
                "for runtime and absolute price gap. Each runtime is a single "
                "measurement; rankings may change with CPU load. This is not a "
@@ -407,3 +411,5 @@ def render_greeks_stability_tab() -> None:
                     "Results are explored without additional pricing.")
             return
         _render_stability_results(saved)
+
+# LOT_5C4_GUARDED_REFACTOR

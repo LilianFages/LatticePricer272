@@ -24,6 +24,7 @@ def _price_result(request):
     return PricingResult(request, 8.0, 1.0, 3, None, None, None)
 
 
+# ACT/365F conversion retains exact contract settings and dates.
 def test_resolve_calendar_and_preserve_model_settings():
     base = _base(spot=103, strike=110, steps=100, rate=-.01)
     request, calendar = dated_request(
@@ -48,6 +49,7 @@ def test_very_short_expiry_is_valid_for_engine_but_not_existing_legacy_ui():
     assert request.maturity == pytest.approx(1/365)
 
 
+# The editor distinguishes placeholder rows from malformed dividends.
 def test_dated_editor_skips_zero_row():
     frame = pd.DataFrame([{'ex_date': date(2027, 4, 21), 'amount': 0.0}])
     assert parse_dated_dividends(frame) == ()
@@ -85,6 +87,7 @@ def test_unparsed_string_ex_date_is_rejected():
         parse_dated_dividends(pd.DataFrame([{'ex_date': '21/04/2027', 'amount': 4.0}]))
 
 
+# Cash events must be compatible with the selected lattice time grid.
 def test_colliding_events_at_same_N_are_rejected():
     with pytest.raises(CalendarInputError, match='same lattice time step'):
         dated_request(
@@ -102,6 +105,7 @@ def test_binomial_with_cash_dividend_is_rejected():
         )
 
 
+# Calendar provenance follows successful saved results only.
 def test_calendar_metadata_saved_only_with_latest_pricing_result():
     original = _base()
     req, cal = dated_request(_base(), date(2026, 9, 1), date(2027, 9, 1), ())
@@ -144,3 +148,5 @@ def test_explicit_numeric_reference_clears_previous_calendar():
     save_reference_from_last_result(state)
     save_reference(state, _base(spot=105.))
     assert get_reference_calendar(state) is None
+
+# LOT_5C4_GUARDED_REFACTOR
