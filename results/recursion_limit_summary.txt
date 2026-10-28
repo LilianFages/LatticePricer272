@@ -1,0 +1,15 @@
+Recursive pricing limit experiment
+==================================
+
+Python version: 3.14.3
+Python recursion limit: 1000
+
+Spot: 100.0
+Strike: 100.0
+Rate: 0.02
+Volatility: 0.2
+Maturity: 1.0
+
+Largest successful recursive N: 990
+First recursive RecursionError N: 991
+Backward pricing at N=991: OK

@@ -1,0 +1,41 @@
+Accuracy versus computational cost — European vanilla options
+============================================================
+
+Parameters: spot=100.0, rate=0.02, sigma=0.2, T=1.0
+Pruning threshold=1e-18
+Strikes=(80.0, 100.0, 120.0); types=('call', 'put'); N=(20, 40, 60, 100, 150, 200, 300)
+Timed repetitions per configuration=5
+Timing: median end-to-end (constructor + build + recursive pricing).
+An unmeasured warmup precedes each configuration.
+Explicit gc.collect() before, but not inside, the timed section.
+Timings exclude graphs, CSV, tracemalloc and explicit gc.collect().
+Automatic GC remains enabled and may occur during pricing.
+Python=3.14.3; OS=Windows-11-10.0.26200-SP0
+Git HEAD=66430eb744a1
+
+Total configurations=168; successes=168; failures=0
+Exactly zero absolute errors=0 (excluded from log axes)
+Maximum put-call parity residual=2.934541498689e-12
+
+Interpretation:
+  Errors use *analytical* Black-Scholes for European no-dividend options.
+  Comparisons are conditional on the sampled time-step grid and this PC.
+  Pruning may alter numerical prices; its effect is measured, not assumed zero.
+  Empirical timing and convergence oscillations are not complexity proofs.
+  Hybrid omitted: without dividends it has binomial transitions.
+  Pareto frontier is limited to sampled points; no interpolation.
+
+Observed sampled Pareto frontier (ATM European call):
+  binomial               N=20   time=0.000252200 s error=3.961437167542e-02 €
+  binomial               N=40   time=0.000870800 s error=3.673293473393e-02 €
+  binomial               N=60   time=0.001842000 s error=3.008076413362e-02 €
+  trinomial_allocation   N=20   time=0.001983300 s error=1.343244303840e-02 €
+  binomial               N=150  time=0.020865400 s error=1.210596835874e-02 €
+  binomial               N=200  time=0.030478600 s error=6.717577728178e-03 €
+  binomial               N=300  time=0.062667600 s error=2.761834129359e-04 €
+
+Fastest sampled model attaining each ATM-call target:
+  error <= 0.1 €: binomial N=20 time=0.000252200 s error=3.961437167542e-02 €
+  error <= 0.05 €: binomial N=20 time=0.000252200 s error=3.961437167542e-02 €
+  error <= 0.01 €: binomial N=200 time=0.030478600 s error=6.717577728178e-03 €
+  error <= 0.005 €: binomial N=300 time=0.062667600 s error=2.761834129359e-04 €

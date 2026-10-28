@@ -1,0 +1,26 @@
+TEMPORAL EXPERIMENTS — DISCRETIZATION SENSITIVITY
+=================================================
+
+Reference experiment: N=100, imported without modification.
+Newly computed: N=50 and N=200 (real pricing engine).
+S=100.0; K=100.0; r=0.02; sigma=0.2; T=1.0
+Cash dividend: 3.0 EUR at t=0.5
+No-dividend spots adjusted to match initial terminal forwards.
+Early exercise is first exercise before maturity; European=0.
+This is a three-point stability check, not a proof of convergence.
+
+Columns: N | scenario | price(EUR) | early first exercise(%) | first exercise at dividend(%) | terminal forward(EUR)
+ 50 | american_cash_dividend    | 8.6004944703 | 51.537841 |  7.450407 | 98.9899835014
+ 50 | american_no_dividend      | 8.4933542776 | 51.693767 |  0.000000 | 98.9899835014
+ 50 | european_no_dividend      | 8.2726400816 |  0.000000 |  0.000000 | 98.9899835014
+100 | american_cash_dividend    | 8.6066846484 | 52.975442 | 10.834345 | 98.9899835014
+100 | american_no_dividend      | 8.4997033015 | 53.250392 |  0.000000 | 98.9899835014
+100 | european_no_dividend      | 8.2780460200 |  0.000000 |  0.000000 | 98.9899835014
+200 | american_cash_dividend    | 8.6070513798 | 53.835313 |  8.777175 | 98.9899835014
+200 | american_no_dividend      | 8.5005068797 | 54.151791 |  0.000000 | 98.9899835014
+200 | european_no_dividend      | 8.2777922163 |  0.000000 |  0.000000 | 98.9899835014
+
+Change between N=50 and N=200 (not an asymptotic error estimate):
+  american_cash_dividend: price delta=+0.0065569095 EUR; early exercise delta=+2.297473 pp
+  american_no_dividend: price delta=+0.0071526021 EUR; early exercise delta=+2.458024 pp
+  european_no_dividend: price delta=+0.0051521346 EUR; early exercise delta=+0.000000 pp

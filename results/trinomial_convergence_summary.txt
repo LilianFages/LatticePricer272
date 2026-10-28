@@ -1,0 +1,13 @@
+Binomial vs trinomial convergence experiment
+============================================
+
+Spot: 100.0
+Strike: 100.0
+Rate: 0.02
+Volatility: 0.2
+Maturity: 1.0
+
+Black-Scholes price: 8.91603728
+
+Binomial absolute error at N=200: 0.00671758
+Trinomial absolute error at N=200: 0.00097198

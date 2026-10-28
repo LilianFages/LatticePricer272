@@ -1,0 +1,20 @@
+Binomial pricing error gap experiment
+=====================================
+
+Spot: 100.0
+Rate: 0.02
+Volatility: 0.2
+Maturity: 1.0
+Strike range: 89.0 to 109.0
+
+Gap definition:
+Gap_N = max(Tree - BS) - min(Tree - BS)
+
+Empirical model:
+Gap_N = C * N^(-p)
+
+Estimated p: 0.999879
+Empirical C: 3.876393
+Theoretical C: 4.029383
+Relative C difference: 3.797%
+Log-log R²: 0.999982

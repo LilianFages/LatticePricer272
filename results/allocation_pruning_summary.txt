@@ -1,0 +1,68 @@
+Allocation pruning benchmark
+===========================
+
+Spot=100.0; strike=100.0; r=0.02; sigma=0.2; T=1.0
+Cash dividend=3.0 at t=0.5
+Pruning threshold=1e-18
+Time repetitions=5; median reported
+Power fits use N >= 40
+
+Time measurements exclude tracemalloc overhead.
+Peak Python memory comes from a separate traced pricing run.
+Power exponents are empirical estimates, not asymptotic proofs.
+Trinomial no-pruning may fail on inadmissible tail probabilities.
+
+EMPIRICAL POWER LAW FITS: metric ~ C * N^p
+trinomial_no_pruning           total_seconds        p=1.9562, R2=0.9902 (N=40..200, 5 points)
+trinomial_no_pruning           build_seconds        p=1.9090, R2=0.9852 (N=40..200, 5 points)
+trinomial_no_pruning           pricing_seconds      p=2.1919, R2=0.9973 (N=40..200, 5 points)
+trinomial_no_pruning           allocated_nodes      p=1.9927, R2=1.0000 (N=40..200, 5 points)
+trinomial_no_pruning           reachable_nodes      p=1.9927, R2=1.0000 (N=40..200, 5 points)
+trinomial_no_pruning           peak_python_mib      p=1.9878, R2=1.0000 (N=40..200, 5 points)
+trinomial_branch_pruning       total_seconds        p=1.8808, R2=0.9934 (N=40..300, 6 points)
+trinomial_branch_pruning       build_seconds        p=1.9018, R2=0.9915 (N=40..300, 6 points)
+trinomial_branch_pruning       pricing_seconds      p=1.7144, R2=0.9972 (N=40..300, 6 points)
+trinomial_branch_pruning       allocated_nodes      p=2.0043, R2=0.9999 (N=40..300, 6 points)
+trinomial_branch_pruning       reachable_nodes      p=1.5541, R2=0.9998 (N=40..300, 6 points)
+trinomial_branch_pruning       peak_python_mib      p=1.8261, R2=0.9998 (N=40..300, 6 points)
+trinomial_allocation_pruning   total_seconds        p=1.4998, R2=0.9797 (N=40..300, 6 points)
+trinomial_allocation_pruning   build_seconds        p=1.4548, R2=0.9708 (N=40..300, 6 points)
+trinomial_allocation_pruning   pricing_seconds      p=1.7125, R2=0.9975 (N=40..300, 6 points)
+trinomial_allocation_pruning   allocated_nodes      p=1.5537, R2=0.9998 (N=40..300, 6 points)
+trinomial_allocation_pruning   reachable_nodes      p=1.5537, R2=0.9998 (N=40..300, 6 points)
+trinomial_allocation_pruning   peak_python_mib      p=1.5492, R2=0.9998 (N=40..300, 6 points)
+hybrid                         total_seconds        p=2.0605, R2=0.9711 (N=40..300, 6 points)
+hybrid                         build_seconds        p=1.9800, R2=0.9364 (N=40..300, 6 points)
+hybrid                         pricing_seconds      p=2.1581, R2=0.9986 (N=40..300, 6 points)
+hybrid                         allocated_nodes      p=1.9604, R2=0.9999 (N=40..300, 6 points)
+hybrid                         reachable_nodes      p=1.9604, R2=0.9999 (N=40..300, 6 points)
+hybrid                         peak_python_mib      p=1.9548, R2=0.9999 (N=40..300, 6 points)
+
+PRICING GAPS TO BRANCH-PRUNED TRINOMIAL
+N= 20 trinomial_no_pruning           gap=+0.0000000000e+00
+N= 20 trinomial_branch_pruning       gap=+0.0000000000e+00
+N= 20 trinomial_allocation_pruning   gap=+0.0000000000e+00
+N= 20 hybrid                         gap=+1.5532030619e-02
+N= 40 trinomial_no_pruning           gap=+0.0000000000e+00
+N= 40 trinomial_branch_pruning       gap=+0.0000000000e+00
+N= 40 trinomial_allocation_pruning   gap=+0.0000000000e+00
+N= 40 hybrid                         gap=+1.0174200289e-02
+N= 60 trinomial_no_pruning           gap=+0.0000000000e+00
+N= 60 trinomial_branch_pruning       gap=+0.0000000000e+00
+N= 60 trinomial_allocation_pruning   gap=+0.0000000000e+00
+N= 60 hybrid                         gap=+8.0336247948e-03
+N=100 trinomial_no_pruning           gap=+0.0000000000e+00
+N=100 trinomial_branch_pruning       gap=+0.0000000000e+00
+N=100 trinomial_allocation_pruning   gap=+0.0000000000e+00
+N=100 hybrid                         gap=+6.0020648990e-03
+N=150 trinomial_no_pruning           gap=+0.0000000000e+00
+N=150 trinomial_branch_pruning       gap=+0.0000000000e+00
+N=150 trinomial_allocation_pruning   gap=+0.0000000000e+00
+N=150 hybrid                         gap=-1.5692556782e-03
+N=200 trinomial_no_pruning           gap=+0.0000000000e+00
+N=200 trinomial_branch_pruning       gap=+0.0000000000e+00
+N=200 trinomial_allocation_pruning   gap=+0.0000000000e+00
+N=200 hybrid                         gap=+4.0742660669e-03
+N=300 trinomial_branch_pruning       gap=+0.0000000000e+00
+N=300 trinomial_allocation_pruning   gap=+0.0000000000e+00
+N=300 hybrid                         gap=+3.2610642486e-03

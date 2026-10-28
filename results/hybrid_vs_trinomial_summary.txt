@@ -1,0 +1,20 @@
+Hybrid versus full trinomial benchmark
+=======================================
+
+Spot: 100.0
+Strike: 100.0
+Rate: 0.02
+Volatility: 0.2
+Maturity: 1.0
+Dividend: 3.0
+Dividend time: 0.5
+
+Last number of steps: 300
+Hybrid price: 7.40916633
+Full trinomial price: 7.40590526
+Absolute gap: 0.00326106
+Relative gap: 0.044033%
+Runtime speedup: 4.23x
+Hybrid nodes: 46810
+Full trinomial nodes: 36106
+Node ratio: 129.65%
