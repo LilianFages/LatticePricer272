@@ -33,7 +33,7 @@ Saved experimental evidence is available through an **optional, read-only archiv
 
 | Directory | Purpose |
 | --- | --- |
-| `src/` | Pricing trees, transition probabilities, option objects, backward algorithms and numerical risk primitives |
+| `src/` | Three lattice families, one recursive pricer, one backward pricer and shared risk primitives |
 | `frontend/` | Streamlit views, validated request/result adapters, analytical services and presentation |
 | `experiments/` | Offline research protocols and command-line experimental studies |
 | `tests/` | Pricing, dividend-boundary, numerical, frontend and provenance regression tests |
