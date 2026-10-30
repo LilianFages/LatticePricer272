@@ -68,46 +68,11 @@ class RecursivePricer:
 
             return node.option_value
 
-        if (
-            node.next_up is None
-            or node.next_down is None
-        ):
-            raise RuntimeError(
-                "Incomplete lattice."
-            )
-
-        if (
-            node.up_probability is None
-            or node.down_probability is None
-        ):
-            raise RuntimeError(
-                "Missing transition probabilities."
-            )
-
-        # Resolve the dividend adjustment on each outgoing transition.
         ex_dividend = event_dividends.get(remaining_steps)
-        up_value = self._child_value(
-            node.next_up, remaining_steps, option,
-            discount_factor, event_dividends, ex_dividend,
+        expected_option_value = self._expected_value(
+            node, remaining_steps, option, discount_factor,
+            event_dividends, ex_dividend,
         )
-        down_value = self._child_value(
-            node.next_down, remaining_steps, option,
-            discount_factor, event_dividends, ex_dividend,
-        )
-        expected_option_value = (
-            node.up_probability * up_value
-            + node.down_probability * down_value
-        )
-
-        # A trinomial node adds its middle branch after the two outer ones.
-        if node.next_mid is not None:
-            if node.mid_probability is None:
-                raise RuntimeError("Missing middle transition probability.")
-            mid_value = self._child_value(
-                node.next_mid, remaining_steps, option,
-                discount_factor, event_dividends, ex_dividend,
-            )
-            expected_option_value += node.mid_probability * mid_value
 
         hold_value = (
             discount_factor
@@ -124,6 +89,45 @@ class RecursivePricer:
         )
 
         return node.option_value
+
+    def _expected_value(
+        self: Self,
+        node: Node,
+        remaining_steps: int,
+        option: Option,
+        discount_factor: float,
+        events: dict[int, DividendStepEvent],
+        ex_dividend: DividendStepEvent | None,
+    ) -> float:
+        """Aggregate successor values without altering transition order."""
+        if node.next_up is None or node.next_down is None:
+            raise RuntimeError("Incomplete lattice.")
+        if node.up_probability is None or node.down_probability is None:
+            raise RuntimeError("Missing transition probabilities.")
+
+        # Evaluate up and down before the optional middle transition.
+        up_value = self._child_value(
+            node.next_up, remaining_steps, option,
+            discount_factor, events, ex_dividend,
+        )
+        down_value = self._child_value(
+            node.next_down, remaining_steps, option,
+            discount_factor, events, ex_dividend,
+        )
+        expected = (
+            node.up_probability * up_value
+            + node.down_probability * down_value
+        )
+        if node.next_mid is not None:
+            if node.mid_probability is None:
+                raise RuntimeError("Missing middle transition probability.")
+            mid_value = self._child_value(
+                node.next_mid, remaining_steps, option,
+                discount_factor, events, ex_dividend,
+            )
+            expected += node.mid_probability * mid_value
+        return expected
+
     def _child_value(
         self: Self,
         child: Node,
