@@ -266,6 +266,32 @@ def measure_case(
     return result, observations
 
 
+def _print_measurement(counter: int, total: int, result: Result) -> None:
+    """Report a measured contract with its original grid labels and units."""
+    kind = result.option_kind
+    strike = result.strike
+    nb_steps = result.nb_steps
+    model = result.model
+    if result.status == "success":
+        assert result.absolute_error is not None
+        assert result.median_runtime_seconds is not None
+        print(
+            f"[{counter:>3}/{total}] {kind:4s} K={strike:>5g} "
+            f"N={nb_steps:>3} {model:22s} "
+            f"error={result.absolute_error:.5e} "
+            f"time={1e3 * result.median_runtime_seconds:.3f} ms",
+            flush=True,
+        )
+    else:
+        print(
+            f"[{counter:>3}/{total}] {kind:4s} K={strike:>5g} "
+            f"N={nb_steps:>3} {model:22s} "
+            f"FAILED: {result.failure_reason}",
+            flush=True,
+        )
+
+
+
 def run_experiment(
     steps: tuple[int, ...],
     strikes: tuple[float, ...],
@@ -295,23 +321,7 @@ def run_experiment(
                     )
                     results.append(result)
                     raw.extend(timings)
-                    if result.status == "success":
-                        assert result.absolute_error is not None
-                        assert result.median_runtime_seconds is not None
-                        print(
-                            f"[{counter:>3}/{total}] {kind:4s} K={strike:>5g} "
-                            f"N={nb_steps:>3} {model:22s} "
-                            f"error={result.absolute_error:.5e} "
-                            f"time={1e3 * result.median_runtime_seconds:.3f} ms",
-                            flush=True,
-                        )
-                    else:
-                        print(
-                            f"[{counter:>3}/{total}] {kind:4s} K={strike:>5g} "
-                            f"N={nb_steps:>3} {model:22s} "
-                            f"FAILED: {result.failure_reason}",
-                            flush=True,
-                        )
+                    _print_measurement(counter, total, result)
     return results, raw
 
 
