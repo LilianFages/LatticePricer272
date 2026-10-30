@@ -218,6 +218,21 @@ def greek_table(snapshot: DeskRiskSnapshot) -> tuple[dict[str, object], ...]:
     return tuple(rows)
 
 
+def _curve_value_at_spot(
+    shocked: PricingRequest,
+    name: GreekName,
+    selected: GreekBumps,
+    pricer: PricingFunction,
+    calculate_greeks: Callable[..., GreeksResult],
+    compute_desk_risk: Callable[..., DeskRiskSnapshot],
+) -> float | None:
+    """Return one shock's requested Greek without changing its convention."""
+    if name in ("Vanna", "Vomma"):
+        return compute_desk_risk(shocked, selected, pricer=pricer).value(name)
+    greeks = calculate_greeks(shocked, selected, pricer=pricer)
+    return greeks.measured()[GREEK_KEYS[name]]
+
+
 def compute_greek_curve(
     request: PricingRequest,
     name: GreekName,
@@ -246,12 +261,10 @@ def compute_greek_curve(
         spot = request.spot * (1.0 + span_pct / 100.0 * (2 * i / (count - 1) - 1))
         shocked = replace(request, spot=spot)
         try:
-            # Cross/curvature Greeks require the extended desk risk snapshot.
-            if name in ("Vanna", "Vomma"):
-                value = compute_desk_risk(shocked, selected, pricer=pricer).value(name)
-            else:
-                greeks = calculate_greeks(shocked, selected, pricer=pricer)
-                value = greeks.measured()[GREEK_KEYS[name]]
+            value = _curve_value_at_spot(
+                shocked, name, selected, pricer, calculate_greeks,
+                compute_desk_risk,
+            )
             # Preserve missing values as explicit unavailable observations.
             if value is None or not math.isfinite(value):
                 points.append(GreekCurvePoint(spot, None, "Greek unavailable for this spot."))
