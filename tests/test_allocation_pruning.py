@@ -172,11 +172,11 @@ SCENARIOS = [
 ]
 
 
-def dividends_from_specs(specs: tuple[tuple[float, float], ...]) -> list[CashDividend]:
+def _dividends_from_specs(specs: tuple[tuple[float, float], ...]) -> list[CashDividend]:
     return [CashDividend(time=time, amount=amount) for time, amount in specs]
 
 
-def assert_mass_conserved(tree: TrinomialTree) -> None:
+def _assert_mass_conserved(tree: TrinomialTree) -> None:
     """Check risk-neutral probability mass at each date of the graph."""
     frontier: dict[int, Node] = {id(tree.root): tree.root}
     for step in range(tree.nb_steps + 1):
@@ -229,11 +229,11 @@ def test_allocation_pruning_preserves_prices_and_mass(
 
     full = TrinomialTree(
         **common,
-        dividends=dividends_from_specs(specs),
+        dividends=_dividends_from_specs(specs),
     )
     optimized = AllocationPrunedTrinomialTree(
         **common,
-        dividends=dividends_from_specs(specs),
+        dividends=_dividends_from_specs(specs),
     )
 
     # Use matched full and pruned scenarios to check mass and price independently.
@@ -255,14 +255,14 @@ def test_allocation_pruning_preserves_prices_and_mass(
         rel_tol=1e-10,
         abs_tol=1e-9,
     )
-    assert_mass_conserved(full)
+    _assert_mass_conserved(full)
     # Verify the expected numerical or workflow invariant on this case.
-    assert_mass_conserved(optimized)
+    _assert_mass_conserved(optimized)
     assert optimized.allocated_node_count > 0
 
 
 # test_allocation_pruning_two_dividends_200.py (tests preserved)
-def assert_probability_mass(tree: AllocationPrunedTrinomialTree) -> None:
+def _assert_probability_mass(tree: AllocationPrunedTrinomialTree) -> None:
     frontier: dict[int, Node] = {id(tree.root): tree.root}
     for step in range(tree.nb_steps + 1):
         total = math.fsum(node.reach_probability for node in frontier.values())
@@ -314,7 +314,7 @@ def test_allocation_only_two_dividends_200(
     assert math.isfinite(price)
     assert price >= 0.0
     assert tree.allocated_node_count > 0
-    assert_probability_mass(tree)
+    _assert_probability_mass(tree)
     if strike == 100.0 and kind == "call" and not american:
         # Regression checkpoint from the first observed run,
         # not an independent reference for financial pricing accuracy.

@@ -21,6 +21,7 @@ from experiments.accuracy_cost_multistrike import (
 )
 import math
 from experiments.pricing_accuracy_cost import (
+    # Keep production benchmarks distinct from observed Pareto aggregation.
     MODELS,
     Result,
     _positive_points,

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 import pytest
-from frontend.pricing_service import PricingRequest
+from frontend.pricing_service import PricingRequest, PricingResult
 from frontend.research_efficiency_service import (
     ALLOCATION, BRANCH, FULL, EfficiencyPoint, _relative_to_full,
     count_allocated_nodes, efficiency_study,
@@ -59,13 +59,13 @@ def test_invalid_grids_are_rejected(grid: object) -> None:
 
 def test_no_memory_runs_when_disabled() -> None:
     seen = []
-    def timed(req: PricingRequest):
+    def timed(req: PricingRequest) -> PricingResult:
         from frontend.pricing_service import PricingResult
         seen.append(req.model)
         return PricingResult(req, price=10., elapsed_ms=2., reachable_nodes=20,
                              allocated_nodes=None, pruned_transitions=None,
                              black_scholes=None)
-    def never(_req: PricingRequest):
+    def never(_req: PricingRequest) -> None:
         # Preserve observed data, including missing and failed outcomes.
         raise AssertionError("Memory profiler must be opt-in")
     report = efficiency_study(PricingRequest(steps=20), (10, 20), 1, False,
@@ -79,7 +79,7 @@ def test_no_memory_runs_when_disabled() -> None:
 
 def test_failed_configuration_is_not_replaced_by_zero() -> None:
     from frontend.pricing_service import PricingResult
-    def sometimes_fails(req: PricingRequest):
+    def sometimes_fails(req: PricingRequest) -> PricingResult:
         if req.model == BRANCH and req.steps == 20:
             raise RuntimeError("test failure")
         return PricingResult(req, price=10., elapsed_ms=2., reachable_nodes=20,
@@ -96,12 +96,12 @@ def test_failed_configuration_is_not_replaced_by_zero() -> None:
 def test_optional_memory_probe_kept_out_of_pricer_timing() -> None:
     from frontend.pricing_service import PricingResult
     n = {"timed": 0, "profiled": 0}
-    def timed(req: PricingRequest):
+    def timed(req: PricingRequest) -> PricingResult:
         n["timed"] += 1
         return PricingResult(req, price=10., elapsed_ms=2., reachable_nodes=10,
                              allocated_nodes=None, pruned_transitions=None,
                              black_scholes=None)
-    def memory(_req: PricingRequest):
+    def memory(_req: PricingRequest) -> tuple[float, float]:
         n["profiled"] += 1
         return (10., 0.3)
     report = efficiency_study(PricingRequest(steps=20), (10, 20), 3, True,

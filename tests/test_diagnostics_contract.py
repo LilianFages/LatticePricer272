@@ -12,9 +12,21 @@ from frontend.lattice_explorer_service import MAX_VISUAL_STEPS
 from frontend.pricing_service import DividendInput, PricingRequest
 
 
+def _sample_request(*, steps: int = 5, **changes: object) -> PricingRequest:
+    """Use the same small, admissible lattice contract across handoff tests."""
+    return PricingRequest(steps=steps, **changes)
+
+
+def _saved_reference_state(request: PricingRequest) -> dict[str, object]:
+    """Prepare a saved contract without changing destination workspace state."""
+    state: dict[str, object] = {}
+    save_reference(state, request)
+    return state
+
+
 # Handoff must preserve the full financial contract, not merely visible widgets.
 def test_exact_comparison_to_explorer_handoff() -> None:
-    req = PricingRequest(steps=5, option_type="Put", exercise="American")
+    req = _sample_request(option_type="Put", exercise="American")
     planned, issues = plan_handoff(req, "Explore lattice")
     assert planned is not req
     assert planned == req
@@ -55,7 +67,7 @@ def test_never_silently_discard_dividends() -> None:
 
 # Rejected imports must be atomic and keep all previous cached state.
 def test_atomic_rejection_preserves_state() -> None:
-    original = PricingRequest(steps=5)
+    original = _sample_request()
     state = {"explorer_reference_seed": original, "explorer_import_nonce": 2}
     previous = state.copy()
     with pytest.raises(ValueError, match="Incompatible"):
@@ -64,7 +76,7 @@ def test_atomic_rejection_preserves_state() -> None:
 
 
 def test_apply_explorer_rotates_widget_generation_and_forgets_stale_graph() -> None:
-    req = PricingRequest(steps=5)
+    req = _sample_request()
     state = {"lattice_explorer_result": "old", "explorer_import_nonce": 1}
     apply_handoff(state, "Explore lattice", req)
     assert state["explorer_import_nonce"] == 2
@@ -74,7 +86,7 @@ def test_apply_explorer_rotates_widget_generation_and_forgets_stale_graph() -> N
 
 def test_apply_comparison_keeps_benchmark_choices_and_clears_stale_result() -> None:
     # Verify that the pricing workflow keeps its input contract intact.
-    req = PricingRequest(steps=5)
+    req = _sample_request()
     state = {"cmp_models": ("Hybrid",), "cmp_repetitions": 3,
              "last_comparison_report": "old"}
     apply_handoff(state, "Compare models", req)
@@ -98,7 +110,7 @@ def test_transfer_never_prices(monkeypatch: pytest.MonkeyPatch) -> None:
     def forbidden(*args: object, **kwargs: object) -> None:
         raise AssertionError("Unexpected pricing")
     monkeypatch.setattr("frontend.pricing_service.price_contract", forbidden)
-    req = PricingRequest(steps=5)
+    req = _sample_request()
     adjusted, issues = plan_handoff(req, "Explore lattice")
     assert not issues
     apply_handoff({}, "Explore lattice", adjusted)
@@ -116,7 +128,7 @@ def test_unknown_destination_rejected() -> None:
     ("Explore lattice", "explorer_reference_seed", "explorer_import_nonce", "lattice_explorer_result"),
 ])
 def test_import_exact_identity_and_clear_stale_output(destination: str, seed: str, nonce: str, stale: str) -> None:
-    request = PricingRequest(steps=5, option_type="Put", exercise="American")
+    request = _sample_request(option_type="Put", exercise="American")
     state = {stale: "old output", "cmp_models": ("Binomial",),
              "lx_left_model": "Hybrid"}
     save_reference(state, request)
@@ -141,9 +153,8 @@ def test_absent_reference_does_not_mutate_state(destination: str) -> None:
 # Repeated imports must not disturb unrelated workspace generations.
 @pytest.mark.parametrize("destination", ["Compare models", "Explore lattice"])
 def test_repeated_import_rotates_only_destination_generation(destination: str) -> None:
-    state = {}
-    request = PricingRequest(steps=5)
-    save_reference(state, request)
+    request = _sample_request()
+    state = _saved_reference_state(request)
     assert import_saved_reference(state, destination)[0]
     save_reference(state, replace(request, spot=110.0))
     assert import_saved_reference(state, destination)[0]
@@ -152,7 +163,7 @@ def test_repeated_import_rotates_only_destination_generation(destination: str) -
 
 
 def test_explorer_cannot_silently_drop_second_dividend() -> None:
-    original = PricingRequest(steps=5)
+    original = _sample_request()
     state = {"lattice_explorer_result": "old"}
     save_reference(state, original)
     bad = replace(original, dividends=(DividendInput(.2, 1.), DividendInput(.7, 2.)))
@@ -171,7 +182,7 @@ def test_explorer_cannot_silently_drop_second_dividend() -> None:
 ])
 def test_invalid_nonce_does_not_partially_import(destination: str, nonce: str) -> None:
     state = {nonce: "invalid"}
-    save_reference(state, PricingRequest(steps=5))
+    save_reference(state, _sample_request())
     before = state.copy()
     with pytest.raises(ValueError, match="generation"):
         import_saved_reference(state, destination)
@@ -180,7 +191,7 @@ def test_invalid_nonce_does_not_partially_import(destination: str, nonce: str) -
 
 def test_import_refuses_unknown_destination_without_mutation() -> None:
     state = {}
-    save_reference(state, PricingRequest(steps=5))
+    save_reference(state, _sample_request())
     before = state.copy()
     with pytest.raises(ValueError, match="Unknown"):
         import_saved_reference(state, "Unknown")

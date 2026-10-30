@@ -23,6 +23,7 @@ from src.node import Node
 from dataclasses import replace
 from functools import partial
 from frontend.greeks_service import calculate_greeks
+# Numerical-risk probes use the same immutable contract as direct pricing.
 from frontend.pricing_service import (
     PRICING_ALGORITHMS,
     DividendInput,
@@ -43,9 +44,7 @@ from frontend.pricing_service import MODELS, PricingInputError, PricingRequest
 # Check nonnegative prices, populated references and coherent lattice sizes.
 @pytest.mark.parametrize("model", MODELS)
 @pytest.mark.parametrize("kind", ("Call", "Put"))
-def test_european_models_return_finite_price_and_valid_node_count(
-    model: str, kind: str
-) -> None:
+def test_european_models_return_finite_price_and_valid_node_count(model: str, kind: str) -> None:
     result = price_contract(PricingRequest(model=model, option_type=kind, steps=20))
     assert math.isfinite(result.price)
     assert result.price >= 0.0
@@ -172,6 +171,22 @@ def test_black_scholes_difference_sign_is_correct() -> None:
     )
 
 
+
+def _matching_engines(request: PricingRequest) -> tuple[PricingResult, PricingResult]:
+    """Price the exact same immutable contract with both valuation algorithms."""
+    return (price_contract(request, algorithm="Recursive"),
+            price_contract(request, algorithm="Backward"))
+
+
+def _assert_same_lattice_accounting(
+    recursive: PricingResult, backward: PricingResult
+) -> None:
+    """Compare graph allocation and pruned edges independently of price."""
+    assert recursive.reachable_nodes == backward.reachable_nodes
+    assert recursive.allocated_nodes == backward.allocated_nodes
+    assert recursive.pruned_transitions == backward.pruned_transitions
+
+
 # test_pricing_algorithm_routing.py (tests preserved)
 MODELS = (
     "Binomial",
@@ -182,11 +197,7 @@ MODELS = (
 )
 
 
-def make_request(
-    model: str,
-    option_type: str,
-    exercise: str,
-    *,
+def _make_request(model: str, option_type: str, exercise: str, *,
     dividends: tuple[DividendInput, ...] = (),
     steps: int = 14,
 ) -> PricingRequest:
@@ -200,6 +211,7 @@ def make_request(
         strike=100.0,
         rate=0.02,
         volatility=0.22,
+        # Same annual maturity in every recursive/backward comparison.
         maturity=1.0,
     )
 
@@ -208,39 +220,29 @@ def make_request(
 @pytest.mark.parametrize("model", MODELS)
 @pytest.mark.parametrize("option_type", ("Call", "Put"))
 @pytest.mark.parametrize("exercise", ("European", "American"))
-def test_public_api_parity_no_dividends(
-    model: str, option_type: str, exercise: str,
-) -> None:
-    request = make_request(model, option_type, exercise)
-    recursive = price_contract(request, algorithm="Recursive")
-    backward = price_contract(request, algorithm="Backward")
+def test_public_api_parity_no_dividends(model: str, option_type: str, exercise: str) -> None:
+    request = _make_request(model, option_type, exercise)
+    recursive, backward = _matching_engines(request)
     assert math.isclose(recursive.price, backward.price, rel_tol=1e-12, abs_tol=1e-12)
     assert recursive.request == backward.request == request
     assert recursive.algorithm == "Recursive"
     assert backward.algorithm == "Backward"
-    assert recursive.reachable_nodes == backward.reachable_nodes
-    assert recursive.allocated_nodes == backward.allocated_nodes
-    assert recursive.pruned_transitions == backward.pruned_transitions
+    _assert_same_lattice_accounting(recursive, backward)
 
 
 # Cash-dividend parity also guards ex-date event ordering across engines.
 @pytest.mark.parametrize("model", MODELS[1:])
 @pytest.mark.parametrize("option_type", ("Call", "Put"))
 @pytest.mark.parametrize("exercise", ("European", "American"))
-def test_public_api_parity_cash_dividends(
-    model: str, option_type: str, exercise: str,
-) -> None:
-    request = make_request(
+def test_public_api_parity_cash_dividends(model: str, option_type: str, exercise: str) -> None:
+    request = _make_request(
         model, option_type, exercise,
         dividends=(DividendInput(time=0.5, amount=3.0),),
         steps=20,
     )
-    recursive = price_contract(request, algorithm="Recursive")
-    backward = price_contract(request, algorithm="Backward")
+    recursive, backward = _matching_engines(request)
     assert math.isclose(recursive.price, backward.price, rel_tol=1e-12, abs_tol=1e-12)
-    assert recursive.reachable_nodes == backward.reachable_nodes
-    assert recursive.allocated_nodes == backward.allocated_nodes
-    assert recursive.pruned_transitions == backward.pruned_transitions
+    _assert_same_lattice_accounting(recursive, backward)
 
 
 # Backward pricing is opt-in and must not change the public default.
@@ -286,12 +288,12 @@ def test_seven_greeks_use_injected_pricing_algorithm(algorithm: str) -> None:
     )
     observed: list[str] = []
 
-    def observed_pricer(shocked: PricingRequest) -> PricingResult:
+    def _observed_pricer(shocked: PricingRequest) -> PricingResult:
         value = price_contract(shocked, algorithm=algorithm)
         observed.append(value.algorithm)
         return value
 
-    snapshot = compute_desk_risk(request, pricer=observed_pricer)
+    snapshot = compute_desk_risk(request, pricer=_observed_pricer)
     assert len(observed) == snapshot.base.evaluations + snapshot.extra_evaluations
     assert len(observed) > 8
     assert set(observed) == {algorithm}
@@ -325,12 +327,12 @@ def test_selected_greek_curve_uses_backward_callback() -> None:
     request = PricingRequest(model="Binomial", steps=9)
     seen = []
 
-    def backward(shocked: PricingRequest) -> PricingResult:
+    def _backward(shocked: PricingRequest) -> PricingResult:
         result = price_contract(shocked, algorithm="Backward")
         seen.append(result.algorithm)
         return result
 
-    curve = compute_greek_curve(request, "Delta", count=3, pricer=backward)
+    curve = compute_greek_curve(request, "Delta", count=3, pricer=_backward)
     assert len(curve) == 3
     assert seen and set(seen) == {"Backward"}
     assert all(point.value is not None for point in curve)

@@ -14,6 +14,8 @@ from src.risk.numerics import (
 )
 import ast
 from dataclasses import replace
+
+# This import-isolation suite verifies that core risk code remains standalone.
 from pathlib import Path
 from types import SimpleNamespace
 from frontend.greeks_service import (
@@ -42,6 +44,12 @@ def _polynomial(s: float, sigma: float) -> float:
     return 4.0 + 0.5*s + 3*s*sigma + 7*sigma*sigma + 0.8*s*sigma*sigma
 
 
+def _expected_vanna(sigma: float, *, vol_bump: float = 0.0) -> float:
+    """Analytic mixed sensitivity of the synthetic polynomial."""
+    return .01 * (3 + 1.6 * sigma + .8 * vol_bump)
+
+
+
 @pytest.mark.parametrize("s,sigma", [(100., .2), (115., .3)])
 def test_vanna_centered_polynomial(s: float, sigma: float) -> None:
     ds, dv = 1., .005
@@ -52,7 +60,7 @@ def test_vanna_centered_polynomial(s: float, sigma: float) -> None:
         minus_low=_polynomial(s-ds,sigma-dv),
         spot_bump=ds,vol_bump=dv,centered=True,
     )
-    assert actual == pytest.approx(.01*(3+1.6*sigma), abs=1e-11)
+    assert actual == pytest.approx(_expected_vanna(sigma), abs=1e-11)
 
 
 # Validate both centered and forward finite-difference Vanna stencils.
@@ -65,7 +73,7 @@ def test_vanna_forward_polynomial() -> None:
         minus_low=_polynomial(s-ds,sigma),
         spot_bump=ds,vol_bump=dv,centered=False,
     )
-    assert actual == pytest.approx(.01*(3+1.6*sigma+.8*dv))
+    assert actual == pytest.approx(_expected_vanna(sigma, vol_bump=dv))
 
 
 @pytest.mark.parametrize("centered", [True,False])
@@ -174,7 +182,7 @@ def test_frontend_compatibility_reexports() -> None:
 CONTRACT = PricingRequest()
 
 
-def polynomial_pricer(request: PricingRequest) -> SimpleNamespace:
+def _polynomial_pricer(request: PricingRequest) -> SimpleNamespace:
     s, v, r, t = (
         request.spot, request.volatility, request.rate, request.maturity,
     )
@@ -196,10 +204,10 @@ def test_bump_dataclass_is_shared() -> None:
 # Keep Greek calculations and hedging assumptions explicit.
 def test_five_greeks_match_old_adapter(vol: float) -> None:
     contract = replace(CONTRACT, volatility=vol)
-    front = frontend_greeks(contract, pricer=polynomial_pricer)
+    front = frontend_greeks(contract, pricer=_polynomial_pricer)
     kernel = core_greeks(
         contract,
-        pricer=polynomial_pricer,
+        pricer=_polynomial_pricer,
         validate_request=validate_request,
     )
     assert front.measured() == pytest.approx(kernel.measured(), nan_ok=True)
@@ -210,10 +218,10 @@ def test_five_greeks_match_old_adapter(vol: float) -> None:
 @pytest.mark.parametrize("vol", [0.0, 0.20])
 def test_seven_greeks_match_core(vol: float) -> None:
     contract = replace(CONTRACT, volatility=vol)
-    front = frontend_desk(contract, pricer=polynomial_pricer)
+    front = frontend_desk(contract, pricer=_polynomial_pricer)
     core = core_desk(
         contract,
-        pricer=polynomial_pricer,
+        pricer=_polynomial_pricer,
         validate_request=validate_request,
         calculate_greeks=frontend_greeks,
     )

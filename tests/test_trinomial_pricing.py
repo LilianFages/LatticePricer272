@@ -16,10 +16,22 @@ from src.node import Node
 from src.transition_moments import TransitionMoments
 
 
+def _test_tree(**parameters: object) -> TrinomialTree:
+    """Build an independent tree for each trinomial regression scenario."""
+    return TrinomialTree(**parameters)
+
+
+def _price_recursive(
+    tree: TrinomialTree, option: CallOption | PutOption
+) -> float:
+    """Use the same recursive pricing entry point for all comparisons."""
+    return RecursivePricer().price(tree, option)
+
+
 # test_trinomial_pricing.py (tests preserved)
 # A one-step trinomial price must equal its direct discounted expectation.
 def test_recursive_one_step_trinomial_call() -> None:
-    tree = TrinomialTree(
+    tree = _test_tree(
         spot=100.0,
         rate=0.02,
         volatility=0.20,
@@ -30,7 +42,7 @@ def test_recursive_one_step_trinomial_call() -> None:
         strike=100.0
     )
 
-    price = RecursivePricer().price(
+    price = _price_recursive(
         tree,
         option,
     )
@@ -74,7 +86,7 @@ def test_recursive_trinomial_put_call_parity() -> None:
     rate = 0.03
     maturity = 2.0
 
-    call_tree = TrinomialTree(
+    call_tree = _test_tree(
         spot=spot,
         rate=rate,
         volatility=0.25,
@@ -82,7 +94,7 @@ def test_recursive_trinomial_put_call_parity() -> None:
         nb_steps=10,
     )
     # Trinomial European prices must satisfy discounted put-call parity.
-    put_tree = TrinomialTree(
+    put_tree = _test_tree(
         spot=spot,
         rate=rate,
         volatility=0.25,
@@ -90,11 +102,11 @@ def test_recursive_trinomial_put_call_parity() -> None:
         nb_steps=10,
     )
 
-    call_price = RecursivePricer().price(
+    call_price = _price_recursive(
         call_tree,
         CallOption(strike=strike),
     )
-    put_price = RecursivePricer().price(
+    put_price = _price_recursive(
         put_tree,
         PutOption(strike=strike),
     )
@@ -126,8 +138,8 @@ def test_recursive_trinomial_converges_to_black_scholes() -> None:
         strike=strike
     )
 
-    tree_price = RecursivePricer().price(
-        TrinomialTree(
+    tree_price = _price_recursive(
+        _test_tree(
             spot=spot,
             rate=rate,
             volatility=volatility,
@@ -161,7 +173,7 @@ def test_dividend_changes_trunk_forward() -> None:
         amount=3.0,
     )
 
-    tree = TrinomialTree(
+    tree = _test_tree(
         spot=100.0,
         rate=0.02,
         volatility=0.20,
@@ -215,7 +227,7 @@ def test_dividend_transition_matches_target_moments() -> None:
         amount=3.0,
     )
 
-    tree = TrinomialTree(
+    tree = _test_tree(
         spot=100.0,
         rate=0.02,
         volatility=0.20,
@@ -290,7 +302,7 @@ def test_dividend_probabilities_are_local() -> None:
         amount=3.0,
     )
 
-    tree = TrinomialTree(
+    tree = _test_tree(
         spot=100.0,
         rate=0.02,
         volatility=0.20,
@@ -350,8 +362,8 @@ def test_dividend_reduces_call_price_at_zero_rate() -> None:
         strike=100.0
     )
 
-    no_dividend_price = RecursivePricer().price(
-        TrinomialTree(
+    no_dividend_price = _price_recursive(
+        _test_tree(
             spot=100.0,
             rate=0.0,
             volatility=0.20,
@@ -362,8 +374,8 @@ def test_dividend_reduces_call_price_at_zero_rate() -> None:
     )
 
     # At zero rates, cash dividends reduce European calls.
-    dividend_price = RecursivePricer().price(
-        TrinomialTree(
+    dividend_price = _price_recursive(
+        _test_tree(
             spot=100.0,
             rate=0.0,
             volatility=0.20,
@@ -388,8 +400,8 @@ def test_dividend_increases_put_price_at_zero_rate() -> None:
         strike=100.0
     )
 
-    no_dividend_price = RecursivePricer().price(
-        TrinomialTree(
+    no_dividend_price = _price_recursive(
+        _test_tree(
             spot=100.0,
             rate=0.0,
             volatility=0.20,
@@ -400,8 +412,8 @@ def test_dividend_increases_put_price_at_zero_rate() -> None:
     )
 
     # At zero rates, cash dividends increase European puts.
-    dividend_price = RecursivePricer().price(
-        TrinomialTree(
+    dividend_price = _price_recursive(
+        _test_tree(
             spot=100.0,
             rate=0.0,
             volatility=0.20,
@@ -422,7 +434,7 @@ def test_dividend_increases_put_price_at_zero_rate() -> None:
 
 # A cash dividend may require the lattice to expand beyond 2N + 1 nodes.
 def test_dividend_can_expand_trinomial_column() -> None:
-    tree = TrinomialTree(
+    tree = _test_tree(
         spot=100.0,
         rate=0.0,
         volatility=0.20,
@@ -463,7 +475,7 @@ def test_dividend_can_expand_trinomial_column() -> None:
 
 # Several discrete dividends must successively reduce the trunk.
 def test_multiple_dividends_change_trunk() -> None:
-    tree = TrinomialTree(
+    tree = _test_tree(
         spot=100.0,
         rate=0.0,
         volatility=0.20,
@@ -519,8 +531,8 @@ def test_multiple_dividends_reduce_call_price() -> None:
         strike=100.0
     )
 
-    no_dividend_price = RecursivePricer().price(
-        TrinomialTree(
+    no_dividend_price = _price_recursive(
+        _test_tree(
             spot=100.0,
             rate=0.0,
             volatility=0.20,
@@ -531,8 +543,8 @@ def test_multiple_dividends_reduce_call_price() -> None:
     )
 
     # Several positive cash dividends must reduce a European call at zero rates.
-    dividend_price = RecursivePricer().price(
-        TrinomialTree(
+    dividend_price = _price_recursive(
+        _test_tree(
             spot=100.0,
             rate=0.0,
             volatility=0.20,
@@ -558,7 +570,7 @@ def test_multiple_dividends_reduce_call_price() -> None:
 
 # Two dividends inside the same lattice step are currently rejected.
 def test_two_dividends_in_same_step_raise_error() -> None:
-    tree = TrinomialTree(
+    tree = _test_tree(
         spot=100.0,
         rate=0.0,
         volatility=0.20,

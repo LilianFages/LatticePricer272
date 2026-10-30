@@ -125,7 +125,7 @@ def test_catalogue_can_load_known_schema(tmp_path: Path) -> None:
     assert result.iloc[0]["nb_steps"] == 100
 
 
-# Schema drift must fail visibly rather than mislabel numerical series.
+# Schema drift must _fail visibly rather than mislabel numerical series.
 def test_catalogue_rejects_schema_drift(tmp_path: Path) -> None:
     spec = CATALOG["Robustness"]
     p = tmp_path / spec.path
@@ -280,13 +280,13 @@ def _request(**kwargs: object):
 def test_same_market_and_grid_without_mutating_original() -> None:
     observed = []
 
-    def fake_analyzer(req: PricingRequest):
+    def _fake_analyzer(req: PricingRequest):
         observed.append(req)
         return SimpleNamespace(request=req, premium=8.0 if req.dividends else 7.0,
                                early_exercise_probability=.25 if req.dividends else .30)
 
     original = _request()
-    result = compare_dividend_exercise(original, analyzer=fake_analyzer)
+    result = compare_dividend_exercise(original, analyzer=_fake_analyzer)
     assert observed[0] is original
     assert observed[1] is not original
     assert observed[1] == replace(original, dividends=())
@@ -295,7 +295,7 @@ def test_same_market_and_grid_without_mutating_original() -> None:
     assert result.node_exercise_difference == pytest.approx(-.05)
 
 
-# Invalid comparisons fail before a lattice is built or priced.
+# Invalid comparisons _fail before a lattice is built or priced.
 def test_no_dividends_rejected_without_pricing() -> None:
     calls = []
     with pytest.raises(PricingInputError, match="Add at least one"):
@@ -323,10 +323,10 @@ def test_interactive_depth_guard_precedes_analysis() -> None:
 
 
 def test_analyzer_failure_is_not_silenced() -> None:
-    def fail(_: object):
+    def _fail(_: object):
         raise RuntimeError("engine failure")
     with pytest.raises(RuntimeError, match="engine failure"):
-        compare_dividend_exercise(_request(), analyzer=fail)
+        compare_dividend_exercise(_request(), analyzer=_fail)
 
 
 # Valid dividend events remain explicit in both comparison scenarios.
@@ -334,12 +334,12 @@ def test_two_cashflow_events_preserved_in_dividend_case() -> None:
     req = _request(steps=20, dividends=(DividendInput(.25, 2.), DividendInput(.75, 1.)))
     seen = []
 
-    def analyzer(r: object):
+    def _analyzer(r: object):
         seen.append(r)
         return SimpleNamespace(request=r, premium=3.0,
                                early_exercise_probability=0.0)
 
-    compare_dividend_exercise(req, analyzer=analyzer)
+    compare_dividend_exercise(req, analyzer=_analyzer)
     assert seen[0].dividends == req.dividends
     assert seen[1].dividends == ()
     assert seen[1].steps == seen[0].steps

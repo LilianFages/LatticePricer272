@@ -45,7 +45,7 @@ def test_default_gamma_stencil_spans_fixed_trinomial_payoff_kink() -> None:
     from the stated course lattice, not production pricing-service internals.
     """
     # Check the numerical Greek or hedge rule independently of UI formatting.
-    def price_on_grid(request: PricingRequest):
+    def _price_on_grid(request: PricingRequest) -> SimpleNamespace:
         s,k,r,sig,t,n=(request.spot,request.strike,request.rate,
                          request.volatility,request.maturity,request.steps)
         dt=t/n
@@ -60,8 +60,8 @@ def test_default_gamma_stencil_spans_fixed_trinomial_payoff_kink() -> None:
         return SimpleNamespace(price=values[0],elapsed_ms=1.0)
 
     request=PricingRequest()
-    narrow=calculate_greeks(request, GreekBumps(gamma_spot_pct=1),pricer=price_on_grid)
-    fixed=calculate_greeks(request, GreekBumps(),pricer=price_on_grid)
+    narrow=calculate_greeks(request, GreekBumps(gamma_spot_pct=1),pricer=_price_on_grid)
+    fixed=calculate_greeks(request, GreekBumps(),pricer=_price_on_grid)
     # Check the Gamma bump against trinomial payoff-grid spacing.
     assert abs(narrow.gamma) < 1e-8
     assert fixed.gamma is not None and fixed.analytic is not None
@@ -72,9 +72,9 @@ def test_default_gamma_stencil_spans_fixed_trinomial_payoff_kink() -> None:
 
 
 def test_gamma_bump_independent_of_delta_and_metadata() -> None:
-    def quadratic(req: PricingRequest):
+    def _quadratic(req: PricingRequest) -> SimpleNamespace:
         return SimpleNamespace(price=req.spot**2+req.volatility+req.rate+req.maturity,elapsed_ms=1.0)
-    result=calculate_greeks(PricingRequest(),GreekBumps(),pricer=quadratic)
+    result=calculate_greeks(PricingRequest(),GreekBumps(),pricer=_quadratic)
     assert result.delta == pytest.approx(200.0)
     assert result.gamma == pytest.approx(2.0)
     assert result.gamma_spot_bump_pct > result.bumps.spot_pct
@@ -89,7 +89,9 @@ def test_gamma_bump_independent_of_delta_and_metadata() -> None:
     ],
 )
 # Check the numerical Greek or hedge rule independently of UI formatting.
-def test_active_risk_numerics_forwards_gamma_choice(monkeypatch: pytest.MonkeyPatch, gamma_choice: object, expected: object) -> None:
+def test_active_risk_numerics_forwards_gamma_choice(
+    monkeypatch: pytest.MonkeyPatch, gamma_choice: object, expected: object
+) -> None:
     """The live workspace, not the retired Greeks page, forwards Gamma's N bump."""
     from contextlib import nullcontext
 
@@ -114,12 +116,15 @@ def test_active_risk_numerics_forwards_gamma_choice(monkeypatch: pytest.MonkeyPa
     # Check the numerical Greek or hedge rule independently of UI formatting.
     monkeypatch.setattr(views, "_get_request", lambda *_a: request)
 
-    def record_study(actual_request: object, bumps: object, depths: object, *, gamma_bump_pct: object):
+    def _record_study(
+        actual_request: PricingRequest, bumps: object, depths: object,
+        *, gamma_bump_pct: object
+    ) -> tuple[()]:
         observed.update(request=actual_request, bumps=bumps,
                         depths=depths, gamma_bump_pct=gamma_bump_pct)
         return ()
 
-    monkeypatch.setattr(views, "greeks_stability", record_study)
+    monkeypatch.setattr(views, "greeks_stability", _record_study)
     monkeypatch.setattr(views, "_render_stability_results", lambda saved: None)
 
     views.render_greeks_stability_tab()
@@ -166,11 +171,11 @@ def test_invalid_manual_width_rejected() -> None:
 
 
 # test_quant_greeks.py (tests preserved)
-def _request(**changes: object):
+def _request(**changes: object) -> PricingRequest:
     return replace(PricingRequest(), **changes)
 
 
-def _polynomial_pricer(request: PricingRequest):
+def _polynomial_pricer(request: PricingRequest) -> SimpleNamespace:
     """Smooth toy pricing function, NOT a financial model or production fallback."""
     value = (
         0.7 * request.spot
@@ -244,12 +249,12 @@ def test_theta_unavailable_when_maturity_under_one_day() -> None:
 
 
 def test_one_failed_shock_does_not_zero_out_other_greeks() -> None:
-    def partial(request: PricingRequest):
+    def _partial(request: PricingRequest) -> SimpleNamespace:
         if request.rate > 0.02:
             raise RuntimeError("Synthetic shock failure")
         return _polynomial_pricer(request)
 
-    result = calculate_greeks(_request(), pricer=partial)
+    result = calculate_greeks(_request(), pricer=_partial)
     assert result.rho_1bp is None
     assert result.delta == pytest.approx(2.7)
     assert result.gamma == pytest.approx(0.02)
@@ -259,11 +264,11 @@ def test_one_failed_shock_does_not_zero_out_other_greeks() -> None:
 
 # Failure of the unshocked base price must remain explicit.
 def test_base_failure_is_not_silenced() -> None:
-    def fail(_: object):
+    def _fail(_: object) -> None:
         raise RuntimeError("Synthetic base failure")
 
     with pytest.raises(PricingInputError, match="Base contract"):
-        calculate_greeks(_request(), pricer=fail)
+        calculate_greeks(_request(), pricer=_fail)
 
 
 def test_perturbation_input_validation() -> None:
@@ -316,10 +321,10 @@ def test_fd_greeks_against_independent_black_scholes_repricing() -> None:
     import math
 
     # Check the numerical Greek or hedge rule independently of UI formatting.
-    def n(x: float):
+    def _normal_cdf(x: float) -> float:
         return 0.5 * math.erfc(-x / math.sqrt(2))
 
-    def bs_engine(request: PricingRequest):
+    def _bs_engine(request: PricingRequest) -> SimpleNamespace:
         s, k, sigma, t, r = (
             request.spot, request.strike, request.volatility,
             request.maturity, request.rate,
@@ -327,9 +332,9 @@ def test_fd_greeks_against_independent_black_scholes_repricing() -> None:
         d1 = (math.log(s/k) + (r + 0.5*sigma*sigma)*t) / (sigma*math.sqrt(t))
         d2 = d1-sigma*math.sqrt(t)
         if request.option_type == "Call":
-            value = s*n(d1)-k*math.exp(-r*t)*n(d2)
+            value = s*_normal_cdf(d1)-k*math.exp(-r*t)*_normal_cdf(d2)
         else:
-            value = k*math.exp(-r*t)*n(-d2)-s*n(-d1)
+            value = k*math.exp(-r*t)*_normal_cdf(-d2)-s*_normal_cdf(-d1)
         # Compare finite-difference sensitivities to analytic model identities.
         return SimpleNamespace(price=value, elapsed_ms=1.0)
 
@@ -338,7 +343,7 @@ def test_fd_greeks_against_independent_black_scholes_repricing() -> None:
         actual = calculate_greeks(
             request, GreekBumps(spot_pct=0.1, vol_pp=0.1, rate_bp=1.0,
                                 gamma_spot_pct=0.1),
-            pricer=bs_engine,
+            pricer=_bs_engine,
         )
         ref = actual.analytic
         assert ref is not None

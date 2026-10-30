@@ -70,11 +70,11 @@ def test_type_error_for_wrong_reference_object() -> None:
 
 
 def test_reference_save_does_not_run_pricer(monkeypatch: pytest.MonkeyPatch) -> None:
-    def forbidden(*args: object, **kwargs: object):
+    def _forbidden(*args: object, **kwargs: object):
         raise AssertionError("Saving a reference must not price the contract")
 
     # Keep pricing comparisons on identical contracts and lattice settings.
-    monkeypatch.setattr("frontend.pricing_service.price_contract", forbidden)
+    monkeypatch.setattr("frontend.pricing_service.price_contract", _forbidden)
     request = PricingRequest()
     state: dict = {}
     save_reference(state, request)
@@ -188,10 +188,10 @@ def test_saving_already_priced_result_never_calls_engine(monkeypatch: pytest.Mon
     request = PricingRequest()
     state = {"last_pricing_result": _result(request)}
 
-    def forbidden(*_args: object, **_kwargs: object):
+    def _forbidden(*_args: object, **_kwargs: object):
         raise AssertionError("Reference save must not build or price a lattice")
 
-    monkeypatch.setattr("frontend.pricing_service.price_contract", forbidden)
+    monkeypatch.setattr("frontend.pricing_service.price_contract", _forbidden)
     assert save_reference_from_last_result(state) is request
 
 # LOT_5C4_GUARDED_REFACTOR
@@ -299,11 +299,11 @@ def test_no_dividends_keeps_existing_empty_row_semantics() -> None:
 
 # Importing reference metadata must not initiate valuation.
 def test_import_is_never_a_pricing_or_comparison_trigger(monkeypatch: pytest.MonkeyPatch) -> None:
-    def forbidden(*args: object, **kwargs: object):
+    def _forbidden(*args: object, **kwargs: object):
         raise AssertionError("Import must not price contracts")
 
-    monkeypatch.setattr("frontend.comparison_service.compare_models", forbidden)
-    monkeypatch.setattr("frontend.pricing_service.price_contract", forbidden)
+    monkeypatch.setattr("frontend.comparison_service.compare_models", _forbidden)
+    monkeypatch.setattr("frontend.pricing_service.price_contract", _forbidden)
     state = {}
     save_reference(state, PricingRequest(steps=40))
     assert apply_reference_to_comparison(state)[0]
@@ -441,10 +441,10 @@ def test_dividend_below_editor_minimum_rejected_without_rounding() -> None:
 
 # Workspace navigation does not execute the financial engine.
 def test_import_does_not_call_tree_or_pricer(monkeypatch: pytest.MonkeyPatch) -> None:
-    def forbidden(*args: object, **kwargs: object):
+    def _forbidden(*args: object, **kwargs: object):
         raise AssertionError("An import cannot build, price or compare lattices.")
-    monkeypatch.setattr("frontend.lattice_explorer_service.snapshot_priced_tree", forbidden)
-    monkeypatch.setattr("frontend.pricing_service.price_contract", forbidden)
+    monkeypatch.setattr("frontend.lattice_explorer_service.snapshot_priced_tree", _forbidden)
+    monkeypatch.setattr("frontend.pricing_service.price_contract", _forbidden)
     state = {}
     save_reference(state, _valid(steps=5))
     assert apply_reference_to_explorer(state)[0]

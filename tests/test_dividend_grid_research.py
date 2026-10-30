@@ -65,12 +65,12 @@ def test_per_model_reference_does_not_mix_lattices() -> None:
 
 
 def test_failed_triplet_is_explicit_and_never_imputed() -> None:
-    def failing(request: PricingRequest) -> SimpleNamespace:
+    def _failing(request: PricingRequest) -> SimpleNamespace:
         if request.exercise == "American":
             raise RuntimeError("Injected pricer outage")
         return _fake_price(request)
     rows = study.run_experiment(steps=(25,), shifts=(0,), date_steps=25,
-                                pricer=failing, models=(study.MODELS[0],))
+                                pricer=_failing, models=(study.MODELS[0],))
     assert len(rows) == 2
     assert all(r["status"] == "failed" for r in rows)
     assert all(r["european_put"] is None for r in rows)
@@ -80,9 +80,9 @@ def test_failed_triplet_is_explicit_and_never_imputed() -> None:
 
 
 def test_finite_prices_required() -> None:
-    def invalid(request: PricingRequest) -> SimpleNamespace:
+    def _invalid(request: PricingRequest) -> SimpleNamespace:
         return SimpleNamespace(price=float("nan"))
-    row = study.measure_case(study.MODELS[0], 25, 0.5, pricer=invalid)
+    row = study.measure_case(study.MODELS[0], 25, 0.5, pricer=_invalid)
     assert row["status"] == "failed"
     assert "Non-finite" in row["failure"]
 
@@ -112,11 +112,11 @@ def test_exdate_boundary_convention_and_dividend_pv() -> None:
 
 def test_grid_and_date_panels_share_one_valuation_when_identical() -> None:
     calls = []
-    def recording(request: PricingRequest) -> SimpleNamespace:
+    def _recording(request: PricingRequest) -> SimpleNamespace:
         calls.append(request)
         return _fake_price(request)
     study.run_experiment(steps=(40,), shifts=(0,), date_steps=40,
-                         pricer=recording, models=(study.MODELS[0],))
+                         pricer=_recording, models=(study.MODELS[0],))
     # Verify the expected numerical or workflow invariant on this case.
     assert len(calls) == 3  # Not 6: identical contract triplet memoized.
 
@@ -180,7 +180,7 @@ def test_invalid_panel_and_status_rejected() -> None:
         validate_study_frame(frame)
     frame = _valid()
     frame.loc[0, "status"] = "almost"
-    # Reject invalid cases explicitly rather than silently substituting values.
+    # Reject _invalid cases explicitly rather than silently substituting values.
     with pytest.raises(ValueError, match="status"):
         validate_study_frame(frame)
 

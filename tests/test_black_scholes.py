@@ -164,9 +164,7 @@ def test_black_scholes_rejects_american_option() -> None:
     ],
 )
 # Verify that the pricing workflow keeps its input contract intact.
-def test_shared_black_scholes_terms_match_independent_formula(
-    spot, strike, rate, volatility, maturity,
-):
+def test_bs_terms_match_direct_formula(spot: float, strike: float, rate: float, volatility: float, maturity: float) -> None:
     """One common convention, including negative rates and non-ATM cases."""
     d1, d2 = standardized_terms(spot, strike, rate, volatility, maturity)
     sigma_sqrt_t = volatility * math.sqrt(maturity)

@@ -24,6 +24,19 @@ from frontend.dividend_input import parse_cash_dividends, parse_dividends
 from frontend.pricing_service import DividendInput, PricingInputError
 
 
+def _single_dividend_frame(time: object, amount: object) -> pd.DataFrame:
+    """Build a single cash-flow input row with the original schema."""
+    return pd.DataFrame([{"time": time, "amount": amount}])
+
+
+def _assert_invalid_dividend_frame(
+    frame: pd.DataFrame, reason: str, *, context: str = "analysis"
+) -> None:
+    """Reject malformed cash flows instead of silently dropping them."""
+    with pytest.raises(PricingInputError, match=reason):
+        parse_cash_dividends(frame, context=context)
+
+
 # test_dividend_grid_boundaries.py (tests preserved)
 def test_calendar_fraction_matches_exact_grid_endpoint() -> None:
     # 195/365 = 39/73 mathematically, but not always as binary floats.
@@ -130,9 +143,7 @@ def test_validation_uses_same_event_step_as_tree() -> None:
 @pytest.mark.parametrize("algorithm", ("Recursive", "Backward"))
 @pytest.mark.parametrize("exercise", ("European", "American"))
 # Preserve cash-dividend timing and exercise rules in the next checks.
-def test_equivalent_on_grid_dates_reprice_identically(
-    model: str, algorithm: str, exercise: str,
-) -> None:
+def test_equivalent_on_grid_dates_reprice_identically(model: str, algorithm: str, exercise: str) -> None:
     req = PricingRequest(
         model=model, option_type="Call", exercise=exercise,
         steps=73, spot=100.0, strike=102.0,
@@ -172,9 +183,7 @@ def test_cashflows_are_sorted_without_mutating_source_frame() -> None:
 ])
 # Preserve cash-dividend timing and exercise rules in the next checks.
 def test_missing_amount_with_nonblank_date_is_rejected(context: str, fragment: str) -> None:
-    with pytest.raises(PricingInputError, match=fragment):
-        parse_cash_dividends(pd.DataFrame([{"time": .5, "amount": None}]),
-                             context=context)
+    _assert_invalid_dividend_frame(_single_dividend_frame(.5, None), fragment, context=context)
 
 
 @pytest.mark.parametrize("context,fragment", [
@@ -182,9 +191,7 @@ def test_missing_amount_with_nonblank_date_is_rejected(context: str, fragment: s
     ("terminal", "enter the payment time in years"),
 ])
 def test_missing_time_with_positive_amount_is_rejected(context: str, fragment: str) -> None:
-    with pytest.raises(PricingInputError, match=fragment):
-        parse_cash_dividends(pd.DataFrame([{"time": None, "amount": 2.}]),
-                             context=context)
+    _assert_invalid_dividend_frame(_single_dividend_frame(None, 2.), fragment, context=context)
 
 
 @pytest.mark.parametrize("field,value,fragment", [
@@ -196,8 +203,7 @@ def test_missing_time_with_positive_amount_is_rejected(context: str, fragment: s
 def test_invalid_values_fail_explicitly(field: str, value: object, fragment: str) -> None:
     row = {"time": .5, "amount": 1.}
     row[field] = value
-    with pytest.raises(PricingInputError, match=fragment):
-        parse_cash_dividends(pd.DataFrame([row]))
+    _assert_invalid_dividend_frame(_single_dividend_frame(row["time"], row["amount"]), fragment)
 
 
 def test_no_dividend_is_invented_from_empty_frame() -> None:

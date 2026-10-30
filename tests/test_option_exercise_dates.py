@@ -29,7 +29,7 @@ from experiments.option_value_exercise_profiles import (
 
 
 # test_option_by_dates_sensitivity.py (tests preserved)
-def make_profiles(n: int) -> list[dict[str, float | int | str]]:
+def _make_profiles(n: int) -> list[dict[str, float | int | str]]:
     """Synthetic, probability-consistent profiles; not market results."""
     result = []
     for key in study.SCENARIOS:
@@ -62,14 +62,14 @@ def make_profiles(n: int) -> list[dict[str, float | int | str]]:
 
 
 def test_conversion_retains_numbers_and_key() -> None:
-    converted = study.convert_row(make_profiles(2)[0])
+    converted = study.convert_row(_make_profiles(2)[0])
     assert converted["scenario"] == study.SCENARIOS[0]
     assert converted["step"] == 0
     assert isinstance(converted["discounted_mean_option_value"], float)
 
 
 def test_non_finite_rejected() -> None:
-    record = make_profiles(2)[0]
+    record = _make_profiles(2)[0]
     record["mean_option_value"] = float("nan")
     with pytest.raises(ValueError, match="Non-finite"):
         study.convert_row(record)
@@ -77,14 +77,14 @@ def test_non_finite_rejected() -> None:
 
 # Reject missing required columns before computing summaries.
 def test_wrong_columns_rejected() -> None:
-    record = make_profiles(2)[0]
+    record = _make_profiles(2)[0]
     record.pop("mean_option_value")
     with pytest.raises(ValueError, match="columns"):
         study.convert_row(record)
 
 
 def test_valid_summary_metrics() -> None:
-    summaries = study.summarize_steps(make_profiles(2), 2)
+    summaries = study.summarize_steps(_make_profiles(2), 2)
     assert len(summaries) == 3
     cash = summaries[0]
     euro = summaries[-1]
@@ -97,13 +97,13 @@ def test_valid_summary_metrics() -> None:
 
 
 def test_missing_scenario_rejected() -> None:
-    rows = [r for r in make_profiles(2) if r["scenario"] != study.SCENARIOS[1]]
+    rows = [r for r in _make_profiles(2) if r["scenario"] != study.SCENARIOS[1]]
     with pytest.raises(ValueError, match="three scenarios"):
         study.summarize_steps(rows, 2)
 
 
 def test_invalid_dates_rejected() -> None:
-    rows = make_profiles(2)
+    rows = _make_profiles(2)
     rows[1]["time"] = 0.7
     with pytest.raises(ValueError, match="dates"):
         study.summarize_steps(rows, 2)
@@ -111,21 +111,21 @@ def test_invalid_dates_rejected() -> None:
 
 def test_probability_mass_loss_rejected() -> None:
     # Reject any profile whose unconditional probability mass is below one.
-    rows = make_profiles(2)
+    rows = _make_profiles(2)
     rows[0]["unconditional_probability_mass"] = 0.95
     with pytest.raises(ValueError, match="mass not conserved"):
         study.summarize_steps(rows, 2)
 
 
 def test_stopping_distribution_inconsistency_rejected() -> None:
-    rows = make_profiles(2)
+    rows = _make_profiles(2)
     rows[1]["survival_probability_after_step"] = 0.9
     with pytest.raises(ValueError, match="survival/exercise"):
         study.summarize_steps(rows, 2)
 
 
 def test_european_martingale_rejected_if_broken() -> None:
-    rows = make_profiles(2)
+    rows = _make_profiles(2)
     rows[-2]["discounted_mean_option_value"] -= 0.01
     with pytest.raises(ValueError, match="martingale"):
         # European discounted option values must satisfy the martingale check.
@@ -133,14 +133,14 @@ def test_european_martingale_rejected_if_broken() -> None:
 
 
 def test_american_increasing_discounted_mean_rejected() -> None:
-    rows = make_profiles(2)
+    rows = _make_profiles(2)
     rows[1]["discounted_mean_option_value"] += 0.3
     with pytest.raises(ValueError, match="supermartingale"):
         study.summarize_steps(rows, 2)
 
 
 def test_unmatched_forward_rejected() -> None:
-    rows = make_profiles(2)
+    rows = _make_profiles(2)
     rows[-1]["mean_stock_price"] = 99.0
     with pytest.raises(ValueError, match="forwards"):
         study.summarize_steps(rows, 2)
@@ -154,15 +154,16 @@ def test_baseline_parameter_validation(tmp_path: Path) -> None:
         study.check_baseline(path)
 
 
-def test_read_only_n100_and_no_n100_output(monkeypatch: pytest.MonkeyPatch,
-                                              tmp_path: Path) -> None:
-    """Mock expensive engine; check output routing, never benchmark numerics."""
+def _prepare_readonly_baseline(
+    tmp_path: Path,
+) -> tuple[Path, Path, Path, Path, Path, bytes]:
+    """Persist the N=100 reference, preserving its original bytes for audit."""
     result_root = tmp_path / "results"
     data = result_root / "data"
     figures = result_root / "figures"
     data.mkdir(parents=True)
     baseline_csv = data / "option_by_dates_profiles.csv"
-    n100 = make_profiles(100)
+    n100 = _make_profiles(100)
     study._write_csv(baseline_csv, n100, study.FIELDS)
     original_bytes = baseline_csv.read_bytes()
     baseline_summary = result_root / "option_by_dates_summary.txt"
@@ -172,6 +173,15 @@ def test_read_only_n100_and_no_n100_output(monkeypatch: pytest.MonkeyPatch,
         f"Cash dividend D={study.DIVIDEND_AMOUNT} at t={study.DIVIDEND_TIME}\n"
         f"S0 cash-dividend scheme={study.SPOT};\n", encoding="utf-8"
     )
+    return (result_root, data, figures, baseline_csv,
+            baseline_summary, original_bytes)
+
+
+def test_read_only_n100_and_no_n100_output(monkeypatch: pytest.MonkeyPatch,
+                                              tmp_path: Path) -> None:
+    """Mock expensive engine; check output routing, never benchmark numerics."""
+    (result_root, data, figures, baseline_csv,
+     baseline_summary, original_bytes) = _prepare_readonly_baseline(tmp_path)
     # Preserve the event-date and exercise-policy conventions in this case.
     monkeypatch.setattr(study, "RESULTS", result_root)
     monkeypatch.setattr(study, "DATA", data)
@@ -181,12 +191,12 @@ def test_read_only_n100_and_no_n100_output(monkeypatch: pytest.MonkeyPatch,
     monkeypatch.setattr(study, "STABILITY_SUMMARY", result_root / "option_by_dates_sensitivity_summary.txt")
     calls: list[int] = []
 
-    def fake_experiment(n: int) -> list[SimpleNamespace]:
+    def _fake_experiment(n: int) -> list[SimpleNamespace]:
         calls.append(n)
-        groups = study._group(make_profiles(n))
+        groups = study._group(_make_profiles(n))
         return [SimpleNamespace(rows=groups[key]) for key in study.SCENARIOS]
 
-    monkeypatch.setattr(study, "run_experiment", fake_experiment)
+    monkeypatch.setattr(study, "run_experiment", _fake_experiment)
     summary = study.run_sensitivity(baseline_csv, baseline_summary)
     assert calls == [50, 200]
     assert len(summary) == 9
@@ -205,7 +215,19 @@ def test_read_only_n100_and_no_n100_output(monkeypatch: pytest.MonkeyPatch,
 
 
 # test_option_value_exercise_by_dates.py (tests preserved)
-def simple_two_step_tree(american: bool) -> tuple[Node, PutOption, Scenario]:
+def _link_recombining_tree(
+    root: Node, up: Node, down: Node, upper: Node, middle: Node, lower: Node
+) -> None:
+    """Share the middle leaf while assigning normalized branch probabilities."""
+    root.next_up, root.next_down = up, down
+    up.next_up, up.next_down = upper, middle
+    down.next_up, down.next_down = middle, lower
+    for node in (root, up, down):
+        node.up_probability = node.down_probability = 0.5
+
+
+
+def _simple_two_step_tree(american: bool) -> tuple[Node, PutOption, Scenario]:
     """Two-step 1/2-1/2 tree, recombining at S=100, with r=0."""
     root = Node(100.0)
     up = Node(110.0)
@@ -214,12 +236,7 @@ def simple_two_step_tree(american: bool) -> tuple[Node, PutOption, Scenario]:
     middle = Node(100.0)
     downdown = Node(80.0)
 
-    root.next_up, root.next_down = up, down
-    up.next_up, up.next_down = upup, middle
-    down.next_up, down.next_down = middle, downdown
-    for node in (root, up, down):
-        node.up_probability = 0.5
-        node.down_probability = 0.5
+    _link_recombining_tree(root, up, down, upup, middle, downdown)
 
     upup.option_value = 0.0
     middle.option_value = 0.0
@@ -247,7 +264,7 @@ def test_matched_initial_terminal_forward() -> None:
 
 
 def test_recombination_probabilities_merge() -> None:
-    root, _, _ = simple_two_step_tree(american=False)
+    root, _, _ = _simple_two_step_tree(american=False)
     first = propagate({root: 1.0})
     second = propagate(first)
     assert sorted(first.values()) == [0.5, 0.5]
@@ -288,7 +305,7 @@ def test_reject_invalid_probability_sum() -> None:
 
 
 def test_european_discounted_average_is_martingale() -> None:
-    root, option, scenario = simple_two_step_tree(american=False)
+    root, option, scenario = _simple_two_step_tree(american=False)
     result = profile_from_priced_tree(root, option, 2, 1.0, 0.0, scenario)
     assert [r["discounted_mean_option_value"] for r in result.rows] == pytest.approx(
         [5.0, 5.0, 5.0]
@@ -302,7 +319,7 @@ def test_european_discounted_average_is_martingale() -> None:
 
 
 def test_american_discounted_mean_can_decrease() -> None:
-    root, option, scenario = simple_two_step_tree(american=True)
+    root, option, scenario = _simple_two_step_tree(american=True)
     result = profile_from_priced_tree(root, option, 2, 1.0, 0.0, scenario)
     assert [r["discounted_mean_option_value"] for r in result.rows] == pytest.approx(
         [10.0, 10.0, 5.0]
@@ -310,7 +327,7 @@ def test_american_discounted_mean_can_decrease() -> None:
 
 
 def test_exercise_region_not_stopping_probability() -> None:
-    root, option, scenario = simple_two_step_tree(american=True)
+    root, option, scenario = _simple_two_step_tree(american=True)
     result = profile_from_priced_tree(root, option, 2, 1.0, 0.0, scenario)
     assert result.rows[1]["exercise_region_probability"] == pytest.approx(0.5)
     assert result.rows[2]["exercise_region_probability"] == pytest.approx(0.25)
@@ -322,7 +339,7 @@ def test_exercise_region_not_stopping_probability() -> None:
 
 
 def test_european_never_exercises_early() -> None:
-    root, option, _ = simple_two_step_tree(american=False)
+    root, option, _ = _simple_two_step_tree(american=False)
     low = root.next_down
     assert low is not None
     assert exercise_decision(low, option, dt=0.5, rate=0, is_maturity=False) is False
@@ -330,7 +347,7 @@ def test_european_never_exercises_early() -> None:
 
 
 def test_american_strict_exercise_over_continuation() -> None:
-    root, option, _ = simple_two_step_tree(american=True)
+    root, option, _ = _simple_two_step_tree(american=True)
     low = root.next_down
     assert low is not None
     assert exercise_decision(low, option, dt=0.5, rate=0, is_maturity=False) is True

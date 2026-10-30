@@ -26,6 +26,7 @@ from src.dividend_exercise import (
 from src.dividend import CashDividend
 from src.node import Node
 from src.option import CallOption, PutOption
+# Option exercise and event-boundary assertions use the same cash-flow schedule.
 from src.black_scholes import BlackScholesPricer
 from src.trinomial_tree import TrinomialTree
 from src.hybrid_tree import HybridTree
@@ -38,6 +39,19 @@ from src.option import CallOption
 from src.recursive_pricer import RecursivePricer
 
 
+
+def _option_price(request: PricingRequest, algorithm: str) -> float:
+    """Evaluate one contract while retaining its event-time convention."""
+    return price_contract(request, algorithm=algorithm).price
+
+
+def _assert_deterministic_price(request: PricingRequest, algorithm: str) -> None:
+    """Compare zero-volatility pricing against the exact exercise benchmark."""
+    exact, _ = deterministic_american_reference(request)
+    actual = _option_price(request, algorithm)
+    assert actual == pytest.approx(exact, abs=1e-8, rel=1e-10)
+
+
 # test_american_dividend_events.py (tests preserved)
 FAMILIES = (
     "Hybrid", "Trinomial · Full", "Trinomial · Branch pruning",
@@ -46,7 +60,7 @@ FAMILIES = (
 ALGORITHMS = ("Recursive", "Backward")
 
 
-def contract(**changes: object) -> PricingRequest:
+def _contract(**changes: object) -> PricingRequest:
     base = PricingRequest(
         spot=120.0, strike=100.0, rate=0.05, volatility=0.0,
         maturity=1.0, steps=4, model="Hybrid", option_type="Call",
@@ -60,10 +74,8 @@ def contract(**changes: object) -> PricingRequest:
 @pytest.mark.parametrize("model", FAMILIES)
 @pytest.mark.parametrize("algorithm", ALGORITHMS)
 @pytest.mark.parametrize("steps", (2, 4, 10))
-def test_aligned_zero_vol_call_exercises_pre_dividend(
-    model: str, algorithm: str, steps: int,
-) -> None:
-    request = contract(model=model, steps=steps)
+def test_aligned_zero_vol_call_exercises_pre_dividend(model: str, algorithm: str, steps: int) -> None:
+    request = _contract(model=model, steps=steps)
     exact, event = deterministic_american_reference(request)
     assert event == "pre-dividend"
     assert exact == pytest.approx(120.0 - 100.0 * math.exp(-0.025))
@@ -74,12 +86,10 @@ def test_aligned_zero_vol_call_exercises_pre_dividend(
 
 @pytest.mark.parametrize("model", FAMILIES)
 @pytest.mark.parametrize("algorithm", ALGORITHMS)
-def test_aligned_stochastic_american_call_has_event_value(
-    model: str, algorithm: str,
-) -> None:
+def test_aligned_stochastic_american_call_has_event_value(model: str, algorithm: str) -> None:
     # Preserve cash-dividend timing and exercise rules in the next checks.
-    request = contract(model=model, steps=16, volatility=0.20)
-    value = price_contract(request, algorithm=algorithm).price
+    request = _contract(model=model, steps=16, volatility=0.20)
+    value = _option_price(request, algorithm)
     european = price_contract(
         replace(request, exercise="European"), algorithm=algorithm,
     ).price
@@ -90,10 +100,8 @@ def test_aligned_stochastic_american_call_has_event_value(
 # Off-grid dividend warnings must not introduce algorithm disagreement.
 @pytest.mark.parametrize("model", FAMILIES)
 @pytest.mark.parametrize("algorithm", ALGORITHMS)
-def test_off_grid_warns_and_preserves_recursive_backward_parity(
-    model: str, algorithm: str,
-) -> None:
-    request = contract(model=model, steps=4, dividends=(
+def test_off_grid_warns_and_preserves_recursive_backward_parity(model: str, algorithm: str) -> None:
+    request = _contract(model=model, steps=4, dividends=(
         DividendInput(time=0.6, amount=20.0),
     ))
     result = price_contract(request, algorithm=algorithm)
@@ -108,7 +116,7 @@ def test_off_grid_warns_and_preserves_recursive_backward_parity(
 @pytest.mark.parametrize("model", FAMILIES)
 def test_parity_on_grid_dividends_with_american_put(model: str) -> None:
     # Preserve cash-dividend timing and exercise rules in the next checks.
-    request = contract(
+    request = _contract(
         model=model, option_type="Put", strike=135.0, steps=12,
         dividends=(DividendInput(time=0.25, amount=7.0),
                    DividendInput(time=0.75, amount=9.0)),
@@ -127,13 +135,13 @@ def test_exact_time_boundary_rejects_off_grid_date() -> None:
 
 
 def test_no_dividend_and_non_american_have_no_event_warning() -> None:
-    assert assess_dividend_exercise(contract(dividends=()), 20.0).warning is None
-    assert assess_dividend_exercise(contract(exercise="European"), 20.0).warning is None
+    assert assess_dividend_exercise(_contract(dividends=()), 20.0).warning is None
+    assert assess_dividend_exercise(_contract(exercise="European"), 20.0).warning is None
 
 
 # The deterministic reference distinguishes before/after dividend decisions.
 def test_deterministic_reference_identifies_post_dividend_put() -> None:
-    request = contract(spot=100.0, strike=105.0, option_type="Put",
+    request = _contract(spot=100.0, strike=105.0, option_type="Put",
                        dividends=(DividendInput(time=0.5, amount=10.0),))
     value, event = deterministic_american_reference(request)
     expected_spot = 100.0 * math.exp(0.025) - 10.0
@@ -142,7 +150,7 @@ def test_deterministic_reference_identifies_post_dividend_put() -> None:
 
 
 def test_reference_does_not_modify_frozen_request() -> None:
-    request = contract()
+    request = _contract()
     original = replace(request)
     deterministic_american_reference(request)
     assert original == request
@@ -151,10 +159,8 @@ def test_reference_does_not_modify_frozen_request() -> None:
 # Dividend event logic must not alter the no-dividend binomial baseline.
 @pytest.mark.parametrize("algorithm", ALGORITHMS)
 @pytest.mark.parametrize("option_type", ("Call", "Put"))
-def test_binomial_american_without_dividend_unchanged(
-    algorithm: str, option_type: str,
-) -> None:
-    request = contract(
+def test_binomial_american_without_dividend_unchanged(algorithm: str, option_type: str) -> None:
+    request = _contract(
         model="Binomial", option_type=option_type,
         steps=8, dividends=(),
     )
@@ -165,12 +171,10 @@ def test_binomial_american_without_dividend_unchanged(
 
 
 @pytest.mark.parametrize("algorithm", ALGORITHMS)
-def test_aligned_american_exceeds_european_at_sigma_zero(
-    algorithm: str,
-) -> None:
+def test_aligned_american_exceeds_european_at_sigma_zero(algorithm: str) -> None:
     # Preserve cash-dividend timing and exercise rules in the next checks.
-    request = contract()
-    american = price_contract(request, algorithm=algorithm).price
+    request = _contract()
+    american = _option_price(request, algorithm)
     european = price_contract(
         replace(request, exercise="European"), algorithm=algorithm,
     ).price
@@ -186,7 +190,7 @@ MODELS = (
 )
 
 
-def make_request(*, ex_date: float = 0.6, **kwargs: object) -> PricingRequest:
+def _make_request(*, ex_date: float = 0.6, **kwargs: object) -> PricingRequest:
     """Deterministic American call with exercise at the actual ex-date."""
     basic = PricingRequest(
         spot=120.0, strike=100.0, rate=0.05, volatility=0.0,
@@ -201,25 +205,21 @@ def make_request(*, ex_date: float = 0.6, **kwargs: object) -> PricingRequest:
 @pytest.mark.parametrize("model", MODELS)
 @pytest.mark.parametrize("algorithm", ALGORITHMS)
 @pytest.mark.parametrize("ex_date", (0.26, 0.49, 0.50, 0.51, 0.60, 0.74))
-def test_deterministic_offgrid_cash_exercise_matches_independent_reference(
-    model: str, algorithm: str, ex_date: float,
-) -> None:
-    request = make_request(ex_date=ex_date, model=model)
+def test_offgrid_cash_exercise_matches_reference(model: str, algorithm: str, ex_date: float) -> None:
+    request = _make_request(ex_date=ex_date, model=model)
     exact, event = deterministic_american_reference(request)
     assert event == "pre-dividend"
-    actual = price_contract(request, algorithm=algorithm).price
+    actual = _option_price(request, algorithm)
     assert actual == pytest.approx(exact, abs=1e-8, rel=1e-10)
 
 
 # American contracts retain their exercise dominance across off-grid events.
 @pytest.mark.parametrize("model", MODELS)
 @pytest.mark.parametrize("algorithm", ALGORITHMS)
-def test_offgrid_stochastic_american_is_not_below_european(
-    model: str, algorithm: str,
-) -> None:
+def test_offgrid_stochastic_american_is_not_below_european(model: str, algorithm: str) -> None:
     # 0.60 with N=20 is *on* the grid (step 12); use a true off-grid date.
-    request = make_request(ex_date=0.61, model=model, volatility=0.20, steps=20)
-    american = price_contract(request, algorithm=algorithm).price
+    request = _make_request(ex_date=0.61, model=model, volatility=0.20, steps=20)
+    american = _option_price(request, algorithm)
     european = price_contract(
         replace(request, exercise="European"), algorithm=algorithm,
     ).price
@@ -230,7 +230,7 @@ def test_offgrid_stochastic_american_is_not_below_european(
 
 @pytest.mark.parametrize("model", MODELS)
 def test_offgrid_american_recursive_backward_parity(model: str) -> None:
-    request = make_request(model=model, volatility=0.18, steps=16)
+    request = _make_request(model=model, volatility=0.18, steps=16)
     a = price_contract(request, algorithm="Recursive").price
     b = price_contract(request, algorithm="Backward").price
     assert a == pytest.approx(b, abs=1e-10, rel=1e-11)
@@ -240,7 +240,7 @@ def test_offgrid_american_recursive_backward_parity(model: str) -> None:
 @pytest.mark.parametrize("algorithm", ALGORITHMS)
 def test_calendar_one_day_theta_no_longer_jumps_at_offgrid_event(algorithm: str) -> None:
     ex_date = 182 / 365
-    request = make_request(
+    request = _make_request(
         ex_date=ex_date, model="Hybrid", maturity=364 / 365, steps=4,
     )
     shifted = roll_calendar_day(request)
@@ -248,7 +248,7 @@ def test_calendar_one_day_theta_no_longer_jumps_at_offgrid_event(algorithm: str)
     assert aligned_event_step(ex_date, request.maturity, request.steps) == 2
     assert aligned_event_step(shifted.dividends[0].time, shifted.maturity, 4) is None
 
-    initial = price_contract(request, algorithm=algorithm).price
+    initial = _option_price(request, algorithm)
     later = price_contract(shifted, algorithm=algorithm).price
     exact_initial, _ = deterministic_american_reference(request)
     exact_later, _ = deterministic_american_reference(shifted)
@@ -262,7 +262,7 @@ def test_calendar_one_day_theta_no_longer_jumps_at_offgrid_event(algorithm: str)
 # Preserve cash-dividend timing and exercise rules in the next checks.
 def test_full_desk_risk_theta_matches_deterministic_reference(algorithm: str) -> None:
     from functools import partial
-    request = make_request(
+    request = _make_request(
         ex_date=182 / 365, model="Hybrid", maturity=364 / 365,
     )
     snap = compute_desk_risk(
@@ -280,31 +280,25 @@ def test_full_desk_risk_theta_matches_deterministic_reference(algorithm: str) ->
 @pytest.mark.parametrize("model", MODELS)
 @pytest.mark.parametrize("algorithm", ALGORITHMS)
 @pytest.mark.parametrize("kind, strike", (("Call", 100.0), ("Put", 160.0)))
-def test_two_offgrid_dividends_match_deterministic_reference(
-    model: str, algorithm: str, kind: str, strike: float,
-) -> None:
-    request = make_request(
+def test_two_offgrid_dividends_match_deterministic_reference(model: str, algorithm: str, kind: str, strike: float) -> None:
+    request = _make_request(
         model=model, option_type=kind, strike=strike, spot=130.0,
         steps=8, dividends=(
             DividendInput(time=0.30, amount=7.0),
             DividendInput(time=0.70, amount=13.0),
         ),
     )
-    exact, _ = deterministic_american_reference(request)
-    actual = price_contract(request, algorithm=algorithm).price
-    assert actual == pytest.approx(exact, abs=1e-8, rel=1e-10)
+    _assert_deterministic_price(request, algorithm)
 
 
 @pytest.mark.parametrize("model", MODELS)
 @pytest.mark.parametrize("algorithm", ALGORITHMS)
 # Preserve cash-dividend timing and exercise rules in the next checks.
-def test_dividend_at_expiry_preserves_pre_jump_exercise(
-    model: str, algorithm: str,
-) -> None:
-    request = make_request(ex_date=1.0, model=model)
+def test_dividend_at_expiry_preserves_pre_jump_exercise(model: str, algorithm: str) -> None:
+    request = _make_request(ex_date=1.0, model=model)
     exact, event = deterministic_american_reference(request)
     assert event == "pre-dividend"
-    actual = price_contract(request, algorithm=algorithm).price
+    actual = _option_price(request, algorithm)
     assert actual == pytest.approx(exact, abs=1e-8, rel=1e-10)
 
 
@@ -362,14 +356,14 @@ def test_stochastic_ex_date_lower_bound_has_no_lookahead() -> None:
 
 
 def test_stochastic_warning_does_not_claim_exact_bridge() -> None:
-    request = make_request(volatility=0.2)
+    request = _make_request(volatility=0.2)
     warning = assess_dividend_exercise(request, 23.0).warning
     assert warning and "conservative lower bound" in warning and "Check convergence" in warning
 
 
 # Zero-volatility cases provide a strong independent event bridge benchmark.
 def test_zero_volatility_offgrid_audit_benchmark_has_no_model_gap() -> None:
-    request = make_request(ex_date=0.6)
+    request = _make_request(ex_date=0.6)
     result = price_contract(request, algorithm="Recursive")
     audit = assess_dividend_exercise(request, result.price)
     assert audit.deterministic_reference == pytest.approx(result.price, abs=1e-8)
@@ -379,11 +373,9 @@ def test_zero_volatility_offgrid_audit_benchmark_has_no_model_gap() -> None:
 
 @pytest.mark.parametrize("model", MODELS)
 @pytest.mark.parametrize("algorithm", ALGORITHMS)
-def test_aligned_stochastic_exdate_has_no_offgrid_warning(
-    model: str, algorithm: str,
-) -> None:
+def test_aligned_stochastic_exdate_has_no_offgrid_warning(model: str, algorithm: str) -> None:
     """N=20, t=0.60 is exactly the twelfth lattice endpoint."""
-    request = make_request(ex_date=0.60, model=model, volatility=0.20, steps=20)
+    request = _make_request(ex_date=0.60, model=model, volatility=0.20, steps=20)
     result = price_contract(request, algorithm=algorithm)
     assert assess_dividend_exercise(request, result.price).warning is None
 
@@ -391,31 +383,27 @@ def test_aligned_stochastic_exdate_has_no_offgrid_warning(
 # Post-dividend put exercise uses the adjusted stock state consistently.
 @pytest.mark.parametrize("model", MODELS)
 @pytest.mark.parametrize("algorithm", ALGORITHMS)
-def test_offgrid_single_dividend_put_post_jump_matches_reference(
-    model: str, algorithm: str,
-) -> None:
+def test_offgrid_single_dividend_put_post_jump_matches_reference(model: str, algorithm: str) -> None:
     """An in-the-money deterministic put should exercise after the cash jump."""
-    request = make_request(
+    request = _make_request(
         ex_date=0.60, model=model, option_type="Put",
         spot=120.0, strike=140.0, volatility=0.0,
     )
     exact, event = deterministic_american_reference(request)
     assert event == "post-dividend"
-    actual = price_contract(request, algorithm=algorithm).price
+    actual = _option_price(request, algorithm)
     assert actual == pytest.approx(exact, rel=1e-11, abs=1e-9)
 
 
 @pytest.mark.parametrize("model", MODELS)
 @pytest.mark.parametrize("algorithm", ALGORITHMS)
-def test_stochastic_put_with_offgrid_exdate_dominates_european(
-    model: str, algorithm: str,
-) -> None:
+def test_stochastic_put_with_offgrid_exdate_dominates_european(model: str, algorithm: str) -> None:
     # Preserve cash-dividend timing and exercise rules in the next checks.
-    request = make_request(
+    request = _make_request(
         ex_date=0.61, model=model, option_type="Put", strike=140.0,
         volatility=0.20, steps=20,
     )
-    american = price_contract(request, algorithm=algorithm).price
+    american = _option_price(request, algorithm)
     european = price_contract(
         replace(request, exercise="European"), algorithm=algorithm,
     ).price
@@ -469,9 +457,7 @@ def test_zero_strike_call_with_dividend_uses_shifted_strike() -> None:
     (.50, .20, 8.0, 4),
     (.55, .20, 8.0, 5),
 ))
-def test_cash_dividend_event_does_not_create_false_parent_exercise(
-    model: str, ex_date: float, vol: float, amount: float, step: int,
-) -> None:
+def test_dividend_event_no_false_parent_exercise(model: str, ex_date: float, vol: float, amount: float, step: int) -> None:
     request = PricingRequest(
         spot=120.0, strike=100.0, rate=.05,
         volatility=vol, maturity=1.0, steps=10, model=model,
