@@ -18,7 +18,6 @@ def _check_bump(name: str, size: float) -> None:
 
 
 def vanna_from_samples(
-    *,
     plus_high: float | None,
     minus_high: float | None,
     plus_low: float | None,
@@ -45,7 +44,6 @@ def vanna_from_samples(
 
 
 def vomma_from_samples(
-    *,
     base: float,
     high: float | None,
     low: float | None,
