@@ -39,7 +39,7 @@ Saved experimental evidence is available through an **optional, read-only archiv
 | `tests/` | Pricing, dividend-boundary, numerical, frontend and provenance regression tests |
 | `results/data/` | Versioned CSV measurements and experiment outputs |
 | `results/figures/` | Versioned visual evidence from offline studies |
-| `docs/` | Current architecture, quantitative research, experiment, validation and course references |
+| `docs/` | Current architecture, quantitative research, experiment and validation guides |
 
 ## Numerical integrity and limitations
 
@@ -55,7 +55,6 @@ Saved experimental evidence is available through an **optional, read-only archiv
 - [Research](docs/research.md): current Streamlit workspaces and financial interpretation.
 - [Experiments](docs/experiments.md): quantitative designs and recorded evidence.
 - [Validation](docs/validation.md): maintained tests and manual acceptance checks.
-- [Project brief (PDF)](docs/project_brief.pdf) and [lattice mathematics (PDF)](docs/lattice_math.pdf): original course references.
 
 ## Final verification
 
