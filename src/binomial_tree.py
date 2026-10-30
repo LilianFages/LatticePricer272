@@ -92,29 +92,6 @@ class BinomialTree:
             )
         )
 
-    def _node_price(
-        self: Self,
-        step: int,
-        position: int
-    ) -> float:
-        """Compute the price of one node in a column."""
-        growth_factor = math.exp(
-            self.rate
-            * self.dt
-            * step
-        )
-
-        alpha_power = (
-            step
-            - 2 * position
-        )
-
-        return (
-            self.spot
-            * growth_factor
-            * self.alpha ** alpha_power
-        )
-
     def _set_node_probabilities(
         self: Self,
         node: Node
