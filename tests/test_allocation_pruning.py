@@ -47,6 +47,7 @@ def _build_tree(
     )
 
 
+# Check lattice geometry, valuation parity and allocation independently.
 def test_zero_threshold_keeps_full_allocation() -> None:
     tree = _build_tree(
         nb_steps=10,
@@ -183,6 +184,7 @@ def assert_mass_conserved(tree: TrinomialTree) -> None:
         assert math.isclose(mass, 1.0, rel_tol=0.0, abs_tol=1e-10)
         if step == tree.nb_steps:
             break
+        # Check lattice geometry, valuation parity and allocation independently.
         following: dict[int, Node] = {}
         for node in frontier.values():
             edges = (
@@ -214,6 +216,7 @@ def test_allocation_pruning_preserves_prices_and_mass(
     option_kind: str,
     american: bool,
 ) -> None:
+    # Check lattice geometry, valuation parity and allocation independently.
     """Compare two independently built recombining trinomial graphs."""
     common = dict(
         spot=100.0,
@@ -253,6 +256,7 @@ def test_allocation_pruning_preserves_prices_and_mass(
         abs_tol=1e-9,
     )
     assert_mass_conserved(full)
+    # Verify the expected numerical or workflow invariant on this case.
     assert_mass_conserved(optimized)
     assert optimized.allocated_node_count > 0
 

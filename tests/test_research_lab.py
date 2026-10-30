@@ -42,33 +42,33 @@ def _sample_robustness() -> pd.DataFrame:
 
 
 # Only successful two-sided runs constitute direct accuracy comparisons.
-def test_coverage_separates_comparisons_from_allocation_only():
+def test_coverage_separates_comparisons_from_allocation_only() -> None:
     assert coverage_summary(_sample_robustness()) == {
         "total": 3, "compared": 2, "allocation_only": 1, "failed": 0}
 
 
 # Exclude rows with an unavailable branch-side reference from price-gap statistics.
-def test_comparable_cases_excludes_unavailable_reference():
+def test_comparable_cases_excludes_unavailable_reference() -> None:
     comp = comparable_cases(_sample_robustness())
     assert len(comp) == 2
     assert comp["absolute_gap"].notna().all()
 
 
 # Average node savings must use only rows with comparable node counts.
-def test_savings_only_uses_comparable_cases():
+def test_savings_only_uses_comparable_cases() -> None:
     result = robustness_by_step(_sample_robustness())
     assert len(result) == 1
     assert result.iloc[0]["mean_savings_pct"] == pytest.approx(35.2)
 
 
 # Status metadata is mandatory to interpret missing numerical fields.
-def test_missing_status_fields_fails():
+def test_missing_status_fields_fails() -> None:
     with pytest.raises(DatasetError):
         coverage_summary(pd.DataFrame({"status": ["passed"]}))
 
 
 # Pareto membership requires joint non-domination in error and elapsed time.
-def test_pareto_filters_dominated_and_keeps_tradeoff():
+def test_pareto_filters_dominated_and_keeps_tradeoff() -> None:
     data = pd.DataFrame({"model": ["A", "B", "C", "D"],
                          "max_median_runtime_seconds": [.010, .020, .030, .040],
                          "worst_absolute_error": [.02, .01, .015, .005]})
@@ -77,7 +77,7 @@ def test_pareto_filters_dominated_and_keeps_tradeoff():
 
 
 # Equal observations and exact-zero errors remain legitimate frontier data.
-def test_pareto_retains_equivalent_points_and_zero_error():
+def test_pareto_retains_equivalent_points_and_zero_error() -> None:
     data = pd.DataFrame({"model": ["A", "B", "C"],
                          "max_median_runtime_seconds": [.01, .01, .02],
                          "worst_absolute_error": [0, 0, 0]})
@@ -85,14 +85,14 @@ def test_pareto_retains_equivalent_points_and_zero_error():
 
 
 # Nonpositive timing or invalid errors cannot define a feasible frontier.
-def test_pareto_rejects_bad_values():
+def test_pareto_rejects_bad_values() -> None:
     frame = pd.DataFrame({"max_median_runtime_seconds": [0.0, -.01, .01],
                           "worst_absolute_error": [.1, .01, -.01]})
     assert observed_pareto(frame).empty
 
 
 # Target selection uses observed feasible timing, not an extrapolated optimum.
-def test_threshold_best_observed_fastest():
+def test_threshold_best_observed_fastest() -> None:
     frame = pd.DataFrame({"model": ["A", "B", "C"], "nb_steps": [20, 50, 100],
                           "worst_absolute_error": [.012, .004, .001],
                           "max_median_runtime_seconds": [.001, .015, .040]})
@@ -104,19 +104,19 @@ def test_threshold_best_observed_fastest():
 
 
 # Probability-mass diagnostics must preserve the observed numerical residual.
-def test_mass_consistency_small_errors():
+def test_mass_consistency_small_errors() -> None:
     assert mass_consistency(pd.DataFrame({"unconditional_probability_mass":
                                           [1.0, 1.0 + 1e-12, 1.0 - 1e-12]})) == pytest.approx(1e-12)
 
 
 # Do not fabricate missing probability conservation measurements.
-def test_mass_missing_column_rejected():
+def test_mass_missing_column_rejected() -> None:
     with pytest.raises(DatasetError):
         mass_consistency(pd.DataFrame({"probability": [1.0]}))
 
 
 # A known experiment must load with its expected scientific schema.
-def test_catalogue_can_load_known_schema(tmp_path: Path):
+def test_catalogue_can_load_known_schema(tmp_path: Path) -> None:
     spec = CATALOG["Runtime scaling"]
     p = tmp_path / spec.path
     p.parent.mkdir(parents=True)
@@ -126,7 +126,7 @@ def test_catalogue_can_load_known_schema(tmp_path: Path):
 
 
 # Schema drift must fail visibly rather than mislabel numerical series.
-def test_catalogue_rejects_schema_drift(tmp_path: Path):
+def test_catalogue_rejects_schema_drift(tmp_path: Path) -> None:
     spec = CATALOG["Robustness"]
     p = tmp_path / spec.path
     p.parent.mkdir(parents=True)
@@ -136,13 +136,13 @@ def test_catalogue_rejects_schema_drift(tmp_path: Path):
 
 
 # Dataset selection is confined to the declared experiment catalogue.
-def test_catalogue_rejects_unknown_file_name():
+def test_catalogue_rejects_unknown_file_name() -> None:
     with pytest.raises(DatasetError, match="Unknown research dataset"):
         load_dataset("../../src/trinomial_tree.py")
 
 
 # CSV export must preserve Unicode and spreadsheet-readable encoding.
-def test_csv_export_utf8_with_excel_bom():
+def test_csv_export_utf8_with_excel_bom() -> None:
     value = as_csv(pd.DataFrame({"label": ["européen"], "n": [4]}))
     assert value.startswith(b"\xef\xbb\xbf")
     assert b"europ" in value
@@ -150,13 +150,13 @@ def test_csv_export_utf8_with_excel_bom():
 
 
 # Missing files must raise an explicit data-availability error.
-def test_dataset_missing_is_explicit(tmp_path: Path):
+def test_dataset_missing_is_explicit(tmp_path: Path) -> None:
     with pytest.raises(DatasetError, match="Missing experiment export"):
         load_dataset("Pruning benchmark", root=tmp_path)
 
 
 # Integration assertions apply to actual exports when present.
-def test_repository_exports_when_available():
+def test_repository_exports_when_available() -> None:
     """Schema smoke test when run inside the real Git checkout."""
     from frontend.research_lab_service import ROOT
     for name in ("Robustness", "Accuracy/cost", "Temporal profiles", "Pruning benchmark"):
@@ -175,7 +175,7 @@ def test_repository_exports_when_available():
     (None, 0.02), (-1.0, 0.01), (0.0, 0.0), ("not-a-number", 0.1),
     (0.01, None), (0.01, -0.01), (0.01, "invalid"),
 ])
-def test_cost_error_filters_agree_between_pareto_and_targets(bad_time, bad_gap):
+def test_cost_error_filters_agree_between_pareto_and_targets(bad_time: object, bad_gap: object) -> None:
     source = pd.DataFrame({
         "model": ["Valid", "Invalid"], "nb_steps": [20, 40],
         "max_median_runtime_seconds": [0.01, bad_time],
@@ -189,7 +189,8 @@ def test_cost_error_filters_agree_between_pareto_and_targets(bad_time, bad_gap):
     pd.testing.assert_frame_equal(source, original)
 
 
-def test_cost_error_exact_zero_gap_is_accepted_by_both_summaries():
+def test_cost_error_exact_zero_gap_is_accepted_by_both_summaries() -> None:
+    # Preserve observed data, including missing and failed outcomes.
     source = pd.DataFrame({
         "model": ["Zero", "Other"], "nb_steps": [20, 40],
         "max_median_runtime_seconds": [0.02, 0.03],
@@ -201,7 +202,7 @@ def test_cost_error_exact_zero_gap_is_accepted_by_both_summaries():
     assert best.loc[0, "error_eur"] == 0.0
 
 
-def test_research_archives_still_use_single_dispatcher():
+def test_research_archives_still_use_single_dispatcher() -> None:
     import frontend.research_lab as lab
     assert not hasattr(lab, "render_research_lab_page")
     assert len(lab.RESEARCH_ARCHIVE_HANDLERS) == 6
@@ -209,7 +210,7 @@ def test_research_archives_still_use_single_dispatcher():
 
 
 # test_research_contract_shared.py (tests preserved)
-def _fields(dividends=None):
+def _fields(dividends: object=None):
     return {
         "spot": 120.0, "strike": 110.0, "volatility": 0.32,
         "rate": -0.01, "maturity": 1.5,
@@ -218,17 +219,18 @@ def _fields(dividends=None):
     }
 
 
-def test_both_workspaces_reuse_identical_contract_functions():
+def test_both_workspaces_reuse_identical_contract_functions() -> None:
     assert analytics_views._contract_fields is render_research_contract_fields
     assert research_efficiency_views._contract_fields is render_research_contract_fields
     assert analytics_views._get_request is build_research_request
     assert research_efficiency_views._get_request is build_research_request
 
 
-def test_pricing_request_preserves_units_market_and_lattice_settings():
+def test_pricing_request_preserves_units_market_and_lattice_settings() -> None:
     request = build_research_request(
         _fields(), "Trinomial · Allocation pruning", 125, 1e-12,
     )
+    # Verify the expected numerical or workflow invariant on this case.
     assert (request.spot, request.strike, request.volatility) == (120.0, 110.0, 0.32)
     assert (request.rate, request.maturity) == (-0.01, 1.5)
     assert (request.option_type, request.exercise) == ("Put", "American")
@@ -238,7 +240,7 @@ def test_pricing_request_preserves_units_market_and_lattice_settings():
     assert request.dividends == ()
 
 
-def test_discrete_cash_dividends_are_sorted_and_zero_ignored():
+def test_discrete_cash_dividends_are_sorted_and_zero_ignored() -> None:
     request = build_research_request(
         _fields([{"time": 1.0, "amount": 2.0},
                  {"time": 0.5, "amount": 1.5},
@@ -248,13 +250,14 @@ def test_discrete_cash_dividends_are_sorted_and_zero_ignored():
     assert [(p.time, p.amount) for p in request.dividends] == [(0.5, 1.5), (1.0, 2.0)]
 
 
-def test_incomplete_dividend_is_not_silently_dropped():
+# Preserve observed data, including missing and failed outcomes.
+def test_incomplete_dividend_is_not_silently_dropped() -> None:
     fields = _fields([{"time": 0.5, "amount": None}])
     with pytest.raises(PricingInputError, match="Dividend row 1"):
         build_research_request(fields, "Trinomial · Full", 80, 0.0)
 
 
-def test_research_contract_does_not_depend_on_analytics_view():
+def test_research_contract_does_not_depend_on_analytics_view() -> None:
     from inspect import getsource
     import frontend.research_contract as shared
     code = getsource(shared)
@@ -264,7 +267,7 @@ def test_research_contract_does_not_depend_on_analytics_view():
 
 
 # test_research_stopping_service.py (tests preserved)
-def _request(**kwargs):
+def _request(**kwargs: object):
     base = PricingRequest(
         model="Trinomial · Allocation pruning", exercise="American",
         option_type="Put", steps=20,
@@ -274,10 +277,10 @@ def _request(**kwargs):
 
 
 # Comparison must share a contract and discretization without mutation.
-def test_same_market_and_grid_without_mutating_original():
+def test_same_market_and_grid_without_mutating_original() -> None:
     observed = []
 
-    def fake_analyzer(req):
+    def fake_analyzer(req: PricingRequest):
         observed.append(req)
         return SimpleNamespace(request=req, premium=8.0 if req.dividends else 7.0,
                                early_exercise_probability=.25 if req.dividends else .30)
@@ -293,44 +296,45 @@ def test_same_market_and_grid_without_mutating_original():
 
 
 # Invalid comparisons fail before a lattice is built or priced.
-def test_no_dividends_rejected_without_pricing():
+def test_no_dividends_rejected_without_pricing() -> None:
     calls = []
     with pytest.raises(PricingInputError, match="Add at least one"):
         compare_dividend_exercise(_request(dividends=()), analyzer=calls.append)
     assert calls == []
 
 
-def test_binomial_cash_dividend_is_not_silently_substituted():
+def test_binomial_cash_dividend_is_not_silently_substituted() -> None:
     with pytest.raises(PricingInputError, match="Binomial"):
         compare_dividend_exercise(_request(model="Binomial"))
 
 
-def test_two_dividends_in_same_lattice_step_rejected():
+def test_two_dividends_in_same_lattice_step_rejected() -> None:
     req = _request(dividends=(DividendInput(.451, 2.), DividendInput(.49, 1.)))
     with pytest.raises(PricingInputError, match="same lattice"):
         compare_dividend_exercise(req)
 
 
-def test_interactive_depth_guard_precedes_analysis():
+def test_interactive_depth_guard_precedes_analysis() -> None:
+    # Preserve observed data, including missing and failed outcomes.
     calls = []
     with pytest.raises(PricingInputError, match="at most N=200"):
         compare_dividend_exercise(_request(steps=201), analyzer=calls.append)
     assert not calls
 
 
-def test_analyzer_failure_is_not_silenced():
-    def fail(_):
+def test_analyzer_failure_is_not_silenced() -> None:
+    def fail(_: object):
         raise RuntimeError("engine failure")
     with pytest.raises(RuntimeError, match="engine failure"):
         compare_dividend_exercise(_request(), analyzer=fail)
 
 
 # Valid dividend events remain explicit in both comparison scenarios.
-def test_two_cashflow_events_preserved_in_dividend_case():
+def test_two_cashflow_events_preserved_in_dividend_case() -> None:
     req = _request(steps=20, dividends=(DividendInput(.25, 2.), DividendInput(.75, 1.)))
     seen = []
 
-    def analyzer(r):
+    def analyzer(r: object):
         seen.append(r)
         return SimpleNamespace(request=r, premium=3.0,
                                early_exercise_probability=0.0)
@@ -341,10 +345,11 @@ def test_two_cashflow_events_preserved_in_dividend_case():
     assert seen[1].steps == seen[0].steps
 
 
-def test_real_engine_comparison_uses_two_valid_studies():
+def test_real_engine_comparison_uses_two_valid_studies() -> None:
     result = compare_dividend_exercise(_request(steps=20))
     assert result.with_dividends.request.dividends
     assert not result.without_dividends.request.dividends
+    # Verify the expected numerical or workflow invariant on this case.
     assert result.with_dividends.request.spot == result.without_dividends.request.spot
     assert len(result.with_dividends.dates) == 21
     assert len(result.without_dividends.dates) == 21

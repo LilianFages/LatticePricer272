@@ -76,6 +76,7 @@ def test_vomma_polynomial(centered: bool) -> None:
         base=_polynomial(s,sigma),high=_polynomial(s,sigma+dv),
         low=_polynomial(s,lo_sigma),vol_bump=dv,centered=centered,
     )
+    # Verify the expected numerical or workflow invariant on this case.
     assert actual == pytest.approx(0.0001*(14+1.6*s),abs=1e-10)
 
 
@@ -100,6 +101,7 @@ def test_invalid_vanna_bump(bad_bump: float) -> None:
 
 
 @pytest.mark.parametrize("bad_bump", [0.,-1.,float("nan"),float("inf")])
+# Keep Greek calculations and hedging assumptions explicit.
 def test_invalid_vomma_bump(bad_bump: float) -> None:
     with pytest.raises(ValueError):
         vomma_from_samples(base=1.,high=2.,low=3.,vol_bump=bad_bump,
@@ -126,6 +128,7 @@ def test_analytic_rejects_nonpositive_volatility(bad: float) -> None:
     (.6,"Long",-600,"SELL"),(.6,"Short",600,"BUY"),
     (-.4,"Long",400,"BUY"),(-.4,"Short",-400,"SELL"),
 ])
+# Keep Greek calculations and hedging assumptions explicit.
 def test_delta_hedge_signs(
     delta: float, side: str, quantity: int, action: str
 ) -> None:
@@ -190,6 +193,7 @@ def test_bump_dataclass_is_shared() -> None:
 
 
 @pytest.mark.parametrize("vol", [0.0, 0.001, 0.20])
+# Keep Greek calculations and hedging assumptions explicit.
 def test_five_greeks_match_old_adapter(vol: float) -> None:
     contract = replace(CONTRACT, volatility=vol)
     front = frontend_greeks(contract, pricer=polynomial_pricer)
@@ -213,6 +217,7 @@ def test_seven_greeks_match_core(vol: float) -> None:
         validate_request=validate_request,
         calculate_greeks=frontend_greeks,
     )
+    # Verify the expected numerical or workflow invariant on this case.
     assert [front.value(name) for name in ("Delta", "Gamma", "Vega", "Vanna", "Vomma", "Theta", "Rho")] == pytest.approx(
         [core.value(name) for name in ("Delta", "Gamma", "Vega", "Vanna", "Vomma", "Theta", "Rho")]
     )

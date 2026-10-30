@@ -163,6 +163,7 @@ def test_black_scholes_rejects_american_option() -> None:
         (145.0, 90.0, 0.07, 0.12, 2.25),
     ],
 )
+# Verify that the pricing workflow keeps its input contract intact.
 def test_shared_black_scholes_terms_match_independent_formula(
     spot, strike, rate, volatility, maturity,
 ):
@@ -179,12 +180,13 @@ def test_shared_black_scholes_terms_match_independent_formula(
 
 @pytest.mark.parametrize("option_cls", [CallOption, PutOption])
 @pytest.mark.parametrize("cash_adjustment", [0.0, 3.0])
-def test_offgrid_exercise_uses_same_regular_bs_terms(option_cls, cash_adjustment):
+def test_offgrid_exercise_uses_same_regular_bs_terms(option_cls: object, cash_adjustment: object) -> None:
     """Forced exercise expectation is BS with an explicitly shifted strike."""
     actual = _exercise_at_ex_date(
         100.0, option_cls(strike=100.0), 0.02, 0.20, 0.5,
         cash_adjustment=cash_adjustment,
     )
+    # Verify that the pricing workflow keeps its input contract intact.
     reference = BlackScholesPricer().price(
         option_cls(strike=100.0 + cash_adjustment),
         spot=100.0, rate=0.02, volatility=0.20, maturity=0.5,

@@ -82,6 +82,7 @@ def test_probabilities_are_admissible_and_sum_to_one() -> None:
         abs_tol=1e-12,
     )
 
+    # Verify the expected numerical or workflow invariant on this case.
     assert 0.0 <= tree.root.up_probability <= 1.0
     assert 0.0 <= tree.root.mid_probability <= 1.0
     assert 0.0 <= tree.root.down_probability <= 1.0
@@ -167,6 +168,7 @@ def test_probabilities_match_variance() -> None:
         - expected_value ** 2
     )
 
+    # Verify the expected numerical or workflow invariant on this case.
     assert math.isclose(
         reconstructed_variance,
         variance,
@@ -239,6 +241,7 @@ def test_terminal_prices_are_geometrically_spaced() -> None:
             / lower_node.price
         )
 
+        # Verify the expected numerical or workflow invariant on this case.
         assert math.isclose(
             ratio,
             tree.alpha,
@@ -324,6 +327,7 @@ def test_large_step_count_probabilities_are_admissible() -> None:
         abs_tol=1e-12,
     )
 
+    # Verify the expected numerical or workflow invariant on this case.
     assert 0.0 <= tree.no_dividend_up_probability <= 1.0
     assert 0.0 <= tree.no_dividend_mid_probability <= 1.0
     assert 0.0 <= tree.no_dividend_down_probability <= 1.0
@@ -349,6 +353,7 @@ def test_shared_trinomial_stencil_and_column_bottom() -> None:
 
     upper, middle, lower, bottom = (Node(value) for value in (160., 120., 90., 60.))
     upper.lower_neighbor = middle
+    # Check lattice geometry, valuation parity and allocation independently.
     middle.lower_neighbor = lower
     lower.lower_neighbor = bottom
     assert TrinomialTree._bottom_node(upper) is bottom

@@ -73,6 +73,7 @@ def test_apply_explorer_rotates_widget_generation_and_forgets_stale_graph() -> N
 
 
 def test_apply_comparison_keeps_benchmark_choices_and_clears_stale_result() -> None:
+    # Verify that the pricing workflow keeps its input contract intact.
     req = PricingRequest(steps=5)
     state = {"cmp_models": ("Hybrid",), "cmp_repetitions": 3,
              "last_comparison_report": "old"}
@@ -104,6 +105,7 @@ def test_transfer_never_prices(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_unknown_destination_rejected() -> None:
+    # Reject invalid cases explicitly rather than silently substituting values.
     with pytest.raises(ValueError):
         plan_handoff(PricingRequest(), "Unknown")
 
@@ -128,6 +130,7 @@ def test_import_exact_identity_and_clear_stale_output(destination: str, seed: st
 
 
 @pytest.mark.parametrize("destination", ["Compare models", "Explore lattice"])
+# Verify that the pricing workflow keeps its input contract intact.
 def test_absent_reference_does_not_mutate_state(destination: str) -> None:
     state = {"last_comparison_report": object(), "lattice_explorer_result": object()}
     before = state.copy()
@@ -155,6 +158,7 @@ def test_explorer_cannot_silently_drop_second_dividend() -> None:
     bad = replace(original, dividends=(DividendInput(.2, 1.), DividendInput(.7, 2.)))
     save_reference(state, bad)
     before = state.copy()
+    # Verify that the pricing workflow keeps its input contract intact.
     accepted, issues = import_saved_reference(state, "Explore lattice")
     assert not accepted and any("at most one" in message for message in issues)
     assert state == before
@@ -180,6 +184,7 @@ def test_import_refuses_unknown_destination_without_mutation() -> None:
     before = state.copy()
     with pytest.raises(ValueError, match="Unknown"):
         import_saved_reference(state, "Unknown")
+    # Verify the expected numerical or workflow invariant on this case.
     assert state == before
 
 # LOT_5C3_GUARDED_REFACTOR

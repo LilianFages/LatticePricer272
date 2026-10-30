@@ -299,6 +299,7 @@ def test_seven_greeks_use_injected_pricing_algorithm(algorithm: str) -> None:
         assert snapshot.value(name) is not None
 
 
+# Verify that the pricing workflow keeps its input contract intact.
 def test_greek_values_agree_across_algorithms() -> None:
     request = PricingRequest(
         model="Hybrid", option_type="Put", exercise="American",
@@ -340,6 +341,7 @@ def test_binomial_cash_dividend_restriction_remains() -> None:
         model="Binomial", steps=8,
         dividends=(DividendInput(time=0.5, amount=3.0),),
     )
+    # Reject invalid cases explicitly rather than silently substituting values.
     with pytest.raises(PricingInputError, match="BinomialTree"):
         price_contract(request, algorithm="Backward")
 
@@ -348,40 +350,40 @@ def test_binomial_cash_dividend_restriction_remains() -> None:
 
 # test_model_selection.py (tests preserved)
 # Model routing: pricing families and non-pruned defaults must remain distinct.
-def test_three_distinct_families():
+def test_three_distinct_families() -> None:
     assert FAMILIES == ("Binomial", "Hybrid", "Trinomial")
 
 
-def test_binomial_without_pruning_maps_exactly():
+def test_binomial_without_pruning_maps_exactly() -> None:
     model, threshold = resolve_model_selection("Binomial")
     assert model == "Binomial" and threshold == 1e-18
 
 
-def test_hybrid_without_pruning_maps_exactly():
+def test_hybrid_without_pruning_maps_exactly() -> None:
     model, threshold = resolve_model_selection("Hybrid")
     assert model == "Hybrid" and threshold == 1e-18
 
 
-def test_trinomial_full_requires_no_pruning():
+def test_trinomial_full_requires_no_pruning() -> None:
     assert resolve_model_selection("Trinomial", False) == (
         "Trinomial · Full", 1e-18,
     )
 
 
 # Trinomial pruning selections must retain exact method and threshold.
-def test_trinomial_on_defaults_to_allocation():
+def test_trinomial_on_defaults_to_allocation() -> None:
     assert resolve_model_selection("Trinomial", True) == (
         "Trinomial · Allocation pruning", 1e-18,
     )
 
 
-def test_trinomial_branch_preserves_threshold():
+def test_trinomial_branch_preserves_threshold() -> None:
     assert resolve_model_selection("Trinomial", True, "Branch", 1e-12) == (
         "Trinomial · Branch pruning", 1e-12,
     )
 
 
-def test_trinomial_allocation_preserves_threshold():
+def test_trinomial_allocation_preserves_threshold() -> None:
     assert resolve_model_selection("Trinomial", True, "Allocation", 1e-15) == (
         "Trinomial · Allocation pruning", 1e-15,
     )
@@ -389,36 +391,37 @@ def test_trinomial_allocation_preserves_threshold():
 
 # Reject ambiguous, unsupported, or non-finite pruning configurations.
 @pytest.mark.parametrize("threshold", PRUNING_THRESHOLDS)
-def test_all_supported_thresholds_map_identically(threshold):
+def test_all_supported_thresholds_map_identically(threshold: float) -> None:
     _, selected = resolve_model_selection("Trinomial", True, "Branch", threshold)
     assert selected == threshold
 
 
 @pytest.mark.parametrize("family", ("Binomial", "Hybrid"))
-def test_non_trinomial_cannot_silently_enable_pruning(family):
+def test_non_trinomial_cannot_silently_enable_pruning(family: object) -> None:
     with pytest.raises(PricingInputError, match="only for Trinomial"):
         resolve_model_selection(family, True)
 
 
 @pytest.mark.parametrize("family", ("Unknown", "", "trinomial"))
-def test_unknown_family_rejected(family):
+def test_unknown_family_rejected(family: object) -> None:
     with pytest.raises(PricingInputError, match="Unknown model"):
         resolve_model_selection(family)
 
 
-def test_unknown_method_rejected():
+def test_unknown_method_rejected() -> None:
+    # Reject invalid cases explicitly rather than silently substituting values.
     with pytest.raises(PricingInputError, match="implementation"):
         resolve_model_selection("Trinomial", True, "Guess")
 
 
 @pytest.mark.parametrize("threshold", (0.0, -1e-18, 0.5, float("nan"), float("inf")))
-def test_unsupported_or_nonfinite_pruning_threshold_rejected(threshold):
+def test_unsupported_or_nonfinite_pruning_threshold_rejected(threshold: float) -> None:
     with pytest.raises(PricingInputError):
         resolve_model_selection("Trinomial", True, threshold=threshold)
 
 
 @pytest.mark.parametrize("pruning", (0, 1, "On", None))
-def test_pruning_must_be_a_boolean(pruning):
+def test_pruning_must_be_a_boolean(pruning: object) -> None:
     with pytest.raises(PricingInputError, match="boolean"):
         resolve_model_selection("Trinomial", pruning)
 
@@ -434,15 +437,16 @@ def test_pruning_must_be_a_boolean(pruning):
         ("Trinomial", True, "Allocation"),
     ],
 )
-def test_every_existing_engine_remains_available(family, enabled, method):
+def test_every_existing_engine_remains_available(family: object, enabled: object, method: object) -> None:
     model, threshold = resolve_model_selection(family, enabled, method)
     assert model in MODELS
     request = PricingRequest(model=model, pruning_threshold=threshold)
     assert request.model == model
 
 
-def test_full_is_never_mislabeled_as_pruned_when_off():
+def test_full_is_never_mislabeled_as_pruned_when_off() -> None:
     for method in ("Allocation", "Branch"):
+        # Verify that the pricing workflow keeps its input contract intact.
         model, threshold = resolve_model_selection(
             "Trinomial", False, method, 1e-12,
         )

@@ -24,7 +24,7 @@ from frontend.research_risk_numerics import (
 
 
 # test_quant_gamma_grid.py (tests preserved)
-def test_grid_spacing_trinomial_atm_100_steps():
+def test_grid_spacing_trinomial_atm_100_steps() -> None:
     request = PricingRequest()
     pct, scheme, clipped = select_gamma_bump(request, GreekBumps())
     assert scheme == "grid-aware" and not clipped
@@ -32,19 +32,20 @@ def test_grid_spacing_trinomial_atm_100_steps():
     assert 3.4 < pct < 3.6
 
 
-def test_manual_gamma_width_is_respected():
+def test_manual_gamma_width_is_respected() -> None:
     pct, scheme, clipped = select_gamma_bump(
         PricingRequest(), GreekBumps(gamma_spot_pct=5.0))
     assert (pct, scheme, clipped) == (5.0, "manual", False)
 
 
-def test_default_gamma_stencil_spans_fixed_trinomial_payoff_kink():
+def test_default_gamma_stencil_spans_fixed_trinomial_payoff_kink() -> None:
     """Separate demonstrator grid, independent of production engine.
 
     It implements an ideal no-dividend recombining trinomial with probabilities
     from the stated course lattice, not production pricing-service internals.
     """
-    def price_on_grid(request):
+    # Check the numerical Greek or hedge rule independently of UI formatting.
+    def price_on_grid(request: PricingRequest):
         s,k,r,sig,t,n=(request.spot,request.strike,request.rate,
                          request.volatility,request.maturity,request.steps)
         dt=t/n
@@ -70,8 +71,8 @@ def test_default_gamma_stencil_spans_fixed_trinomial_payoff_kink():
     assert "spot_gamma+" in fixed.scenario_prices
 
 
-def test_gamma_bump_independent_of_delta_and_metadata():
-    def quadratic(req):
+def test_gamma_bump_independent_of_delta_and_metadata() -> None:
+    def quadratic(req: PricingRequest):
         return SimpleNamespace(price=req.spot**2+req.volatility+req.rate+req.maturity,elapsed_ms=1.0)
     result=calculate_greeks(PricingRequest(),GreekBumps(),pricer=quadratic)
     assert result.delta == pytest.approx(200.0)
@@ -87,7 +88,8 @@ def test_gamma_bump_independent_of_delta_and_metadata():
         ("Fixed ±5%", 5.0),
     ],
 )
-def test_active_risk_numerics_forwards_gamma_choice(monkeypatch, gamma_choice, expected):
+# Check the numerical Greek or hedge rule independently of UI formatting.
+def test_active_risk_numerics_forwards_gamma_choice(monkeypatch: pytest.MonkeyPatch, gamma_choice: object, expected: object) -> None:
     """The live workspace, not the retired Greeks page, forwards Gamma's N bump."""
     from contextlib import nullcontext
 
@@ -109,9 +111,10 @@ def test_active_risk_numerics_forwards_gamma_choice(monkeypatch, gamma_choice, e
         lambda: ({"example": "saved"}, "Trinomial · Allocation pruning",
                  (1.0, 0.5), (80, 40), 1e-18, gamma_choice, True),
     )
+    # Check the numerical Greek or hedge rule independently of UI formatting.
     monkeypatch.setattr(views, "_get_request", lambda *_a: request)
 
-    def record_study(actual_request, bumps, depths, *, gamma_bump_pct):
+    def record_study(actual_request: object, bumps: object, depths: object, *, gamma_bump_pct: object):
         observed.update(request=actual_request, bumps=bumps,
                         depths=depths, gamma_bump_pct=gamma_bump_pct)
         return ()
@@ -127,7 +130,8 @@ def test_active_risk_numerics_forwards_gamma_choice(monkeypatch, gamma_choice, e
     assert state["qa_stab_result"] == ((), request)
 
 
-def test_active_risk_numerics_does_not_reprice_on_view_rerun(monkeypatch):
+def test_active_risk_numerics_does_not_reprice_on_view_rerun(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Check the numerical Greek or hedge rule independently of UI formatting.
     """Charts and display state must never launch fresh lattice pricing."""
     from contextlib import nullcontext
 
@@ -150,22 +154,23 @@ def test_active_risk_numerics_does_not_reprice_on_view_rerun(monkeypatch):
         views, "greeks_stability",
         lambda *_a, **_kw: (_ for _ in ()).throw(AssertionError("Unexpected repricing")),
     )
+    # Check the numerical Greek or hedge rule independently of UI formatting.
     monkeypatch.setattr(views, "_render_stability_results", displayed.append)
     views.render_greeks_stability_tab()
     assert displayed == [previous]
 
 
-def test_invalid_manual_width_rejected():
+def test_invalid_manual_width_rejected() -> None:
     with pytest.raises(ValueError,match="Gamma"):
         GreekBumps(gamma_spot_pct=0.0).validate()
 
 
 # test_quant_greeks.py (tests preserved)
-def _request(**changes):
+def _request(**changes: object):
     return replace(PricingRequest(), **changes)
 
 
-def _polynomial_pricer(request):
+def _polynomial_pricer(request: PricingRequest):
     """Smooth toy pricing function, NOT a financial model or production fallback."""
     value = (
         0.7 * request.spot
@@ -178,8 +183,9 @@ def _polynomial_pricer(request):
     return SimpleNamespace(price=value, elapsed_ms=2.0)
 
 
-def test_greek_stencils_and_reporting_units():
+def test_greek_stencils_and_reporting_units() -> None:
     result = calculate_greeks(_request(), GreekBumps(), pricer=_polynomial_pricer)
+    # Verify the expected numerical or workflow invariant on this case.
     assert result.delta == pytest.approx(2.7, abs=1e-10)
     assert result.gamma == pytest.approx(0.02, abs=1e-10)
     assert result.vega_1pp == pytest.approx(0.035, abs=1e-10)
@@ -191,7 +197,7 @@ def test_greek_stencils_and_reporting_units():
     assert result.volatility_scheme == "central"
 
 
-def test_near_zero_volatility_uses_forward_second_order():
+def test_near_zero_volatility_uses_forward_second_order() -> None:
     result = calculate_greeks(_request(volatility=0.001), pricer=_polynomial_pricer)
     assert result.vega_1pp == pytest.approx(0.035, abs=1e-10)
     assert result.volatility_scheme.startswith("forward")
@@ -199,14 +205,14 @@ def test_near_zero_volatility_uses_forward_second_order():
     assert "volatility++" in result.scenario_prices
 
 
-def test_zero_volatility_remains_valid_for_mocked_engine():
+def test_zero_volatility_remains_valid_for_mocked_engine() -> None:
     result = calculate_greeks(_request(volatility=0.0), pricer=_polynomial_pricer)
     assert result.vega_1pp == pytest.approx(0.035, abs=1e-10)
     # The mocked pricing engine supports the zero-volatility limit.
     assert result.analytic is None
 
 
-def test_calendar_roll_advances_dividend_and_maturity():
+def test_calendar_roll_advances_dividend_and_maturity() -> None:
     request = _request(model="Hybrid", dividends=(DividendInput(0.5, 3.0),))
     rolled = roll_calendar_day(request)
     assert rolled is not None
@@ -216,18 +222,19 @@ def test_calendar_roll_advances_dividend_and_maturity():
     assert result.theta_1day == pytest.approx(-9.0*DAY, abs=1e-10)
 
 
-def test_theta_unavailable_near_cash_ex_date_without_faking_zero():
+def test_theta_unavailable_near_cash_ex_date_without_faking_zero() -> None:
     request = _request(
         model="Hybrid", dividends=(DividendInput(DAY/2, 0.25),),
     )
     result = calculate_greeks(request, pricer=_polynomial_pricer)
     assert result.theta_1day is None
+    # Verify the expected numerical or workflow invariant on this case.
     assert result.delta is not None
     assert result.evaluations == 9
     assert any("Theta" in issue for issue in result.issues)
 
 
-def test_theta_unavailable_when_maturity_under_one_day():
+def test_theta_unavailable_when_maturity_under_one_day() -> None:
     request = _request(maturity=DAY/2)
     result = calculate_greeks(request, pricer=_polynomial_pricer)
     assert result.theta_1day is None
@@ -236,8 +243,8 @@ def test_theta_unavailable_when_maturity_under_one_day():
     assert result.evaluations == 7
 
 
-def test_one_failed_shock_does_not_zero_out_other_greeks():
-    def partial(request):
+def test_one_failed_shock_does_not_zero_out_other_greeks() -> None:
+    def partial(request: PricingRequest):
         if request.rate > 0.02:
             raise RuntimeError("Synthetic shock failure")
         return _polynomial_pricer(request)
@@ -251,15 +258,15 @@ def test_one_failed_shock_does_not_zero_out_other_greeks():
 
 
 # Failure of the unshocked base price must remain explicit.
-def test_base_failure_is_not_silenced():
-    def fail(_):
+def test_base_failure_is_not_silenced() -> None:
+    def fail(_: object):
         raise RuntimeError("Synthetic base failure")
 
     with pytest.raises(PricingInputError, match="Base contract"):
         calculate_greeks(_request(), pricer=fail)
 
 
-def test_perturbation_input_validation():
+def test_perturbation_input_validation() -> None:
     with pytest.raises(PricingInputError):
         GreekBumps(spot_pct=0).validate()
     with pytest.raises(PricingInputError):
@@ -269,7 +276,7 @@ def test_perturbation_input_validation():
 
 
 # Analytical Greeks are unavailable for unsupported exercise or dividend terms.
-def test_black_scholes_reference_restricted_to_applicable_contracts():
+def test_black_scholes_reference_restricted_to_applicable_contracts() -> None:
     assert analytic_bs_greeks(_request()) is not None
     assert analytic_bs_greeks(_request(exercise="American")) is None
     assert analytic_bs_greeks(_request(volatility=0.0)) is None
@@ -277,7 +284,7 @@ def test_black_scholes_reference_restricted_to_applicable_contracts():
     assert analytic_bs_greeks(_request(model="Hybrid", dividends=(DividendInput(0.5, 2.0),))) is None
 
 
-def test_black_scholes_put_call_greeks_obey_parity():
+def test_black_scholes_put_call_greeks_obey_parity() -> None:
     call = analytic_bs_greeks(_request(option_type="Call"))
     put = analytic_bs_greeks(_request(option_type="Put"))
     assert call is not None and put is not None
@@ -293,7 +300,7 @@ def test_black_scholes_put_call_greeks_obey_parity():
     )
 
 
-def test_export_contains_bumps_and_all_five_greeks():
+def test_export_contains_bumps_and_all_five_greeks() -> None:
     result = calculate_greeks(_request(), pricer=_polynomial_pricer)
     output = greeks_csv(result)
     assert "spot_bump_pct" in output
@@ -304,14 +311,15 @@ def test_export_contains_bumps_and_all_five_greeks():
     assert "contract,model" in output
 
 
-def test_fd_greeks_against_independent_black_scholes_repricing():
+def test_fd_greeks_against_independent_black_scholes_repricing() -> None:
     """Finance-scale check independent of lattice numerical convergence."""
     import math
 
-    def n(x):
+    # Check the numerical Greek or hedge rule independently of UI formatting.
+    def n(x: float):
         return 0.5 * math.erfc(-x / math.sqrt(2))
 
-    def bs_engine(request):
+    def bs_engine(request: PricingRequest):
         s, k, sigma, t, r = (
             request.spot, request.strike, request.volatility,
             request.maturity, request.rate,
@@ -362,6 +370,7 @@ def test_adaptive_n_stencil_is_explicit() -> None:
     ("Fixed ±1%", 1.), ("Fixed ±2%", 2.),
     ("Fixed ±3.5%", 3.5), ("Fixed ±5%", 5.),
 ])
+# Check the numerical Greek or hedge rule independently of UI formatting.
 def test_fixed_n_stencil_choices(mode: str, expected: float) -> None:
     assert n_sweep_gamma_bump(mode) == expected
 
@@ -391,6 +400,7 @@ def test_absolute_and_deviation_are_distinct() -> None:
     assert [p.measured for p in out] == pytest.approx([.4, .45])
 
 
+# Check the numerical Greek or hedge rule independently of UI formatting.
 def test_spot_and_n_dimensions_remain_separate() -> None:
     rows = (_obs("spot bump", .5, gamma=.01), _obs("steps", 80, gamma=.02))
     out = observations(rows, dimension="spot bump", greek="Gamma")

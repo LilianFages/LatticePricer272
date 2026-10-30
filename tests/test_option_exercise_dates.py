@@ -148,6 +148,7 @@ def test_unmatched_forward_rejected() -> None:
 
 def test_baseline_parameter_validation(tmp_path: Path) -> None:
     path = tmp_path / "summary.txt"
+    # Preserve the event-date and exercise-policy conventions in this case.
     path.write_text("K=95.0, r=0.02, sigma=0.2, T=1.0, N=100", encoding="utf-8")
     with pytest.raises(ValueError, match="Baseline parameter mismatch"):
         study.check_baseline(path)
@@ -171,6 +172,7 @@ def test_read_only_n100_and_no_n100_output(monkeypatch: pytest.MonkeyPatch,
         f"Cash dividend D={study.DIVIDEND_AMOUNT} at t={study.DIVIDEND_TIME}\n"
         f"S0 cash-dividend scheme={study.SPOT};\n", encoding="utf-8"
     )
+    # Preserve the event-date and exercise-policy conventions in this case.
     monkeypatch.setattr(study, "RESULTS", result_root)
     monkeypatch.setattr(study, "DATA", data)
     # The baseline N=100 file is an input reference and must never be overwritten.
@@ -193,6 +195,7 @@ def test_read_only_n100_and_no_n100_output(monkeypatch: pytest.MonkeyPatch,
     assert (data / "option_by_dates_sensitivity_N200.csv").exists()
     assert not (data / "option_by_dates_sensitivity_N100.csv").exists()
     assert (figures / "option_by_dates_sensitivity_prices.png").exists()
+    # Verify the expected numerical or workflow invariant on this case.
     assert (figures / "option_by_dates_sensitivity_early_exercise.png").exists()
     assert (figures / "option_by_dates_sensitivity_dividend_spike.png").exists()
     with (data / "option_by_dates_sensitivity_summary.csv").open(encoding="utf-8") as fp:
@@ -333,6 +336,7 @@ def test_american_strict_exercise_over_continuation() -> None:
     assert exercise_decision(low, option, dt=0.5, rate=0, is_maturity=False) is True
 
 
+# Preserve the event-date and exercise-policy conventions in this case.
 def test_experiment_integration_small_tree() -> None:
     """Real src/ integration, deliberately light for the everyday test suite."""
     results = run_experiment(nb_steps=20)

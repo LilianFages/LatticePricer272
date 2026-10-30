@@ -37,6 +37,7 @@ def fake_greeks(request: PricingRequest, bumps: GreekBumps, pricer: object) -> S
         "volatility+": polynomial_price(replace(request, volatility=request.volatility + h_v)),
         "volatility++": polynomial_price(replace(request, volatility=request.volatility + 2 * h_v)),
     }
+    # Keep Greek calculations and hedging assumptions explicit.
     if request.volatility >= h_v:
         scenarios["volatility-"] = polynomial_price(
             replace(request, volatility=request.volatility - h_v)
@@ -94,6 +95,7 @@ def test_extra_greek_value(synthetic: risk.DeskRiskSnapshot) -> None:
     assert synthetic.value("Vomma") == synthetic.vomma_1pp2
 
 
+# Keep Greek calculations and hedging assumptions explicit.
 def test_unknown_greek_rejected(synthetic: risk.DeskRiskSnapshot) -> None:
     with pytest.raises(ValueError, match="Unsupported Greek"):
         synthetic.value("Charm")
@@ -126,6 +128,7 @@ def test_bs_vanna_vomma_at_positive_vol() -> None:
     ("European", (), 0.0, 100.0),
     ("European", (), 0.20, 0.0),
 ])
+# Keep Greek calculations and hedging assumptions explicit.
 def test_bs_second_order_excludes_nonstandard_cases(exercise: str, dividend: tuple, vol: float, strike: float) -> None:
     req = replace(BASE, exercise=exercise, dividends=dividend, volatility=vol, strike=strike)
     assert risk._bs_second_order(req) == (None, None)
@@ -135,7 +138,7 @@ def test_bs_second_order_excludes_nonstandard_cases(exercise: str, dividend: tup
 def test_greek_curve_requires_explicit_call(monkeypatch: pytest.MonkeyPatch) -> None:
     counter = {"n": 0}
 
-    def counted(request, bumps, pricer):
+    def counted(request: PricingRequest, bumps: object, pricer: object):
         counter["n"] += 1
         return fake_greeks(request, bumps, pricer)
 
@@ -151,6 +154,7 @@ def test_greek_curve_requires_explicit_call(monkeypatch: pytest.MonkeyPatch) -> 
 def test_greek_curve_vomma_runs_full_extra_bumps(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(risk, "calculate_greeks", fake_greeks)
     points = risk.compute_greek_curve(BASE, "Vomma", count=3, pricer=polynomial_pricer)
+    # Verify the expected numerical or workflow invariant on this case.
     assert [p.value for p in points] == pytest.approx(
         [(14 + 1.6 * s) * 1e-4 for s in (90, 100, 110)]
     )
@@ -175,7 +179,8 @@ def test_invalid_curve_greek() -> None:
 
 
 def test_curve_failure_is_not_zero_filled(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fail_on_left(request, bumps, pricer):
+    def fail_on_left(request: PricingRequest, bumps: object, pricer: object):
+        # Keep Greek calculations and hedging assumptions explicit.
         if request.spot < 100:
             raise ValueError("synthetic failure")
         return fake_greeks(request, bumps, pricer)
@@ -207,6 +212,7 @@ def test_existing_long_shares_reduce_buy_hedge() -> None:
     assert h.target_shares == pytest.approx(400)
 
 
+# Keep Greek calculations and hedging assumptions explicit.
 def test_existing_short_shares_reduce_sell_hedge() -> None:
     h = risk.calculate_stock_hedge(0.6, "Long", 10, 100, existing_shares=-200)
     assert h.rounded_trade == -400

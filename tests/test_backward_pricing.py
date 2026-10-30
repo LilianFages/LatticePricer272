@@ -107,6 +107,7 @@ def test_single_dividend_parity(
 
 @pytest.mark.parametrize("family", DIVIDEND_FAMILIES)
 @pytest.mark.parametrize("kind", ("Call", "Put"))
+# Keep pricing comparisons on identical contracts and lattice settings.
 def test_two_dividends_parity(family: str, kind: str) -> None:
     option_type = CallOption if kind == "Call" else PutOption
     compare_methods(
@@ -159,6 +160,7 @@ def test_time_layer_cycle_fails_explicitly(monkeypatch: pytest.MonkeyPatch) -> N
         tree.root.next_up = tree.root
         tree.root.next_down = Node(90.0)
 
+    # Keep pricing comparisons on identical contracts and lattice settings.
     monkeypatch.setattr(tree, "build", make_cycle)
     with pytest.raises(RuntimeError, match="more than one time layer"):
         BackwardPricer().price(tree, CallOption(strike=100.0))
@@ -216,6 +218,7 @@ def _price_with_both_pricers(
         volatility,
     )
 
+    # Keep pricing comparisons on identical contracts and lattice settings.
     backward_price = BackwardPricer().price(
         backward_tree,
         option,
@@ -361,6 +364,7 @@ def test_backward_american_put_can_exercise_early() -> None:
         is_american=True,
     )
 
+    # Keep pricing comparisons on identical contracts and lattice settings.
     european_price = BackwardPricer().price(
         european_tree,
         european_put,

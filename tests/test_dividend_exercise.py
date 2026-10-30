@@ -77,6 +77,7 @@ def test_aligned_zero_vol_call_exercises_pre_dividend(
 def test_aligned_stochastic_american_call_has_event_value(
     model: str, algorithm: str,
 ) -> None:
+    # Preserve cash-dividend timing and exercise rules in the next checks.
     request = contract(model=model, steps=16, volatility=0.20)
     value = price_contract(request, algorithm=algorithm).price
     european = price_contract(
@@ -106,6 +107,7 @@ def test_off_grid_warns_and_preserves_recursive_backward_parity(
 
 @pytest.mark.parametrize("model", FAMILIES)
 def test_parity_on_grid_dividends_with_american_put(model: str) -> None:
+    # Preserve cash-dividend timing and exercise rules in the next checks.
     request = contract(
         model=model, option_type="Put", strike=135.0, steps=12,
         dividends=(DividendInput(time=0.25, amount=7.0),
@@ -166,6 +168,7 @@ def test_binomial_american_without_dividend_unchanged(
 def test_aligned_american_exceeds_european_at_sigma_zero(
     algorithm: str,
 ) -> None:
+    # Preserve cash-dividend timing and exercise rules in the next checks.
     request = contract()
     american = price_contract(request, algorithm=algorithm).price
     european = price_contract(
@@ -183,7 +186,7 @@ MODELS = (
 )
 
 
-def make_request(*, ex_date: float = 0.6, **kwargs) -> PricingRequest:
+def make_request(*, ex_date: float = 0.6, **kwargs: object) -> PricingRequest:
     """Deterministic American call with exercise at the actual ex-date."""
     basic = PricingRequest(
         spot=120.0, strike=100.0, rate=0.05, volatility=0.0,
@@ -256,6 +259,7 @@ def test_calendar_one_day_theta_no_longer_jumps_at_offgrid_event(algorithm: str)
 
 
 @pytest.mark.parametrize("algorithm", ALGORITHMS)
+# Preserve cash-dividend timing and exercise rules in the next checks.
 def test_full_desk_risk_theta_matches_deterministic_reference(algorithm: str) -> None:
     from functools import partial
     request = make_request(
@@ -293,6 +297,7 @@ def test_two_offgrid_dividends_match_deterministic_reference(
 
 @pytest.mark.parametrize("model", MODELS)
 @pytest.mark.parametrize("algorithm", ALGORITHMS)
+# Preserve cash-dividend timing and exercise rules in the next checks.
 def test_dividend_at_expiry_preserves_pre_jump_exercise(
     model: str, algorithm: str,
 ) -> None:
@@ -323,6 +328,7 @@ def test_event_bridge_is_identity_for_european_or_no_cash() -> None:
     european = CallOption(strike=100.0, is_american=False)
     american = CallOption(strike=100.0, is_american=True)
     assert before_dividend_value(child, 9.1, european, event) == 9.1
+    # Verify the expected numerical or workflow invariant on this case.
     assert before_dividend_value(child, 9.1, american, None) == 9.1
 
 
@@ -348,6 +354,7 @@ def test_stochastic_ex_date_lower_bound_has_no_lookahead() -> None:
         amount=20.0, elapsed_before_event=0.10,
         remaining_time=0.15, rate=0.05, volatility=0.20,
     )
+    # Preserve cash-dividend timing and exercise rules in the next checks.
     first = offgrid_exercise_bound(parent, 5.0, option, event)
     second = offgrid_exercise_bound(parent, 5.0, option, event)
     assert first == second
@@ -403,6 +410,7 @@ def test_offgrid_single_dividend_put_post_jump_matches_reference(
 def test_stochastic_put_with_offgrid_exdate_dominates_european(
     model: str, algorithm: str,
 ) -> None:
+    # Preserve cash-dividend timing and exercise rules in the next checks.
     request = make_request(
         ex_date=0.61, model=model, option_type="Put", strike=140.0,
         volatility=0.20, steps=20,
@@ -422,6 +430,7 @@ def test_post_dividend_put_uses_shifted_strike_in_stochastic_case() -> None:
 
     parent = Node(120.0)
     option = PutOption(strike=140.0, is_american=True)
+    # Preserve cash-dividend timing and exercise rules in the next checks.
     event = DividendStepEvent(
         amount=20.0, elapsed_before_event=0.1,
         remaining_time=0.15, rate=0.05, volatility=0.2,
@@ -442,6 +451,7 @@ def test_zero_strike_call_with_dividend_uses_shifted_strike() -> None:
         120.0, CallOption(strike=0.0), 0.05, 0.2, 0.1,
         cash_adjustment=20.0,
     )
+    # Preserve cash-dividend timing and exercise rules in the next checks.
     expected = BlackScholesPricer().price(
         option=CallOption(strike=20.0), spot=120.0,
         rate=0.05, volatility=0.2, maturity=0.1,
@@ -471,6 +481,7 @@ def test_cash_dividend_event_does_not_create_false_parent_exercise(
     tree = _build_tree(request)
     price = RecursivePricer().price(tree, CallOption(100., is_american=True))
     assert math.isfinite(price)
+    # Preserve cash-dividend timing and exercise rules in the next checks.
     layers = BackwardPricer._reachable_levels(tree.root, request.steps)
     event_steps = dividend_events_for_request(request)
     assert step + 1 in event_steps

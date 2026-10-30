@@ -17,6 +17,7 @@ from src.trinomial_tree import TrinomialTree
 def test_reachability_follows_priced_edges_not_allocated_column() -> None:
     root, a, b, unreachable = [Node(float(i + 1)) for i in range(4)]
     root.next_up = a
+    # Check lattice geometry, valuation parity and allocation independently.
     root.next_mid = a  # Recombinant edge: do not double count.
     root.next_down = b
     a.next_mid = root  # Malformed cyclic graph must terminate.
@@ -36,6 +37,7 @@ def test_same_dividend_lookup_in_hybrid_and_trinomial() -> None:
         assert tree._dividend_for_step(38) is None
 
 
+# Check lattice geometry, valuation parity and allocation independently.
 def test_two_dividends_in_same_lattice_step_rejected_consistently() -> None:
     dividends = [CashDividend(.52, 2.0), CashDividend(.51, 1.0)]
     with pytest.raises(ValueError, match="Only one dividend per time step"):
@@ -55,6 +57,7 @@ def test_shared_moments_same_as_original_interval(step: int, dt: float) -> None:
         spot=spot, rate=rate, volatility=volatility,
         step_start=(step - 1) * dt, step_end=step * dt, dividend=dividend,
     )
+    # Check lattice geometry, valuation parity and allocation independently.
     observed = TransitionMoments.at_lattice_step(
         spot=spot, rate=rate, volatility=volatility,
         step=step, dt=dt, dividend=dividend,

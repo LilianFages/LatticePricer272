@@ -19,8 +19,9 @@ from frontend.exercise_boundary_service import (
 from frontend.pricing_service import PricingInputError, PricingRequest
 
 
+# Preserve the event-date and exercise-policy conventions in this case.
 class Node:
-    def __init__(self, spot, value):
+    def __init__(self: object, spot: float, value: object):
         self.price = float(spot)
         self.option_value = float(value)
         self.next_up = None
@@ -58,7 +59,7 @@ def _basic_american() -> tuple[Node, PricingRequest]:
 
 
 # First-exercise mass and continuation survival form a stopping partition.
-def test_american_stopping_not_double_counted():
+def test_american_stopping_not_double_counted() -> None:
     root, request = _basic_american()
     dates, points, err = analyze_priced_tree(root, request)
     assert err < 1e-14
@@ -75,7 +76,7 @@ def test_american_stopping_not_double_counted():
 
 
 # European exercise cannot occur before contractual maturity.
-def test_european_only_itm_expiry_exercises():
+def test_european_only_itm_expiry_exercises() -> None:
     request = PricingRequest(spot=100, strike=100, rate=0., steps=1,
                              exercise="European", option_type="Put")
     left, right = Node(90, 10), Node(110, 0)
@@ -93,7 +94,7 @@ def test_european_only_itm_expiry_exercises():
 
 
 # Recombining successor links must not manufacture probability mass.
-def test_duplicate_branches_preserve_mass():
+def test_duplicate_branches_preserve_mass() -> None:
     request = PricingRequest(spot=100, strike=100, rate=0., steps=1,
                              exercise="European", option_type="Put")
     child = Node(90, 10)
@@ -111,7 +112,7 @@ def test_duplicate_branches_preserve_mass():
 
 
 # Reject transitions violating probability axioms.
-def test_invalid_transition_probability_rejected():
+def test_invalid_transition_probability_rejected() -> None:
     root = Node(100, 0)
     child = Node(90, 0)
     root.next_up, root.next_down = child, child
@@ -121,7 +122,7 @@ def test_invalid_transition_probability_rejected():
 
 
 # Positive transition mass must have a reachable successor.
-def test_nonzero_prob_without_successor_rejected():
+def test_nonzero_prob_without_successor_rejected() -> None:
     root = Node(100, 0)
     root.up_probability = 1.
     with pytest.raises(RuntimeError, match="without child"):
@@ -129,7 +130,7 @@ def test_nonzero_prob_without_successor_rejected():
 
 
 # Define a deterministic convention for exact exercise/hold ties.
-def test_tie_means_continuation():
+def test_tie_means_continuation() -> None:
     request = PricingRequest(strike=100, rate=0., steps=1,
                              exercise="American", option_type="Put")
     root = Node(90, 10)
@@ -139,7 +140,7 @@ def test_tie_means_continuation():
 
 
 # A zero-payoff maturity state does not represent positive exercise value.
-def test_worthless_maturity_is_not_exercised():
+def test_worthless_maturity_is_not_exercised() -> None:
     req = PricingRequest(strike=100, rate=0., steps=1,
                          exercise="American", option_type="Call")
     node = Node(99, 0)
@@ -147,7 +148,7 @@ def test_worthless_maturity_is_not_exercised():
 
 
 # Boundary extrema must respect the chosen payoff direction.
-def test_put_and_call_boundary_extrema():
+def test_put_and_call_boundary_extrema() -> None:
     # Each case has a real early-exercise node at the chosen price.
     for kind, spot in (("Put", 70.), ("Call", 130.)):
         req = PricingRequest(strike=100., rate=.02, steps=1,
@@ -159,7 +160,7 @@ def test_put_and_call_boundary_extrema():
 
 
 # CSV labels must distinguish region occupancy and first exercise.
-def test_csv_provides_clearly_named_probability_conventions():
+def test_csv_provides_clearly_named_probability_conventions() -> None:
     root, request = _basic_american()
     dates, points, err = analyze_priced_tree(root, request)
     from frontend.exercise_boundary_service import ExerciseStudy
@@ -175,7 +176,7 @@ def test_csv_provides_clearly_named_probability_conventions():
 
 
 # Absence of early exercise must not create a fictitious boundary.
-def test_not_misleading_when_no_early_exercise():
+def test_not_misleading_when_no_early_exercise() -> None:
     req = PricingRequest(strike=100., rate=0., steps=1,
                          option_type="Call", exercise="European")
     itm = Node(110, 10)
@@ -189,7 +190,7 @@ def test_not_misleading_when_no_early_exercise():
 
 
 # Zero probability of exercise is not evidence of a boundary location.
-def test_zero_early_mass_does_not_invent_boundary():
+def test_zero_early_mass_does_not_invent_boundary() -> None:
     root, request = _basic_american()
     request = replace(request, exercise="European")
     dates, _, _ = analyze_priced_tree(root, request)
@@ -197,7 +198,7 @@ def test_zero_early_mass_does_not_invent_boundary():
 
 
 # Guard costly lattice construction against out-of-range requests.
-def test_build_service_limit(monkeypatch):
+def test_build_service_limit(monkeypatch: pytest.MonkeyPatch) -> None:
     request = PricingRequest(steps=201)
     import frontend.exercise_boundary_service as service
     monkeypatch.setattr(service, "validate_request", lambda _: None)
@@ -206,7 +207,7 @@ def test_build_service_limit(monkeypatch):
 
 
 # Cash-dividend exercise profiles are checked against real engine outputs.
-def test_live_engine_cash_dividend_scenario_matches_course_results():
+def test_live_engine_cash_dividend_scenario_matches_course_results() -> None:
     """Actual engine integration; do not confuse with the synthetic checks above."""
     from frontend.pricing_service import DividendInput
     request = PricingRequest(
@@ -224,7 +225,7 @@ def test_live_engine_cash_dividend_scenario_matches_course_results():
 
 
 # Discounted European option value obeys the martingale consistency check.
-def test_live_engine_european_martingale_no_dividends():
+def test_live_engine_european_martingale_no_dividends() -> None:
     request = PricingRequest(spot=100., strike=100., rate=.02,
                              volatility=.2, maturity=1., steps=40,
                              model="Trinomial · Allocation pruning",

@@ -9,12 +9,13 @@ from types import SimpleNamespace
 import pytest
 from experiments import dividend_grid_robustness as study
 from src.dividend_timing import dividend_grid_step
+from frontend.pricing_service import PricingRequest
 import pandas as pd
 from frontend.research_grid_views import REQUIRED, validate_study_frame
 
 
 # test_dividend_grid_robustness.py (tests preserved)
-def _fake_price(request):
+def _fake_price(request: PricingRequest) -> SimpleNamespace:
     """Deterministic pricing spy: no dependence on expensive lattice builds."""
     date = request.dividends[0].time
     forward_term = study.parity_target(date)
@@ -33,6 +34,7 @@ def test_two_independent_axes_do_not_confuse_shift_with_grid() -> None:
                                 models=(study.MODELS[0],))
     assert len(rows) == 5
     fixed = [r for r in rows if r["panel"] == "grid"]
+    # Preserve cash-dividend timing and exercise rules in the next checks.
     shifted = [r for r in rows if r["panel"] == "date"]
     assert {r["dividend_time"] for r in fixed} == {0.5}
     assert {r["steps"] for r in shifted} == {40}
@@ -52,6 +54,7 @@ def test_parity_premium_and_finest_sample_gap_are_defined() -> None:
     assert rows[-1]["date_shift_put"] == pytest.approx(0.0)
 
 
+# Preserve cash-dividend timing and exercise rules in the next checks.
 def test_per_model_reference_does_not_mix_lattices() -> None:
     rows = study.run_experiment(steps=(25, 40), shifts=(0,), date_steps=40,
                                 pricer=_fake_price)
@@ -62,7 +65,7 @@ def test_per_model_reference_does_not_mix_lattices() -> None:
 
 
 def test_failed_triplet_is_explicit_and_never_imputed() -> None:
-    def failing(request):
+    def failing(request: PricingRequest) -> SimpleNamespace:
         if request.exercise == "American":
             raise RuntimeError("Injected pricer outage")
         return _fake_price(request)
@@ -71,12 +74,13 @@ def test_failed_triplet_is_explicit_and_never_imputed() -> None:
     assert len(rows) == 2
     assert all(r["status"] == "failed" for r in rows)
     assert all(r["european_put"] is None for r in rows)
+    # Verify the expected numerical or workflow invariant on this case.
     assert all("Injected pricer outage" in r["failure"] for r in rows)
     assert all(r["gap_to_finest_sample"] is None for r in rows)
 
 
 def test_finite_prices_required() -> None:
-    def invalid(request):
+    def invalid(request: PricingRequest) -> SimpleNamespace:
         return SimpleNamespace(price=float("nan"))
     row = study.measure_case(study.MODELS[0], 25, 0.5, pricer=invalid)
     assert row["status"] == "failed"
@@ -88,8 +92,11 @@ def test_finite_prices_required() -> None:
     ((0,), (0,), 100), ((25,), (1,), 100),
     ((25,), (0, 0), 100), ((25,), (0,), 0),
 ])
-def test_invalid_designs_fail_loudly(steps, days, date_steps) -> None:
+def test_invalid_designs_fail_loudly(
+    steps: tuple[int, ...], days: tuple[int, ...], date_steps: int
+) -> None:
     with pytest.raises(ValueError):
+        # Preserve cash-dividend timing and exercise rules in the next checks.
         study.validate_design(steps, days, date_steps)
 
 
@@ -105,11 +112,12 @@ def test_exdate_boundary_convention_and_dividend_pv() -> None:
 
 def test_grid_and_date_panels_share_one_valuation_when_identical() -> None:
     calls = []
-    def recording(request):
+    def recording(request: PricingRequest) -> SimpleNamespace:
         calls.append(request)
         return _fake_price(request)
     study.run_experiment(steps=(40,), shifts=(0,), date_steps=40,
                          pricer=recording, models=(study.MODELS[0],))
+    # Verify the expected numerical or workflow invariant on this case.
     assert len(calls) == 3  # Not 6: identical contract triplet memoized.
 
 
@@ -152,6 +160,7 @@ def test_schema_and_null_optional_observations_allowed() -> None:
     assert set(REQUIRED).issubset(result.columns)
 
 
+# Preserve cash-dividend timing and exercise rules in the next checks.
 def test_missing_scientific_column_rejected() -> None:
     with pytest.raises(ValueError, match="Missing phase 6C columns"):
         validate_study_frame(_valid().drop(columns=["parity_residual"]))
@@ -171,6 +180,7 @@ def test_invalid_panel_and_status_rejected() -> None:
         validate_study_frame(frame)
     frame = _valid()
     frame.loc[0, "status"] = "almost"
+    # Reject invalid cases explicitly rather than silently substituting values.
     with pytest.raises(ValueError, match="status"):
         validate_study_frame(frame)
 
@@ -192,7 +202,7 @@ def test_failed_rows_may_have_unpriced_measures() -> None:
     ("european_call", -0.3, "Negative"),
     ("early_exercise_premium", .5, "inconsistent"),
 ])
-def test_phase6d_rejects_corrupted_evidence(field, value, reason) -> None:
+def test_phase6d_rejects_corrupted_evidence(field: str, value: object, reason: str) -> None:
     frame = _valid()
     if field in ("steps", "date_shift_days"):
         frame[field] = frame[field].astype(float)
@@ -202,6 +212,7 @@ def test_phase6d_rejects_corrupted_evidence(field, value, reason) -> None:
 
 
 def test_phase6d_rejects_duplicate_recorded_case() -> None:
+    # Preserve cash-dividend timing and exercise rules in the next checks.
     frame = pd.concat([_valid(), _valid()], ignore_index=True)
     with pytest.raises(ValueError, match="Duplicate"):
         validate_study_frame(frame)

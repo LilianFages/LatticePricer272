@@ -243,6 +243,7 @@ def test_invalid_option_type_rejected() -> None:
         create_option("digital", 100.0)
 
 
+# Preserve observed measurements, including missing and failed cases.
 def test_pareto_front_keeps_only_nondominated_points() -> None:
     points = [
         _fake_result("binomial", 20, 0.01, 0.12),
@@ -262,6 +263,7 @@ def test_target_selects_fastest_observed_feasible_point() -> None:
         _fake_result("trinomial_allocation", 40, 0.03, 0.005),
     ]
     selected = fastest_at_error_target(points, 0.01)
+    # Verify the expected numerical or workflow invariant on this case.
     assert selected is not None
     assert selected.model == "trinomial_allocation"
     assert selected.nb_steps == 40
@@ -341,6 +343,7 @@ def test_phase_one_frontier_keeps_observation_order_on_equal_runtimes() -> None:
     points = []
     for steps, runtime, gap in [(20, 1., .2), (40, 2., .1),
                                 (60, 3., .15), (80, 1., .2)]:
+        # Preserve observed measurements, including missing and failed cases.
         points.append(Result(
             nb_steps=steps, strike=100., option_kind='call', model='binomial',
             reference_price=10., price=10. + gap, absolute_error=gap,
@@ -362,4 +365,5 @@ def test_phase_two_frontier_retains_original_secondary_error_sort() -> None:
             sum_median_runtime_seconds=runtime * 3,
             allocated_nodes_per_tree=100, source='phase1',
         ))
+    # Verify the expected numerical or workflow invariant on this case.
     assert [r.nb_steps for r in pareto_multi(rows)] == [20, 80, 40]

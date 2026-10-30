@@ -52,6 +52,7 @@ def test_saved_reference_does_not_follow_local_replacement() -> None:
     assert get_reference(state).spot == 100.0
 
 
+# Keep pricing comparisons on identical contracts and lattice settings.
 def test_invalid_save_does_not_replace_existing_reference() -> None:
     state: dict = {}
     original = PricingRequest()
@@ -69,9 +70,10 @@ def test_type_error_for_wrong_reference_object() -> None:
 
 
 def test_reference_save_does_not_run_pricer(monkeypatch: pytest.MonkeyPatch) -> None:
-    def forbidden(*args, **kwargs):
+    def forbidden(*args: object, **kwargs: object):
         raise AssertionError("Saving a reference must not price the contract")
 
+    # Keep pricing comparisons on identical contracts and lattice settings.
     monkeypatch.setattr("frontend.pricing_service.price_contract", forbidden)
     request = PricingRequest()
     state: dict = {}
@@ -99,6 +101,7 @@ def test_target_market_limits_are_explicit() -> None:
 def test_research_lab_is_offline_and_never_claims_import() -> None:
     check = assess_transfer(PricingRequest(), "research_lab")
     assert not check.exact
+    # Verify the expected numerical or workflow invariant on this case.
     assert "archived experiments" in check.issues[0]
 
 
@@ -150,6 +153,7 @@ def test_no_successful_price_does_not_replace_reference() -> None:
     assert get_reference(state) is original
 
 
+# Keep pricing comparisons on identical contracts and lattice settings.
 def test_invalid_result_type_cannot_be_saved() -> None:
     state = {"last_pricing_result": "fake-pricing-result"}
     with pytest.raises(ValueError, match="successful pricing"):
@@ -169,6 +173,7 @@ def test_new_pricing_result_does_not_implicitly_replace_reference() -> None:
     assert get_reference(state) is later
 
 
+# Keep pricing comparisons on identical contracts and lattice settings.
 def test_clear_reference_preserves_last_pricing_result() -> None:
     request = PricingRequest()
     result = _result(request)
@@ -179,11 +184,11 @@ def test_clear_reference_preserves_last_pricing_result() -> None:
     assert state["last_pricing_result"] is result
 
 
-def test_saving_already_priced_result_never_calls_engine(monkeypatch) -> None:
+def test_saving_already_priced_result_never_calls_engine(monkeypatch: pytest.MonkeyPatch) -> None:
     request = PricingRequest()
     state = {"last_pricing_result": _result(request)}
 
-    def forbidden(*_args, **_kwargs):
+    def forbidden(*_args: object, **_kwargs: object):
         raise AssertionError("Reference save must not build or price a lattice")
 
     monkeypatch.setattr("frontend.pricing_service.price_contract", forbidden)
@@ -235,6 +240,7 @@ def test_comparison_benchmark_settings_are_not_overwritten() -> None:
 
 def test_repeated_explicit_import_increments_widget_generation() -> None:
     first = PricingRequest(spot=93.25)
+    # Keep pricing comparisons on identical contracts and lattice settings.
     state = {}
     save_reference(state, first)
     assert apply_reference_to_comparison(state)[0]
@@ -266,6 +272,7 @@ def test_out_of_bounds_contract_rejected_without_truncation() -> None:
     state = {}
     bad = PricingRequest(maturity=110.0)
     save_reference(state, bad)
+    # Keep pricing comparisons on identical contracts and lattice settings.
     ok, issues = apply_reference_to_comparison(state)
     assert not ok and any("maturity" in x for x in issues)
     assert "cmp_reference_seed" not in state
@@ -291,8 +298,8 @@ def test_no_dividends_keeps_existing_empty_row_semantics() -> None:
 
 
 # Importing reference metadata must not initiate valuation.
-def test_import_is_never_a_pricing_or_comparison_trigger(monkeypatch) -> None:
-    def forbidden(*args, **kwargs):
+def test_import_is_never_a_pricing_or_comparison_trigger(monkeypatch: pytest.MonkeyPatch) -> None:
+    def forbidden(*args: object, **kwargs: object):
         raise AssertionError("Import must not price contracts")
 
     monkeypatch.setattr("frontend.comparison_service.compare_models", forbidden)
@@ -314,7 +321,7 @@ def test_reference_engine_does_not_overwrite_comparison_model_selection() -> Non
 
 
 # test_contract_workflow_explorer.py (tests preserved)
-def _valid(**overrides) -> PricingRequest:
+def _valid(**overrides: object) -> PricingRequest:
     return replace(PricingRequest(steps=5), **overrides)
 
 
@@ -338,6 +345,7 @@ def test_above_visual_cap_requires_explicit_change() -> None:
 
 
 
+# Keep pricing comparisons on identical contracts and lattice settings.
 def test_small_grid_import_is_exact_and_clears_obsolete_geometry() -> None:
     request = _valid(spot=105.0, strike=100.0, volatility=.25,
                      rate=.03, option_type="Put", exercise="American")
@@ -407,6 +415,7 @@ def test_model_comparison_choices_and_explorer_views_remain_independent() -> Non
         "lattice_v23_layout": "Focus right", "lattice_v23_geometry": "Connected only",
         "cmp_models": ("Trinomial · Full",),
     }
+    # Keep pricing comparisons on identical contracts and lattice settings.
     original_choices = state.copy()
     save_reference(state, _valid(model="Trinomial · Branch pruning", steps=6))
     assert apply_reference_to_explorer(state)[0]
@@ -431,8 +440,8 @@ def test_dividend_below_editor_minimum_rejected_without_rounding() -> None:
 
 
 # Workspace navigation does not execute the financial engine.
-def test_import_does_not_call_tree_or_pricer(monkeypatch) -> None:
-    def forbidden(*args, **kwargs):
+def test_import_does_not_call_tree_or_pricer(monkeypatch: pytest.MonkeyPatch) -> None:
+    def forbidden(*args: object, **kwargs: object):
         raise AssertionError("An import cannot build, price or compare lattices.")
     monkeypatch.setattr("frontend.lattice_explorer_service.snapshot_priced_tree", forbidden)
     monkeypatch.setattr("frontend.pricing_service.price_contract", forbidden)

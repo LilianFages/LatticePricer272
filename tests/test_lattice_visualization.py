@@ -24,14 +24,14 @@ from frontend.lattice_explorer import _chart, _lattice_chart_data, _plot_domain
 
 
 # test_lattice_depth100_visualization.py (tests preserved)
-def test_allocation_filter_is_noop_for_fully_connected_tree():
+def test_allocation_filter_is_noop_for_fully_connected_tree() -> None:
     snap = snapshot_priced_tree(PricingRequest(steps=20, model="Binomial"))
     assert snap.unreached_allocations == 0
     assert not _has_ghost_allocations([snap])
     assert _plot_domain([snap], True) == _plot_domain([snap], False)
 
 
-def test_allocation_filter_reveals_real_branch_pruning_ghosts():
+def test_allocation_filter_reveals_real_branch_pruning_ghosts() -> None:
     snap = snapshot_priced_tree(PricingRequest(
         steps=10, model="Trinomial · Branch pruning", pruning_threshold=1e-5,
     ))
@@ -43,12 +43,13 @@ def test_allocation_filter_reveals_real_branch_pruning_ghosts():
     with alt.data_transformers.enable("default", max_rows=None):
         all_nodes = _chart(snap, domain, all_allocated=True,
                            height=350, show_links=True).to_dict()
+        # Check lattice geometry, valuation parity and allocation independently.
         connected = _chart(snap, domain, all_allocated=False,
                            height=350, show_links=True).to_dict()
     assert len(all_nodes["layer"]) == len(connected["layer"]) + 1
 
 
-def test_hundred_step_trinomial_nodes_can_render_without_heavy_edges():
+def test_hundred_step_trinomial_nodes_can_render_without_heavy_edges() -> None:
     snap = snapshot_priced_tree(PricingRequest(
         steps=100, model="Trinomial · Allocation pruning",
     ))
@@ -68,7 +69,7 @@ def test_hundred_step_trinomial_nodes_can_render_without_heavy_edges():
 
 
 # test_lattice_spot_focus.py (tests preserved)
-def test_n100_local_spot_corridor_is_exact_and_lightweight():
+def test_n100_local_spot_corridor_is_exact_and_lightweight() -> None:
     base = snapshot_priced_tree(PricingRequest(
         steps=100, model="Trinomial · Allocation pruning",
     ))
@@ -87,6 +88,7 @@ def test_n100_local_spot_corridor_is_exact_and_lightweight():
     assert all(e in base.edges for e in focused.edges)
     assert all(e.from_id in ids and e.to_id in ids for e in focused.edges)
     assert len(focused.nodes) < 450
+    # Verify the expected numerical or workflow invariant on this case.
     assert len(focused.edges) < 1200
     assert len(base.nodes) > len(focused.nodes)
     assert base.model_price == focused.model_price
@@ -97,7 +99,7 @@ def test_n100_local_spot_corridor_is_exact_and_lightweight():
     assert "layer" in fig.to_dict()
 
 
-def test_full_tree_remains_unchanged_and_view_is_deterministic():
+def test_full_tree_remains_unchanged_and_view_is_deterministic() -> None:
     base = snapshot_priced_tree(PricingRequest(steps=20, model="Binomial"))
     old_nodes, old_edges = base.nodes, base.edges
     a = focus_lattice_snapshot(base, (7, 11), (88.0, 116.0))
@@ -109,10 +111,11 @@ def test_full_tree_remains_unchanged_and_view_is_deterministic():
     assert base.displayed_nodes > a.displayed_nodes
 
 
-def test_branch_pruning_ghosts_are_real_and_local_only():
+def test_branch_pruning_ghosts_are_real_and_local_only() -> None:
     base = snapshot_priced_tree(PricingRequest(
         steps=10, model="Trinomial · Branch pruning", pruning_threshold=1e-5,
     ))
+    # Verify the expected numerical or workflow invariant on this case.
     assert base.unreached_allocations > 0
     focus = focus_lattice_snapshot(base, (0, 10), (0.0, 10000.0))
     assert focus.nodes == base.nodes
@@ -120,7 +123,7 @@ def test_branch_pruning_ghosts_are_real_and_local_only():
     assert focus.allocated_geometry == base.allocated_geometry
 
 
-def test_invalid_focus_bounds_fail_explicitly():
+def test_invalid_focus_bounds_fail_explicitly() -> None:
     base = snapshot_priced_tree(PricingRequest(steps=5, model="Binomial"))
     for window, band in [((-1, 3), (80., 120.)), ((4, 3), (80., 120.)),
                          ((0, 6), (80., 120.)), ((0, 4), (120., 80.)),
@@ -144,24 +147,25 @@ def n100_snapshot():
 # --- Temporal and state sampling ----------------------------------
 
 
-def test_n100_overview_timeline_is_sparse_and_keeps_edges():
+def test_n100_overview_timeline_is_sparse_and_keeps_edges() -> None:
     steps = overview_step_indices(100)
     assert 0 in steps and 100 in steps
     assert len(steps) <= 40
     assert len(steps) >= 30
 
 
-def test_exdividend_neighbour_layers_never_lost():
+def test_exdividend_neighbour_layers_never_lost() -> None:
     steps = overview_step_indices(100, event_times=(0.505, 0.75), maturity=1.0)
     assert {0, 50, 51, 75, 100} <= steps
 
 
-def test_small_steps_have_no_sampling_of_time():
+def test_small_steps_have_no_sampling_of_time() -> None:
     assert overview_step_indices(19) == frozenset(range(20))
     assert overview_step_indices(20) == frozenset(range(21))
 
 
-def test_overview_preserves_exercise_states_with_small_number_of_marks():
+# Check lattice geometry, valuation parity and allocation independently.
+def test_overview_preserves_exercise_states_with_small_number_of_marks() -> None:
     import pandas as pd
     rows = pd.DataFrame([
         {"step": step, "stock": i, "state": ("Early exercise" if i < 30 else
@@ -183,7 +187,7 @@ def test_overview_preserves_exercise_states_with_small_number_of_marks():
 # --- Chart rendering and exact focus windows ----------------------------------
 
 
-def test_overview_has_bounded_number_of_marks_and_keeps_state_coverage():
+def test_overview_has_bounded_number_of_marks_and_keeps_state_coverage() -> None:
     rows = pd.DataFrame([
         {"step": step, "stock": i, "state": "Early exercise" if i < 20 else "Continuation"}
         for step in range(101) for i in range(101)
@@ -195,21 +199,22 @@ def test_overview_has_bounded_number_of_marks_and_keeps_state_coverage():
     assert len(rows) == 10201
 
 
-def test_detail_window_keeps_every_original_row_without_mutation():
+def test_detail_window_keeps_every_original_row_without_mutation() -> None:
     original = pd.DataFrame([{"step": t, "stock": i, "state": "Continuation"}
                              for t in range(101) for i in range(201)])
     detail = select_chart_rows(original, step_window=(48, 54))
     assert len(detail) == 7 * 201
+    # Verify the expected numerical or workflow invariant on this case.
     assert detail["step"].min() == 48 and detail["step"].max() == 54
     assert len(original) == 101 * 201
 
 
-def test_invalid_window_is_rejected():
+def test_invalid_window_is_rejected() -> None:
     with pytest.raises(ValueError):
         select_chart_rows(pd.DataFrame([{"step": 2}]), step_window=(3, 1))
 
 
-def test_n100_chart_overview_and_local_window_build_without_full_node_payload(n100_snapshot):
+def test_n100_chart_overview_and_local_window_build_without_full_node_payload(n100_snapshot: object) -> None:
     req = n100_snapshot.request
     snap = n100_snapshot
     assert snap.displayed_nodes > 5000
@@ -251,12 +256,13 @@ class Edge:
     simplified: bool = False
 
 
-def test_bounded_links_are_real_and_spread_across_layers():
+def test_bounded_links_are_real_and_spread_across_layers() -> None:
     original = tuple(
         Edge(step, float(i), float(i + 1), f"{step}-{i}", f"{step + 1}-{i}",
              simplified=(i == 79))
         for step in range(47, 54) for i in range(80)
     )
+    # Check lattice geometry, valuation parity and allocation independently.
     sampled = representative_transitions(
         original, step_window=(47, 54), max_links=140,
     )
@@ -275,14 +281,15 @@ def test_bounded_links_are_real_and_spread_across_layers():
     assert len(original) == 7 * 80
 
 
-def test_small_link_counts_are_complete_not_resampled():
+def test_small_link_counts_are_complete_not_resampled() -> None:
+    # Check lattice geometry, valuation parity and allocation independently.
     edges = (Edge(0, 100, 110, "a", "b"), Edge(0, 100, 90, "a", "c"))
     assert representative_transitions(edges, max_links=240) == edges
     with pytest.raises(ValueError):
         representative_transitions(edges, max_links=1)
 
 
-def test_real_n100_detail_chart_caps_edges_without_changing_snapshots(n100_snapshot):
+def test_real_n100_detail_chart_caps_edges_without_changing_snapshots(n100_snapshot: object) -> None:
     snap = n100_snapshot
     original_count = len(snap.edges)
     window = (47, 54)
@@ -295,6 +302,7 @@ def test_real_n100_detail_chart_caps_edges_without_changing_snapshots(n100_snaps
         snap, include_links=True, step_window=window, max_links=240,
     )
     assert len(records) == 2 * len(sampled)
+    # Verify the expected numerical or workflow invariant on this case.
     assert len(records) <= 480
     assert len(nodes) == snap.displayed_nodes
     figure = _chart(

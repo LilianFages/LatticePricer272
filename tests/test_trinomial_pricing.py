@@ -59,6 +59,7 @@ def test_recursive_one_step_trinomial_call() -> None:
         * option.payoff(down_node.price)
     )
 
+    # Verify the expected numerical or workflow invariant on this case.
     assert math.isclose(
         price,
         expected_price,
@@ -192,6 +193,7 @@ def test_dividend_changes_trunk_forward() -> None:
 
     second_trunk = first_trunk.next_mid
 
+    # Verify the expected numerical or workflow invariant on this case.
     assert second_trunk is not None
 
     expected_second_trunk = (
@@ -500,6 +502,7 @@ def test_multiple_dividends_change_trunk() -> None:
         rel_tol=1e-12,
     )
 
+    # Verify that the pricing workflow keeps its input contract intact.
     third_trunk = second_trunk.next_mid
     assert third_trunk is not None
 
@@ -549,6 +552,7 @@ def test_multiple_dividends_reduce_call_price() -> None:
         option,
     )
 
+    # Verify the expected numerical or workflow invariant on this case.
     assert dividend_price < no_dividend_price
 
 
@@ -572,6 +576,7 @@ def test_two_dividends_in_same_step_raise_error() -> None:
         ],
     )
 
+    # Reject invalid cases explicitly rather than silently substituting values.
     with pytest.raises(
         ValueError,
         match="Only one dividend per time step is supported",

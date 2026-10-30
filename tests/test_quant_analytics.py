@@ -34,7 +34,7 @@ def _request(**values: Any) -> PricingRequest:
 
 
 # Check scenario cardinality and symmetry around the base market input.
-def test_sensitivity_counts_and_center():
+def test_sensitivity_counts_and_center() -> None:
     rows = sensitivity_sweep(_request(), "spot", ("Binomial", "Hybrid"),
                              count=5, amplitude=0.1, pricer=_fake_pricer)
     assert len(rows) == 10
@@ -43,7 +43,7 @@ def test_sensitivity_counts_and_center():
 
 
 # Pricing failure must produce missing values rather than fabricated zero prices.
-def test_sensitivity_isolated_failure_and_no_false_zero():
+def test_sensitivity_isolated_failure_and_no_false_zero() -> None:
     rows = sensitivity_sweep(_request(), "spot", ("Binomial",), count=5,
                              amplitude=0.2, pricer=_fake_pricer)
     assert rows[0].price is None
@@ -53,7 +53,7 @@ def test_sensitivity_isolated_failure_and_no_false_zero():
 
 
 # Perturbations must respect the user-facing units of model parameters.
-def test_sensitivity_volatility_and_rate_units():
+def test_sensitivity_volatility_and_rate_units() -> None:
     vol = sensitivity_sweep(_request(), "volatility", ("Hybrid",), count=3,
                             amplitude=0.05, pricer=_fake_pricer)
     assert [p.coordinate for p in vol] == pytest.approx([0.15,0.20,0.25])
@@ -63,7 +63,7 @@ def test_sensitivity_volatility_and_rate_units():
 
 
 # Invalid dividend timing must remain an explicit scenario failure.
-def test_sensitivity_dividend_maturity_failure():
+def test_sensitivity_dividend_maturity_failure() -> None:
     request = _request(dividends=(DividendInput(time=0.95,amount=1),), model="Hybrid")
     rows = sensitivity_sweep(request,"maturity",("Hybrid",),count=3,
                              amplitude=0.25,pricer=_fake_pricer)
@@ -78,13 +78,13 @@ def test_sensitivity_dividend_maturity_failure():
     ("spot",("Hybrid",),6,None), ("spot",("Hybrid",),5,0),
     ("spot",("Hybrid",),5,100),
 ])
-def test_sensitivity_rejects_invalid_inputs(parameter,models,count,amplitude):
+def test_sensitivity_rejects_invalid_inputs(parameter: object,models: object,count: int,amplitude: object) -> None:
     with pytest.raises(PricingInputError):
         sensitivity_sweep(_request(),parameter,models,count,amplitude,pricer=_fake_pricer)
 
 
 # Use the analytical reference only for eligible European contracts.
-def test_convergence_analytic_reference():
+def test_convergence_analytic_reference() -> None:
     result = convergence_study(_request(), ("Binomial","Hybrid"), (20,40,80),
                                 pricer=_fake_pricer)
     assert result.reference_type == "analytic"
@@ -94,7 +94,7 @@ def test_convergence_analytic_reference():
 
 
 # A numerical reference is defined by the selected largest grid.
-def test_convergence_numeric_reference_at_max_n():
+def test_convergence_numeric_reference_at_max_n() -> None:
     request=_request(exercise="American", model="Hybrid")
     result=convergence_study(request,("Binomial","Hybrid"),(20,40),
                               numerical_reference_model="Hybrid",pricer=_fake_pricer)
@@ -105,7 +105,7 @@ def test_convergence_numeric_reference_at_max_n():
 
 
 # Numerical reference selection must not depend on display ordering.
-def test_convergence_numeric_unselected_ref_independent():
+def test_convergence_numeric_unselected_ref_independent() -> None:
     result=convergence_study(_request(exercise="American"),("Binomial",),(20,40),
                               numerical_reference_model="Hybrid",pricer=_fake_pricer)
     assert result.reference_type == "numerical"
@@ -113,7 +113,7 @@ def test_convergence_numeric_unselected_ref_independent():
 
 
 # Failed points must not invalidate otherwise successful convergence rows.
-def test_convergence_partial_failure():
+def test_convergence_partial_failure() -> None:
     request = _request(exercise="American", dividends=(DividendInput(0.5,3),),model="Hybrid")
     out=convergence_study(request,("Binomial","Hybrid"),(20,40),
                            numerical_reference_model="Hybrid",pricer=_fake_pricer)
@@ -123,7 +123,7 @@ def test_convergence_partial_failure():
 
 
 # Never infer a reference from an unavailable computed value.
-def test_convergence_unavailable_numeric_reference():
+def test_convergence_unavailable_numeric_reference() -> None:
     request=_request(exercise="American",dividends=(DividendInput(0.5,3),),model="Hybrid")
     out=convergence_study(request,("Hybrid",),(20,40),
                            numerical_reference_model="Binomial",pricer=_fake_pricer)
@@ -133,13 +133,13 @@ def test_convergence_unavailable_numeric_reference():
 
 # Reject discretization grids inconsistent with the study protocol.
 @pytest.mark.parametrize("grid",[(20,), (20,20),(40,20),(20,1000)])
-def test_convergence_grid_validation(grid):
+def test_convergence_grid_validation(grid: object) -> None:
     with pytest.raises(PricingInputError):
         convergence_study(_request(),("Hybrid",),grid,pricer=_fake_pricer)
 
 
 # The quadratic proxy provides exact finite-difference derivative identities.
-def test_greek_stability_exact_quadratic_derivatives():
+def test_greek_stability_exact_quadratic_derivatives() -> None:
     rows = greeks_stability(_request(),(1.,3.5,5.),(40,100),pricer=_fake_pricer)
     assert len(rows)==5
     for row in rows:
@@ -150,7 +150,7 @@ def test_greek_stability_exact_quadratic_derivatives():
 
 
 # One unavailable shock should retain its failure status.
-def test_greek_stability_records_failed_shocks():
+def test_greek_stability_records_failed_shocks() -> None:
     rows = greeks_stability(_request(spot=90),(5.,10.),(40,100),
                             gamma_bump_pct=10,pricer=_fake_pricer)
     assert any(x.status!="ok" for x in rows)
@@ -158,13 +158,13 @@ def test_greek_stability_records_failed_shocks():
 
 
 # The Greek sensitivity grid must be numerically admissible.
-def test_greek_stability_bad_grid():
+def test_greek_stability_bad_grid() -> None:
     with pytest.raises(PricingInputError):
         greeks_stability(_request(),(2.,1.),(40,100),pricer=_fake_pricer)
 
 
 # CSV missing values must not be serialized as financial zeros.
-def test_csv_blank_failures_no_reinterpretation():
+def test_csv_blank_failures_no_reinterpretation() -> None:
     rows=sensitivity_sweep(_request(),"spot",("Binomial",),count=5,
                            amplitude=.20,pricer=_fake_pricer)
     records=list(csv.DictReader(io.StringIO(observations_csv(rows))))
@@ -176,7 +176,7 @@ def test_csv_blank_failures_no_reinterpretation():
 
 
 # Model-specific limitations must not block independent supported models.
-def test_unsupported_first_model_does_not_block_supported_dividend_models():
+def test_unsupported_first_model_does_not_block_supported_dividend_models() -> None:
     # The selected Binomial is unsupported, but the trinomial must still run.
     request=_request(model="Binomial", dividends=(DividendInput(0.5,3),))
     prices=sensitivity_sweep(request,"spot",("Binomial","Hybrid"),

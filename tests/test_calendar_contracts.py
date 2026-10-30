@@ -120,6 +120,7 @@ def test_invalid_expiry_date_type_is_rejected(invalid: object) -> None:
         ContractCalendar(START, invalid).resolve()
 
 
+# Preserve the event-date and exercise-policy conventions in this case.
 def test_invalid_dividend_date_type_is_rejected() -> None:
     with pytest.raises(CalendarInputError, match="Dividend ex-date"):
         ContractCalendar(
@@ -142,16 +143,16 @@ def test_calendar_is_frozen() -> None:
 
 
 # test_calendar_ticket.py (tests preserved)
-def _base(**overrides):
+def _base(**overrides: object):
     return PricingRequest(**overrides)
 
 
-def _price_result(request):
+def _price_result(request: PricingRequest):
     return PricingResult(request, 8.0, 1.0, 3, None, None, None)
 
 
 # ACT/365F conversion retains exact contract settings and dates.
-def test_resolve_calendar_and_preserve_model_settings():
+def test_resolve_calendar_and_preserve_model_settings() -> None:
     base = _base(spot=103, strike=110, steps=100, rate=-.01)
     request, calendar = dated_request(
         base, date(2026, 9, 1), date(2027, 9, 1),
@@ -165,23 +166,24 @@ def test_resolve_calendar_and_preserve_model_settings():
     assert calendar_matches_request(calendar, request)
 
 
-def test_actual_days_include_leap_day():
+def test_actual_days_include_leap_day() -> None:
     request, _ = dated_request(_base(), date(2024, 1, 1), date(2025, 1, 1), ())
     assert request.maturity == pytest.approx(366/365)
 
 
-def test_very_short_expiry_is_valid_for_engine_but_not_existing_legacy_ui():
+# Preserve the event-date and exercise-policy conventions in this case.
+def test_very_short_expiry_is_valid_for_engine_but_not_existing_legacy_ui() -> None:
     request, _ = dated_request(_base(), date(2026, 9, 1), date(2026, 9, 2), ())
     assert request.maturity == pytest.approx(1/365)
 
 
 # The editor distinguishes placeholder rows from malformed dividends.
-def test_dated_editor_skips_zero_row():
+def test_dated_editor_skips_zero_row() -> None:
     frame = pd.DataFrame([{'ex_date': date(2027, 4, 21), 'amount': 0.0}])
     assert parse_dated_dividends(frame) == ()
 
 
-def test_dated_editor_sorts_and_normalizes_datetime():
+def test_dated_editor_sorts_and_normalizes_datetime() -> None:
     frame = pd.DataFrame([
         {'ex_date': date(2027, 8, 1), 'amount': 3.0},
         {'ex_date': datetime(2027, 2, 1), 'amount': 2.0},
@@ -193,28 +195,29 @@ def test_dated_editor_sorts_and_normalizes_datetime():
 
 
 @pytest.mark.parametrize('amount', ['oops', -1.0, float('inf'), True])
-def test_bad_cash_amount_is_rejected(amount):
+def test_bad_cash_amount_is_rejected(amount: object) -> None:
     with pytest.raises(CalendarInputError):
+        # Preserve the event-date and exercise-policy conventions in this case.
         parse_dated_dividends(pd.DataFrame([{'ex_date': date(2027, 4, 1), 'amount': amount}]))
 
 
-def test_positive_dividend_needs_date():
+def test_positive_dividend_needs_date() -> None:
     with pytest.raises(CalendarInputError, match='ex-date'):
         parse_dated_dividends(pd.DataFrame([{'ex_date': None, 'amount': 2.0}]))
 
 
-def test_nonempty_date_without_amount_is_rejected():
+def test_nonempty_date_without_amount_is_rejected() -> None:
     with pytest.raises(CalendarInputError, match='amount'):
         parse_dated_dividends(pd.DataFrame([{'ex_date': date(2027, 4, 1), 'amount': None}]))
 
 
-def test_unparsed_string_ex_date_is_rejected():
+def test_unparsed_string_ex_date_is_rejected() -> None:
     with pytest.raises(CalendarInputError, match='date'):
         parse_dated_dividends(pd.DataFrame([{'ex_date': '21/04/2027', 'amount': 4.0}]))
 
 
 # Cash events must be compatible with the selected lattice time grid.
-def test_colliding_events_at_same_N_are_rejected():
+def test_colliding_events_at_same_N_are_rejected() -> None:
     with pytest.raises(CalendarInputError, match='same lattice time step'):
         dated_request(
             _base(steps=10), date(2026, 9, 1), date(2027, 9, 1),
@@ -223,7 +226,7 @@ def test_colliding_events_at_same_N_are_rejected():
         )
 
 
-def test_binomial_with_cash_dividend_is_rejected():
+def test_binomial_with_cash_dividend_is_rejected() -> None:
     with pytest.raises(CalendarInputError, match='BinomialTree'):
         dated_request(
             _base(model='Binomial'), date(2026, 9, 1), date(2027, 9, 1),
@@ -232,7 +235,7 @@ def test_binomial_with_cash_dividend_is_rejected():
 
 
 # Calendar provenance follows successful saved results only.
-def test_calendar_metadata_saved_only_with_latest_pricing_result():
+def test_calendar_metadata_saved_only_with_latest_pricing_result() -> None:
     original = _base()
     req, cal = dated_request(_base(), date(2026, 9, 1), date(2027, 9, 1), ())
     state = {'last_pricing_result': _price_result(req), 'last_pricing_calendar': cal}
@@ -246,7 +249,7 @@ def test_calendar_metadata_saved_only_with_latest_pricing_result():
     assert get_reference_calendar(state) is None
 
 
-def test_stale_calendar_mismatch_refused_without_mutation():
+def test_stale_calendar_mismatch_refused_without_mutation() -> None:
     req = _base()
     cal = ContractCalendar(date(2026, 9, 1), date(2027, 9, 1))
     state = {'last_pricing_result': _price_result(req), 'last_pricing_calendar': cal}
@@ -258,7 +261,7 @@ def test_stale_calendar_mismatch_refused_without_mutation():
     assert state == old
 
 
-def test_clearing_reference_clears_only_reference_calendar_metadata():
+def test_clearing_reference_clears_only_reference_calendar_metadata() -> None:
     req, cal = dated_request(_base(), date(2026, 9, 1), date(2027, 9, 1), ())
     state = {'last_pricing_result': _price_result(req), 'last_pricing_calendar': cal}
     save_reference_from_last_result(state)
@@ -268,8 +271,9 @@ def test_clearing_reference_clears_only_reference_calendar_metadata():
     assert state['last_pricing_result'].request == req
 
 
-def test_explicit_numeric_reference_clears_previous_calendar():
+def test_explicit_numeric_reference_clears_previous_calendar() -> None:
     req, cal = dated_request(_base(), date(2026, 9, 1), date(2027, 9, 1), ())
+    # Preserve the event-date and exercise-policy conventions in this case.
     state = {'last_pricing_result': _price_result(req), 'last_pricing_calendar': cal}
     save_reference_from_last_result(state)
     save_reference(state, _base(spot=105.))
