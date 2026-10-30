@@ -294,6 +294,7 @@ def _compute_theta_greek(
 def calculate_greeks(
     request: PricingRequest,
     bumps: GreekBumps | None = None,
+    *,
     pricer: PricingFunction,
     validate_request: RiskValidator,
 ) -> GreeksResult:
