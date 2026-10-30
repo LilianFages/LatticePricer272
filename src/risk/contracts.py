@@ -10,6 +10,8 @@ from typing import Callable, Protocol
 
 
 class RiskDividend(Protocol):
+    """Minimal cash-event interface required by the risk routines."""
+
     @property
     def time(self) -> float:
         ...
@@ -20,6 +22,9 @@ class RiskDividend(Protocol):
 
 
 class RiskRequest(Protocol):
+    """Read-only view of market, contract, and lattice assumptions."""
+
+    # Continuous market and contract parameters.
     @property
     def spot(self) -> float:
         ...
@@ -40,6 +45,7 @@ class RiskRequest(Protocol):
     def maturity(self) -> float:
         ...
 
+    # Discretization and contract conventions.
     @property
     def steps(self) -> int:
         ...
@@ -56,6 +62,7 @@ class RiskRequest(Protocol):
     def exercise(self) -> str:
         ...
 
+    # Dated cashflows and optional numerical pruning configuration.
     @property
     def dividends(self) -> tuple[RiskDividend, ...]:
         ...
@@ -66,6 +73,8 @@ class RiskRequest(Protocol):
 
 
 class RiskPricingResult(Protocol):
+    """Numerical premium and elapsed-time fields returned by a pricer."""
+
     @property
     def price(self) -> float:
         ...
