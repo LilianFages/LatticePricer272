@@ -62,25 +62,23 @@ These commands can generate files; review their corresponding protocols and outp
 
 For the current Quant Research organization, see [`docs/Quant_Research_Phase6.md`](docs/Quant_Research_Phase6.md). Existing detailed protocols include `docs/Accuracy_vs_Cost_protocol.md`, `docs/Accuracy_vs_Cost_Phase2_protocol.md` and `docs/Temporal_Experiments_Protocol.md`. Older frontend notes are preserved in [docs/archive/](docs/archive/README.md) as historical release documentation; they do not describe the current navigation.
 
-## Final release verification (Phase 6D)
+## Final verification
 
-After the normal test suite, run the **read-only** scientific and dependency
-check against committed experiment evidence:
+The delivered project is validated with the maintained unit and integration
+tests, followed by a direct Streamlit smoke test:
 
 ```bash
 python -m pytest -q
-python -m scripts.release_audit
+python -m compileall -q src frontend experiments tests
+python -m streamlit run frontend/app.py
 ```
 
-The release audit checks the 26 recorded Phase 6C configurations (complete
-experimental grid, European call-put parity, American early-exercise premium,
-finite-N reference gaps and contractual ex-date price shifts), their exported
-summary and PNGs, and static first-party imports. It never reprices options,
-rewrites CSVs or updates figures. This complements rather than replaces full
-`pytest` and desktop Streamlit acceptance tests.
+The regression suite covers option pricing, exercise rules, dividend timing,
+market sensitivities, calendar contracts and the current application services.
+The offline research datasets remain available in `results/` with their
+methodological limitations documented in `docs/`.
 
-For the authoritative current documentation, see
-[`docs/README.md`](docs/README.md),
+For further details, see [`docs/README.md`](docs/README.md),
 [`docs/Release_Protocol.md`](docs/Release_Protocol.md) and
 [`docs/Architecture_Snapshot.md`](docs/Architecture_Snapshot.md).
 The current **Exercise & dividends** section also offers the recorded
