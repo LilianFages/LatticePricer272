@@ -11,7 +11,6 @@ from src.option import CallOption
 
 
 def black_scholes_call_price(
-    *,
     spot: float,
     strike: float,
     rate: float,
@@ -30,7 +29,6 @@ def black_scholes_call_price(
 
 
 def backward_binomial_call_price(
-    *,
     spot: float,
     strike: float,
     rate: float,

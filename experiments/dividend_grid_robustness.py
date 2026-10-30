@@ -34,10 +34,13 @@ FULL_SHIFTS = (-2, -1, 0, 1, 2)
 QUICK_SHIFTS = (-1, 0, 1)
 DEFAULT_DATE_STEPS = 100
 FIELDS = (
+    # Identify the independent experimental axis and numerical configuration.
     "panel", "model", "steps", "dividend_time", "date_shift_days",
+    # Distinguish contract state, grid location, and pricing outcomes.
     "dividend_step", "within_step_fraction", "status",
     "european_put", "american_put", "european_call",
     "early_exercise_premium", "parity_residual",
+    # Keep sampled-grid errors separate from actual ex-date sensitivity.
     "gap_to_finest_sample", "finest_reference_steps", "date_shift_put",
     "failure",
 )
@@ -100,7 +103,7 @@ def _price_triplet(
 
 def measure_case(
     model: str, steps: int, dividend_time: float,
-    *, pricer: Callable = price_contract,
+    pricer: Callable = price_contract,
 ) -> dict[str, object]:
     """Price one contract triplet atomically; disclose any failed valuation."""
     request = _case_request(model, steps, dividend_time)
@@ -177,7 +180,7 @@ def run_experiment(
     steps: Sequence[int] = FULL_STEPS,
     shifts: Sequence[int] = FULL_SHIFTS,
     date_steps: int = DEFAULT_DATE_STEPS,
-    *, pricer: Callable = price_contract,
+    pricer: Callable = price_contract,
     models: Sequence[str] = MODELS,
 ) -> list[dict[str, object]]:
     """Keep contract-fixed grid and ex-date-fixed-grid contrasts distinct."""
@@ -240,6 +243,7 @@ def summarize(rows: Sequence[dict[str, object]]) -> str:
                          f"smallest American premium={premium:.9g} EUR.")
         else:
             lines.append(f"{model}: no successful triplets.")
+    # Record every failed valuation explicitly; do not impute missing prices.
     for row in failed:
         lines.append(f"FAILURE / {row['panel']} / {row['model']} / N={row['steps']} "
                      f"/ day-shift={row['date_shift_days']}: {row['failure']}")
@@ -280,7 +284,7 @@ def plot_results(rows: Sequence[dict[str, object]], grid_path: Path,
         plt.close(fig)
 
 
-def write_results(rows: Sequence[dict[str, object]], *, quick: bool,
+def write_results(rows: Sequence[dict[str, object]], quick: bool,
                   overwrite: bool = False, plots: bool = True) -> tuple[Path, ...]:
     csv_path, summary_path, grid_path, date_path = output_paths(quick)
     written = (csv_path, summary_path, grid_path, date_path) if plots else (csv_path, summary_path)

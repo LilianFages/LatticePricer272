@@ -534,10 +534,18 @@ def save_summary(
     results: list[dict[str, float | int]]
 ) -> None:
     """Save the main benchmark conclusions."""
-    last_result = results[-1]
+    content = _summary_text(results[-1])
 
+    SUMMARY_PATH.write_text(
+        content,
+        encoding="utf-8",
+    )
+
+
+def _summary_text(last_result: dict[str, float | int]) -> str:
+    """Format the same benchmark summary without any I/O."""
     # Time price construction separately from graph-size measurements.
-    content = (
+    return (
         "Hybrid versus full trinomial benchmark\n"
         "=======================================\n\n"
         f"Spot: {SPOT}\n"
@@ -566,11 +574,6 @@ def save_summary(
         f"{int(last_result['trinomial_nodes'])}\n"
         f"Node ratio: "
         f"{100.0 * float(last_result['node_ratio']):.2f}%\n"
-    )
-
-    SUMMARY_PATH.write_text(
-        content,
-        encoding="utf-8",
     )
 
 

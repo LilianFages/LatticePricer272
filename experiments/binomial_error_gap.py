@@ -200,8 +200,7 @@ def theoretical_gap(
     )
 
 
-def run_gap_experiment(
-) -> list[dict[str, float | int]]:
+def run_gap_experiment() -> list[dict[str, float | int]]:
     """Measure empirical and theoretical gaps."""
     results: list[
         dict[str, float | int]
@@ -570,6 +569,20 @@ def save_summary(
     )
 
 
+def _print_output_paths() -> None:
+    """List the five saved artifacts without altering their filenames."""
+    print()
+    print("Results saved to:")
+    for path in (
+        STRIKE_CSV_PATH,
+        GAP_CSV_PATH,
+        STRIKE_FIGURE_PATH,
+        GAP_FIGURE_PATH,
+        SUMMARY_PATH,
+    ):
+        print(path.relative_to(PROJECT_ROOT))
+
+
 def main() -> None:
     """Run the complete pricing error experiment."""
     reference_results = compute_strike_errors(
@@ -632,40 +645,7 @@ def main() -> None:
         r_squared,
     )
 
-    print()
-    print("Results saved to:")
-
-    print(
-        STRIKE_CSV_PATH.relative_to(
-            PROJECT_ROOT
-        )
-    )
-
-    # Report strike-level and aggregate errors as separate diagnostics.
-    print(
-        GAP_CSV_PATH.relative_to(
-            PROJECT_ROOT
-        )
-    )
-
-    print(
-        STRIKE_FIGURE_PATH.relative_to(
-            PROJECT_ROOT
-        )
-    )
-
-    print(
-        GAP_FIGURE_PATH.relative_to(
-            PROJECT_ROOT
-        )
-    )
-
-    print(
-        SUMMARY_PATH.relative_to(
-            PROJECT_ROOT
-        )
-    )
-
+    _print_output_paths()
 
 if __name__ == "__main__":
     main()
