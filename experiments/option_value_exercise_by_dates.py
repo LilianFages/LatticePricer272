@@ -173,7 +173,7 @@ def profile_from_priced_tree(
     nb_steps: int,
     maturity: float,
     rate: float,
-    scenario: Scenario,
+    scenario: Scenario
 ) -> Result:
     """Compute both professor metrics and a first-exercise distribution.
 

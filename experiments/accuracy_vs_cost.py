@@ -130,7 +130,7 @@ def make_tree(model: str, nb_steps: int) -> (
 def allocated_nodes(
     model: str,
     nb_steps: int,
-    tree: BinomialTree | TrinomialTree | AllocationPrunedTrinomialTree,
+    tree: BinomialTree | TrinomialTree | AllocationPrunedTrinomialTree
 ) -> int:
     """Return physical allocations, not the count of reachable nodes.
 
@@ -167,7 +167,7 @@ def measure_case(
     kind: str,
     strike: float,
     repeats: int,
-    reference: float,
+    reference: float
 ) -> tuple[Result, list[TimingObservation]]:
     """Warm up, measure independent runs, then aggregate by median.
 
@@ -270,7 +270,7 @@ def run_experiment(
     steps: tuple[int, ...],
     strikes: tuple[float, ...],
     kinds: tuple[str, ...],
-    repeats: int,
+    repeats: int
 ) -> tuple[list[Result], list[TimingObservation]]:
     """Execute the complete deterministic grid and print each status."""
     if any(n < 1 for n in steps) or len(set(steps)) != len(steps):
@@ -427,7 +427,7 @@ def plot_comparison(
     x_attribute: str,
     x_label: str,
     path: Path,
-    title: str,
+    title: str
 ) -> None:
     """Plot one log-log relationship, with one series per model."""
     fig, ax = plt.subplots(figsize=(9.5, 6.0))
@@ -536,7 +536,7 @@ def save_outputs(
     results: list[Result], raw: list[TimingObservation],
     repeats: int, steps: tuple[int, ...], strikes: tuple[float, ...],
     kinds: tuple[str, ...], data_dir: Path, figure_dir: Path,
-    summary_path: Path,
+    summary_path: Path
 ) -> None:
     """Export complete raw and aggregated tables, figures, and provenance."""
     write_csv(

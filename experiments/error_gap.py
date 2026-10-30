@@ -78,7 +78,7 @@ SUMMARY_PATH = (
 
 
 def black_scholes_price(
-    strike: float,
+    strike: float
 ) -> float:
     """Return the Black-Scholes European call price."""
     option = CallOption(
@@ -96,7 +96,7 @@ def black_scholes_price(
 
 def tree_price(
     strike: float,
-    nb_steps: int,
+    nb_steps: int
 ) -> float:
     """Return the binomial European call price."""
     tree = BinomialTree(
@@ -118,7 +118,7 @@ def tree_price(
 
 
 def compute_strike_errors(
-    nb_steps: int,
+    nb_steps: int
 ) -> list[dict[str, float | int]]:
     """Compute Tree minus Black-Scholes across strikes."""
     results: list[
@@ -155,7 +155,7 @@ def compute_strike_errors(
 
 
 def compute_gap(
-    strike_results: list[dict[str, float | int]],
+    strike_results: list[dict[str, float | int]]
 ) -> float:
     """Return the peak-to-peak Tree minus BS error."""
     errors = [
@@ -202,7 +202,7 @@ def theoretical_constant() -> float:
 
 
 def theoretical_gap(
-    nb_steps: int,
+    nb_steps: int
 ) -> float:
     """Return the theoretical first-order gap."""
     return (
@@ -262,7 +262,7 @@ def run_gap_experiment(
 
 
 def estimate_order(
-    results: list[dict[str, float | int]],
+    results: list[dict[str, float | int]]
 ) -> tuple[float, float, float]:
     """Estimate Gap = C * N^(-p)."""
     log_steps = [
@@ -357,7 +357,7 @@ def estimate_order(
 
 
 def save_strike_csv(
-    results: list[dict[str, float | int]],
+    results: list[dict[str, float | int]]
 ) -> None:
     """Save strike error data."""
     DATA_DIR.mkdir(
@@ -386,7 +386,7 @@ def save_strike_csv(
 
 
 def save_gap_csv(
-    results: list[dict[str, float | int]],
+    results: list[dict[str, float | int]]
 ) -> None:
     """Save gap convergence data."""
     with GAP_CSV_PATH.open(
@@ -410,7 +410,7 @@ def save_gap_csv(
 
 
 def save_strike_figure(
-    results: list[dict[str, float | int]],
+    results: list[dict[str, float | int]]
 ) -> None:
     """Save Tree minus BS error across strikes."""
     FIGURES_DIR.mkdir(
@@ -474,7 +474,7 @@ def save_strike_figure(
 
 
 def save_gap_figure(
-    results: list[dict[str, float | int]],
+    results: list[dict[str, float | int]]
 ) -> None:
     """Save empirical and theoretical gap convergence."""
     steps = [
@@ -543,7 +543,7 @@ def save_gap_figure(
 def save_summary(
     order: float,
     empirical_constant: float,
-    r_squared: float,
+    r_squared: float
 ) -> None:
     """Save the main gap experiment results."""
     theory_constant = theoretical_constant()
