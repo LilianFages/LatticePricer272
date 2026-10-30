@@ -158,7 +158,6 @@ def _vomma_from_pricings(
 def compute_desk_risk(
     request: PricingRequest,
     bumps: GreekBumps | None = None,
-    *,
     pricer: PricingFunction,
     validate_request: RiskValidator,
     calculate_greeks: Callable[..., GreeksResult],
@@ -221,7 +220,6 @@ def greek_table(snapshot: DeskRiskSnapshot) -> tuple[dict[str, object], ...]:
 def compute_greek_curve(
     request: PricingRequest,
     name: GreekName,
-    *,
     count: int = 5,
     span_pct: float = 10.0,
     bumps: GreekBumps | None = None,
