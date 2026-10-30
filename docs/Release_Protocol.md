@@ -25,32 +25,17 @@ root. **Do not run full empirical benchmarks just to validate a code patch.**
 ```bash
 source .venv/Scripts/activate
 python -m pytest -q
-python -m scripts.release_audit
-python -m compileall -q src frontend experiments scripts tests
+python -m compileall -q src frontend experiments tests
 git diff --check
 git status --short
 python -m streamlit run frontend/app.py
 ```
 
-The audit only *reads* the 26-row Phase 6C CSV, its summary, its two PNGs
-and first-party Python imports. It requires 16 `grid` and 10 `date` records,
-with the exact study models, depths and shifts. It independently checks:
-
-1. Full (model, panel, N, shift) coverage, no duplicate measurements.
-2. Consistent cash ex-date metadata and finite option prices.
-3. European call-put parity with discounted cash dividend, tolerance
-   `1e-7 EUR` on the **actual measured parity residual**.
-4. American put >= European put (small floating tolerance), with the
-   recorded premium matching their measured difference.
-5. Every observed grid gap against the largest sampled successful N for
-   that model; every date-shift comparison against the same-model zero shift.
-6. Summary counts, nonempty PNG files and resolvable static first-party imports.
-
-`python -m scripts.release_audit` returns a nonzero exit code if any check
-fails and has **no code path that writes a file or prices a contract**. Static
-imports are a helpful architectural sanity check; they are **not** proof that
-all code is reachable, that imports can execute, or that no dynamic dependency
-exists. The normal complete `pytest` run remains mandatory.
+The `pytest` suite checks the maintained financial invariants and app
+contracts; no separate historical release-audit runner is required. Archived
+Phase 6C evidence stays versioned under `results/`, and the scientific
+assumptions are documented in the corresponding experiment protocol.
+Before delivery, run the application manually with calendar-date contracts.
 
 ## Streamlit acceptance checklist
 
@@ -89,7 +74,7 @@ exists. The normal complete `pytest` run remains mandatory.
   An empirical error/runtime frontier uses **observed** configurations only.
 - Historical run times depend on hardware, environment and load. Do not
   combine their sample distributions with single-run Streamlit timings.
-- Financial invariants and 1,000+ regression tests **do not prove** perfect
+- Financial invariants and a passing regression suite **do not prove** perfect
   discretization or market accuracy. Report model-conditional observations.
 
 ## Final Git checklist
