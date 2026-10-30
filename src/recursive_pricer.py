@@ -84,57 +84,30 @@ class RecursivePricer:
                 "Missing transition probabilities."
             )
 
-        # Price the upper and lower branches shared by both lattice types.
-        up_value = self._price_node(
-            node=node.next_up,
-            remaining_steps=remaining_steps - 1,
-            option=option,
-            discount_factor=discount_factor,
-            event_dividends=event_dividends,
-        )
-
-        down_value = self._price_node(
-            node=node.next_down,
-            remaining_steps=remaining_steps - 1,
-            option=option,
-            discount_factor=discount_factor,
-            event_dividends=event_dividends,
-        )
-
+        # Resolve the dividend adjustment on each outgoing transition.
         ex_dividend = event_dividends.get(remaining_steps)
-        up_value = before_dividend_value(
-            node.next_up, up_value, option, ex_dividend,
+        up_value = self._child_value(
+            node.next_up, remaining_steps, option,
+            discount_factor, event_dividends, ex_dividend,
         )
-        down_value = before_dividend_value(
-            node.next_down, down_value, option, ex_dividend,
+        down_value = self._child_value(
+            node.next_down, remaining_steps, option,
+            discount_factor, event_dividends, ex_dividend,
         )
         expected_option_value = (
             node.up_probability * up_value
             + node.down_probability * down_value
         )
 
-        # A trinomial node additionally contributes its middle branch.
+        # A trinomial node adds its middle branch after the two outer ones.
         if node.next_mid is not None:
             if node.mid_probability is None:
-                raise RuntimeError(
-                    "Missing middle transition probability."
-                )
-
-            mid_value = self._price_node(
-                node=node.next_mid,
-                remaining_steps=remaining_steps - 1,
-                option=option,
-                discount_factor=discount_factor,
-                event_dividends=event_dividends,
+                raise RuntimeError("Missing middle transition probability.")
+            mid_value = self._child_value(
+                node.next_mid, remaining_steps, option,
+                discount_factor, event_dividends, ex_dividend,
             )
-
-            mid_value = before_dividend_value(
-                node.next_mid, mid_value, option, ex_dividend,
-            )
-            expected_option_value += (
-                node.mid_probability
-                * mid_value
-            )
+            expected_option_value += node.mid_probability * mid_value
 
         hold_value = (
             discount_factor
@@ -151,3 +124,23 @@ class RecursivePricer:
         )
 
         return node.option_value
+    def _child_value(
+        self: Self,
+        child: Node,
+        remaining_steps: int,
+        option: Option,
+        discount_factor: float,
+        event_dividends: dict[int, DividendStepEvent],
+        ex_dividend: DividendStepEvent | None,
+    ) -> float:
+        """Price a successor once and apply the same ex-date event rule."""
+        child_value = self._price_node(
+            node=child,
+            remaining_steps=remaining_steps - 1,
+            option=option,
+            discount_factor=discount_factor,
+            event_dividends=event_dividends,
+        )
+        return before_dividend_value(
+            child, child_value, option, ex_dividend,
+        )
