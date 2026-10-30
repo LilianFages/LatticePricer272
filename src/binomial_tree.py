@@ -1,7 +1,7 @@
 import math
 from typing import Self
 
-from src.node import Node, TrunkNode
+from src.node import Node
 
 
 class BinomialTree:
@@ -40,7 +40,7 @@ class BinomialTree:
             1.0 - self.up_probability
         )
 
-        self.root: TrunkNode = TrunkNode(
+        self.root: Node = Node(
             spot
         )
 
