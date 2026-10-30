@@ -19,7 +19,7 @@ from src.black_scholes import BlackScholesPricer
 from src.dividend import CashDividend
 from src.dividend_timing import dividend_grid_step
 from src.hybrid_tree import HybridTree
-from src.iterative_backward_pricer import IterativeBackwardPricer
+from src.backward_pricer import BackwardPricer
 from src.node import Node
 from src.lattice_graph import count_reachable_nodes as _count_priced_nodes
 from src.option import CallOption, PutOption
@@ -224,7 +224,7 @@ def price_contract(
         strike=request.strike,
         is_american=request.exercise == "American",
     )
-    pricer = RecursivePricer() if algorithm == "Recursive" else IterativeBackwardPricer()
+    pricer = RecursivePricer() if algorithm == "Recursive" else BackwardPricer()
     price = pricer.price(tree, option)
     elapsed_ms = (time.perf_counter() - start) * 1000.0
     if not math.isfinite(price) or price < 0.0:
