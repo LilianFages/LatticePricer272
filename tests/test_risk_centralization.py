@@ -22,7 +22,7 @@ from frontend.trading_risk import (
     compute_desk_risk as frontend_desk,
     greek_table,
 )
-from src.pricing_errors import PricingInputError as CoreInputError
+from src import PricingInputError as CoreInputError
 from src.risk.desk import compute_desk_risk as core_desk
 from src.risk.greeks import (
     GreekBumps as CoreBumps,
