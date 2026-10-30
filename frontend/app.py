@@ -27,6 +27,7 @@ from frontend.model_selection import resolve_model_selection
 from frontend.pricing_service import (
     DEFAULT_THRESHOLD,
     MAX_STEPS,
+    FULL_GRAPH_MAX_STEPS,
     DividendInput,
     PricingInputError,
     PricingRequest,
@@ -149,11 +150,20 @@ def _render_pricing_setup(
              "Both use the same financial lattice and transitions.",
     )
     st.caption("One pricing algorithm for the premium and every Greek.")
+    step_limit = MAX_STEPS if model_family == "Binomial" else FULL_GRAPH_MAX_STEPS
     steps = steps_col.number_input(
-        "Time steps (N)", min_value=1, max_value=MAX_STEPS,
+        "Time steps (N)", min_value=1, max_value=step_limit,
         value=100, step=25, key=f"{prefix}_steps",
-        help="Interactive safety cap; not the engine's mathematical limit.",
+        help=(
+            "Binomial: up to N=10,000 via memory-bounded rolling arrays. "
+            "Other models: up to N=350 to protect application memory."
+        ),
     )
+    if model_family == "Binomial" and steps > FULL_GRAPH_MAX_STEPS:
+        st.caption(
+            "Deep binomial mode: rolling arrays, price only. "
+            "Greeks and tree visualization are not calculated."
+        )
     pruning_method = "Allocation"
     pruning_threshold = DEFAULT_THRESHOLD
     if model_family == "Trinomial" and pruning_enabled:
@@ -378,28 +388,35 @@ def _process_pricing_submission(
             with st.spinner("Running lattice pricing..."):
                 result = price_contract(request, algorithm=selected_algorithm)
             st.session_state["last_pricing_result"] = result
-            try:
-                # Greek calculations happen once per successful RUN PRICING,
-                # not on Streamlit reruns or widget changes.
-                with st.spinner("Calculating desk Greeks..."):
-                    risk_snapshot = compute_desk_risk(
-                        request,
-                        pricer=partial(price_contract, algorithm=selected_algorithm),
-                    )
-                st.session_state["desk_risk_snapshot"] = (request, risk_snapshot)
-            except (PricingInputError, ValueError, RuntimeError,
-                    OverflowError, ZeroDivisionError) as risk_exc:
-                # A failed Greek must never invalidate a successful premium.
-                st.session_state["desk_risk_error"] = str(risk_exc)
+            if request.model == "Binomial" and request.steps > FULL_GRAPH_MAX_STEPS:
+                st.session_state["desk_risk_error"] = (
+                    "Deep binomial mode calculates the premium only. "
+                    "For Greeks and Delta hedge, select N <= 350."
+                )
+            else:
+                _calculate_standard_risk(request, selected_algorithm)
             st.session_state["last_pricing_calendar"] = st.session_state.get(
                 "ticket_submitted_calendar"
             )
             _record_pricing_history(request, result, selected_algorithm)
         except (PricingInputError, ValueError, RuntimeError, OverflowError,
                 ZeroDivisionError) as exc:
-            # Render navigation and global page chrome without changing active widgets.
             st.error(f"Pricing unavailable: {exc}")
             st.info("Check model compatibility, dividend dates and market inputs.")
+
+
+def _calculate_standard_risk(request: PricingRequest, selected_algorithm: str) -> None:
+    """Compute Greeks only for supported ordinary-depth lattices."""
+    try:
+        with st.spinner("Calculating desk Greeks..."):
+            risk_snapshot = compute_desk_risk(
+                request,
+                pricer=partial(price_contract, algorithm=selected_algorithm),
+            )
+        st.session_state["desk_risk_snapshot"] = (request, risk_snapshot)
+    except (PricingInputError, ValueError, RuntimeError,
+            OverflowError, ZeroDivisionError) as risk_exc:
+        st.session_state["desk_risk_error"] = str(risk_exc)
 
 
 def _render_pricing_results(submitted: bool) -> None:

@@ -18,6 +18,18 @@ python -m streamlit run frontend/app.py
 
 On Windows Git Bash, activate with `source .venv/Scripts/activate`. Run the full test suite before and after every pricing-engine or UI refactor. Streamlit may open a browser window automatically.
 
+## Deep binomial mode (experimental)
+
+The Pricing Terminal accepts **N up to 10,000 for Binomial only**, using a
+memory-bounded rolling-array implementation when N > 350. Select the
+**Backward** pricing algorithm at these depths. The same binomial transition
+probabilities and vanilla exercise rules apply; no cash dividends are supported.
+At N > 350 the terminal intentionally displays the premium **without**
+automatic seven-Greek repricing or lattice visualization, to avoid expensive
+repeated work. Other model families remain capped at N = 350. Calculations
+are quadratic in time and may take longer on other machines. Always validate
+the output and any model assumptions before using it in coursework.
+
 ## Application
 
 - **Pricing Terminal:** specify contracts, exercise, model family, optional discrete cash dividends and pricing algorithm. Review results and risk calculations.
