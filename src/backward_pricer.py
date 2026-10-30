@@ -1,141 +1,131 @@
+"""Iterative backward induction on the existing recombining pricing graph.
+
+This course-style backward induction values the existing lattice from
+maturity to valuation. It applies the same transition probabilities and
+exercise rules as RecursivePricer, without recursive function calls.
+"""
+
+from __future__ import annotations
+
 import math
-from typing import Self
 
 from src.binomial_tree import BinomialTree
+from src.dividend_exercise import (
+    before_dividend_value, dividend_exercise_steps, offgrid_exercise_bound,
+)
+from src.hybrid_tree import HybridTree
 from src.node import Node
 from src.option import Option
+from src.trinomial_tree import TrinomialTree
+
+LatticeTree = BinomialTree | TrinomialTree | HybridTree
 
 
 class BackwardPricer:
-    """Prices vanilla options backward on a binomial lattice."""
+    """Price binomial, hybrid, and trinomial trees by backward induction."""
 
-    def price(
-        self: Self,
-        tree: BinomialTree,
-        option: Option,
+    def price(self, tree: LatticeTree, option: Option) -> float:
+        """Build once, then work backward through reachable time layers."""
+        tree.build()
+        event_dividends = (
+            dividend_exercise_steps(tree) if option.is_american else {}
+        )
+        levels = self._reachable_levels(tree.root, tree.nb_steps)
+
+        for node in levels[-1]:
+            node.option_value = option.payoff(node.price)
+
+        discount_factor = math.exp(-tree.rate * tree.dt)
+
+        for step in range(tree.nb_steps - 1, -1, -1):
+            layer = levels[step]
+            ex_dividend = event_dividends.get(step + 1)
+            for node in layer:
+                self._price_node(node, option, discount_factor, ex_dividend)
+
+        value = tree.root.option_value
+        if value is None:
+            raise RuntimeError("Root option value was not calculated.")
+        return value
+
+    @staticmethod
+    def _transition_value(
+        node: Node, option: Option, ex_dividend: object,
     ) -> float:
-        """Price an option by backward induction."""
-        last_trunk = tree.build_trunk()
+        """Collect discounted-successor inputs without changing edge order."""
+        up, down = node.next_up, node.next_down
+        if up is None or down is None:
+            raise RuntimeError("Incomplete lattice.")
+        if node.up_probability is None or node.down_probability is None:
+            raise RuntimeError("Missing transition probabilities.")
+        if up.option_value is None or down.option_value is None:
+            raise RuntimeError("Unpriced successor in backward induction.")
 
-        # Start from the complete maturity column.
-        next_top = tree.build_column_backward(
-            trunk_node=last_trunk,
-            step=tree.nb_steps,
+        # Preserve the original up/down evaluation order and event adjustment.
+        expected = (
+            node.up_probability
+            * before_dividend_value(up, up.option_value, option, ex_dividend)
+            + node.down_probability
+            * before_dividend_value(down, down.option_value, option, ex_dividend)
         )
-
-        self._set_terminal_payoffs(
-            next_top,
-            option,
-        )
-
-        discount_factor = math.exp(
-            -tree.rate * tree.dt
-        )
-
-        current_trunk = last_trunk
-
-        # Rebuild and price one column at a time toward the root.
-        for step in range(
-            tree.nb_steps - 1,
-            -1,
-            -1,
-        ):
-            previous_trunk = (
-                current_trunk.previous_trunk
+        mid = node.next_mid
+        if mid is not None:
+            if node.mid_probability is None:
+                raise RuntimeError("Missing middle transition probability.")
+            if mid.option_value is None:
+                raise RuntimeError("Unpriced middle successor.")
+            expected += (
+                node.mid_probability
+                * before_dividend_value(mid, mid.option_value, option, ex_dividend)
             )
-
-            if previous_trunk is None:
-                raise RuntimeError(
-                    "Incomplete trunk."
-                )
-
-            current_top = tree.build_column_backward(
-                trunk_node=previous_trunk,
-                step=step,
-                next_top=next_top,
-            )
-
-            self._price_column(
-                current_top,
-                tree,
-                option,
-                discount_factor,
-            )
-
-            # The priced column becomes the reference for the next step.
-            next_top = current_top
-            current_trunk = previous_trunk
-
-        if tree.root.option_value is None:
-            raise RuntimeError(
-                "Root option value was not calculated."
-            )
-
-        return tree.root.option_value
+        return expected
 
     @staticmethod
-    def _set_terminal_payoffs(
-        top_node: Node,
-        option: Option,
+    def _price_node(
+        node: Node, option: Option, discount_factor: float, ex_dividend: object,
     ) -> None:
-        """Set option payoffs on the maturity column."""
-        current_node: Node | None = top_node
-
-        # Traverse the terminal column through vertical links.
-        while current_node is not None:
-            current_node.option_value = (
-                option.payoff(
-                    current_node.price
-                )
-            )
-
-            current_node = (
-                current_node.lower_neighbor
-            )
+        """Discount expected payoff and compare continuation with exercise."""
+        expected = BackwardPricer._transition_value(
+            node, option, ex_dividend,
+        )
+        hold_value = offgrid_exercise_bound(
+            node, discount_factor * expected, option, ex_dividend,
+        )
+        node.option_value = option.value_at_node(
+            spot=node.price, hold_value=hold_value,
+        )
 
     @staticmethod
-    def _price_column(
-        top_node: Node,
-        tree: BinomialTree,
-        option: Option,
-        discount_factor: float,
-    ) -> None:
-        """Price all nodes of one column."""
-        current_node: Node | None = top_node
+    def _next_level(
+        current: list[Node], seen_earlier: set[int],
+    ) -> dict[int, Node]:
+        """Deduplicate a time layer and reject cross-layer node reuse."""
+        following: dict[int, Node] = {}
+        for node in current:
+            if node.next_up is None or node.next_down is None:
+                raise RuntimeError("Incomplete lattice.")
+            for child in (node.next_up, node.next_down, node.next_mid):
+                if child is None:
+                    continue
+                identity = id(child)
+                if identity in seen_earlier:
+                    raise RuntimeError(
+                        "A lattice node belongs to more than one time layer."
+                    )
+                following[identity] = child
+        return following
 
-        while current_node is not None:
-            next_up = current_node.next_up
-            next_down = current_node.next_down
-
-            # Both successors must belong to the already-priced next column.
-            if next_up is None or next_down is None:
-                raise RuntimeError(
-                    "Incomplete lattice connections."
-                )
-
-            if (
-                next_up.option_value is None
-                or next_down.option_value is None
-            ):
-                raise RuntimeError(
-                    "Next column has not been priced."
-                )
-
-            # Risk-neutral continuation value discounted over one time step.
-            hold_value = discount_factor * (
-                tree.up_probability
-                * next_up.option_value
-                + tree.down_probability
-                * next_down.option_value
+    @staticmethod
+    def _reachable_levels(root: Node, steps: int) -> list[list[Node]]:
+        """Visit shared nodes exactly once per time layer, without recursion."""
+        levels: list[list[Node]] = [[root]]
+        seen_earlier: set[int] = {id(root)}
+        for _ in range(steps):
+            following = BackwardPricer._next_level(
+                levels[-1], seen_earlier,
             )
-
-            current_node.option_value = (
-                option.value_at_node(
-                    spot=current_node.price,
-                    hold_value=hold_value,
-                )
-            )
-
-            current_node = (
-                current_node.lower_neighbor
-            )
+            if not following:
+                raise RuntimeError("Missing next lattice layer.")
+            levels.append(list(following.values()))
+            seen_earlier.update(following)
+        return levels
