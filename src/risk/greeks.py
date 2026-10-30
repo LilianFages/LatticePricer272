@@ -141,7 +141,6 @@ def roll_calendar_day(request: PricingRequest) -> PricingRequest | None:
     )
 
 
-
 def select_gamma_bump(request: PricingRequest, bumps: GreekBumps) -> tuple[float, str, bool]:
     """Return a Gamma stencil width independent of the Delta bump.
 
@@ -174,15 +173,42 @@ def select_gamma_bump(request: PricingRequest, bumps: GreekBumps) -> tuple[float
     return max(bumps.spot_pct, width_pct), "grid-aware", clipped
 
 
+def _gamma_diagnostics(
+    request: PricingRequest,
+    gamma: float | None,
+    clipped_gamma: bool,
+    issues: list[str],
+) -> dict[str, float] | None:
+    """Explain numerical Gamma limitations without modifying its estimate."""
+    if clipped_gamma:
+        issues.append(
+            "Gamma / grid: suggested spacing exceeds the 20% spot bump cap; "
+            "Gamma may be unreliable in this coarse or high-volatility lattice."
+        )
+    if request.dividends:
+        issues.append(
+            "Gamma / dividend: grid-aware bump is a spacing heuristic only; "
+            "check sensitivity to bump and N near cash dividend dates."
+        )
+    reference_greeks = analytic_bs_greeks(request)
+    if reference_greeks is not None and gamma is not None:
+        reference_gamma = reference_greeks["Gamma"]
+        if reference_gamma > 1e-5 and abs(gamma) < 0.05 * reference_gamma:
+            issues.append(
+                "Gamma / grid: near-zero curvature despite positive Black--Scholes "
+                "Gamma. Try a larger Gamma bump or more steps."
+            )
+    return reference_greeks
+
 
 def _compute_spot_greeks(
     request: PricingRequest,
     bumps: GreekBumps,
-    central_sides: Callable,
-    eval_shock: Callable,
+    central_sides: Callable[[str, float], tuple[float | None, float | None]],
+    eval_shock: Callable[[str, PricingRequest], float | None],
     base: float,
     issues: list[str],
-) -> tuple:
+) -> tuple[float | None, float | None, float, str, dict[str, float] | None]:
     """Calculate Delta and grid-aware Gamma without repricing changes."""
     h_s = request.spot * bumps.spot_pct / 100.0
     s_minus, s_plus = central_sides("spot", h_s)
@@ -203,36 +229,20 @@ def _compute_spot_greeks(
         )
     gamma = ((gamma_plus - 2 * base + gamma_minus) / (h_gamma * h_gamma)
              if gamma_plus is not None and gamma_minus is not None else None)
-    if clipped_gamma:
-        issues.append(
-            "Gamma / grid: suggested spacing exceeds the 20% spot bump cap; "
-            "Gamma may be unreliable in this coarse or high-volatility lattice."
-        )
-    if request.dividends:
-        issues.append(
-            "Gamma / dividend: grid-aware bump is a spacing heuristic only; "
-            "check sensitivity to bump and N near cash dividend dates."
-        )
-    reference_greeks = analytic_bs_greeks(request)
-    if reference_greeks is not None and gamma is not None:
-        reference_gamma = reference_greeks["Gamma"]
-        # Preserve adaptive Gamma perturbation and maturity adjustments.
-        if reference_gamma > 1e-5 and abs(gamma) < 0.05 * reference_gamma:
-            issues.append(
-                "Gamma / grid: near-zero curvature despite positive Black--Scholes "
-                "Gamma. Try a larger Gamma bump or more steps."
-            )
+    # A diagnostic does not change the finite-difference Delta or Gamma.
+    reference_greeks = _gamma_diagnostics(
+        request, gamma, clipped_gamma, issues,
+    )
     return delta, gamma, gamma_pct, gamma_scheme, reference_greeks
-
 
 
 def _compute_vega_greek(
     request: PricingRequest,
     bumps: GreekBumps,
-    central_sides: Callable,
-    eval_shock: Callable,
+    central_sides: Callable[[str, float], tuple[float | None, float | None]],
+    eval_shock: Callable[[str, PricingRequest], float | None],
     base: float,
-) -> tuple:
+) -> tuple[float | None, str]:
     """Keep central and second-order forward volatility bumps."""
     h_vol = bumps.vol_pp / 100.0
     if request.volatility >= h_vol:
@@ -251,8 +261,10 @@ def _compute_vega_greek(
     return vega, vol_scheme
 
 
-
-def _compute_rho_greek(bumps: GreekBumps, central_sides: Callable) -> object:
+def _compute_rho_greek(
+    bumps: GreekBumps,
+    central_sides: Callable[[str, float], tuple[float | None, float | None]],
+) -> float | None:
     """Keep the basis-point scaling of rate risk."""
     h_r = bumps.rate_bp * BP
     r_minus, r_plus = central_sides("rate", h_r)
@@ -261,8 +273,12 @@ def _compute_rho_greek(bumps: GreekBumps, central_sides: Callable) -> object:
     return rho
 
 
-
-def _compute_theta_greek(request: PricingRequest, eval_shock: Callable, base: float, issues: list[str]) -> object:
+def _compute_theta_greek(
+    request: PricingRequest,
+    eval_shock: Callable[[str, PricingRequest], float | None],
+    base: float,
+    issues: list[str],
+) -> float | None:
     """Reprice calendar day with unchanged expiry and ex dates."""
     rolled = roll_calendar_day(request)
     if rolled is None:
