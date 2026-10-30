@@ -13,7 +13,7 @@ from dataclasses import dataclass, replace
 from typing import Callable, Literal
 
 from src.allocation_pruned_trinomial_tree import AllocationPrunedTrinomialTree
-from src.pricing_errors import PricingInputError
+from src import PricingInputError
 from src.binomial_tree import BinomialTree
 from src.black_scholes import BlackScholesPricer
 from src.dividend import CashDividend
