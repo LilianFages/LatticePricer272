@@ -31,6 +31,23 @@ def _intrinsic(spot: float, strike: float, kind: str) -> float:
     raise ValueError(f"Unknown option type: {kind}.")
 
 
+def _event_exercise_candidates(
+    request: RiskRequest,
+    stock_before: float,
+    event_time: float,
+    cash_amount: float,
+) -> tuple[float, float]:
+    """Discount deterministic intrinsic payoffs on both sides of a cash jump."""
+    discount = math.exp(-request.rate * event_time)
+    before = discount * _intrinsic(
+        stock_before, request.strike, request.option_type,
+    )
+    after = discount * _intrinsic(
+        stock_before - cash_amount, request.strike, request.option_type,
+    )
+    return before, after
+
+
 def deterministic_american_reference(request: RiskRequest) -> tuple[float, str]:
     """Exact American value at sigma=0: exercise at event sides or endpoints.
 
@@ -49,18 +66,13 @@ def deterministic_american_reference(request: RiskRequest) -> tuple[float, str]:
     previous_date = 0.0
     for dividend in sorted(request.dividends, key=lambda event: event.time):
         current_spot *= math.exp(request.rate * (dividend.time - previous_date))
-        discount = math.exp(-request.rate * dividend.time)
-        # Test exercise just before the deterministic dividend jump.
-        before = discount * _intrinsic(
-            current_spot, request.strike, request.option_type,
+        # Compare exercise immediately before and after each cash payment.
+        before, after = _event_exercise_candidates(
+            request, current_spot, dividend.time, dividend.amount,
         )
         if before > best:
             best, best_event = before, "pre-dividend"
         current_spot -= dividend.amount
-        # Test exercise just after the jump, with the ex-dividend stock.
-        after = discount * _intrinsic(
-            current_spot, request.strike, request.option_type,
-        )
         if after > best:
             best, best_event = after, "post-dividend"
         previous_date = dividend.time
