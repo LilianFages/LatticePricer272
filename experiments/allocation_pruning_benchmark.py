@@ -253,10 +253,7 @@ def _timed_samples(
     model: str, steps: int
 ) -> dict | tuple[list[float], list[float], list[float], list[float]]:
     """Measure repeated runs without tracing allocations."""
-    elapsed: list[float] = []
-    builds: list[float] = []
-    pricing: list[float] = []
-    prices: list[float] = []
+    elapsed, builds, pricing, prices = [], [], [], []
     for _ in range(RUNTIME_REPEATS):
         gc.collect()
         tree = make_tree(model, steps)
