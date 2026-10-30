@@ -1,13 +1,14 @@
-"""Regression tests for phase-2 multi-strike accuracy/cost aggregation."""
+"""Experiment accuracy/cost, aggregation and Pareto-front invariants.
+
+Consolidated without dropping individual regression cases.
+"""
 
 from __future__ import annotations
 
 import csv
 from dataclasses import replace
 from pathlib import Path
-
 import pytest
-
 from experiments.pricing_accuracy_cost import MODELS, Result
 from experiments.accuracy_cost_multistrike import (
     ADDITIONAL_STEPS,
@@ -18,8 +19,29 @@ from experiments.accuracy_cost_multistrike import (
     pareto_multi,
     target_choices,
 )
+import math
+from experiments.pricing_accuracy_cost import (
+    MODELS,
+    Result,
+    _positive_points,
+    allocated_nodes,
+    bs_reference,
+    contract_results,
+    create_option,
+    fastest_at_error_target,
+    make_tree,
+    pareto_front,
+    parity_deviations,
+)
+from src.recursive_pricer import RecursivePricer
+import pandas as pd
+from experiments.accuracy_cost_multistrike import Aggregate, pareto_multi
+from experiments.pricing_accuracy_cost import Result, pareto_front
+from frontend.research_lab_service import observed_pareto
+from src.accuracy_metrics import nondominated_indices
 
 
+# test_accuracy_cost_multistrike.py (tests preserved)
 # Construct controlled one-strike observations with independently specified errors.
 def _sample_result(model: str, strike: float, error: float,
                   runtime: float, nodes: int = 100, n: int = 50) -> Result:
@@ -178,3 +200,166 @@ def test_absence_of_zero_numerical_floor_in_aggregation() -> None:
     rows = [_sample_result("binomial", k, 0.0, .02) for k in (80., 100., 120.)]
     aggregated = aggregate_cross_strike(rows, models=("binomial",))
     assert aggregated[0].worst_absolute_error == 0.0
+
+
+# test_accuracy_vs_cost.py (tests preserved)
+# Build synthetic error/runtime points without invoking the numerical engines.
+def _fake_result(model: str, steps: int, runtime: float, error: float) -> Result:
+    return Result(
+        nb_steps=steps,
+        strike=100.0,
+        option_kind="call",
+        model=model,
+        reference_price=10.0,
+        price=10.0 + error,
+        absolute_error=error,
+        relative_error=error / 10.0,
+        median_runtime_seconds=runtime,
+        min_runtime_seconds=runtime,
+        max_runtime_seconds=runtime,
+        allocated_nodes=steps * steps,
+        status="success",
+        failure_reason="",
+    )
+
+
+# The protocol must include all four pricing implementations.
+def test_all_four_models_available() -> None:
+    assert len(MODELS) == 4
+    assert len(set(MODELS)) == 4
+    for model in MODELS:
+        assert make_tree(model, 4).nb_steps == 4
+
+
+@pytest.mark.parametrize("kind", ["call", "put"])
+def test_black_scholes_contract_is_european(kind: str) -> None:
+    option = create_option(kind, 100.0)
+    assert not option.is_american
+    assert bs_reference(kind, 100.0) > 0.0
+
+
+def test_invalid_option_type_rejected() -> None:
+    with pytest.raises(ValueError, match="Unsupported option kind"):
+        create_option("digital", 100.0)
+
+
+def test_pareto_front_keeps_only_nondominated_points() -> None:
+    points = [
+        _fake_result("binomial", 20, 0.01, 0.12),
+        _fake_result("binomial", 40, 0.02, 0.09),
+        _fake_result("trinomial_full", 40, 0.03, 0.10),  # dominated
+        _fake_result("trinomial_allocation", 100, 0.05, 0.01),
+    ]
+    frontier = pareto_front(points)
+    assert [p.nb_steps for p in frontier] == [20, 40, 100]
+    assert all(p.model != "trinomial_full" for p in frontier)
+
+
+def test_target_selects_fastest_observed_feasible_point() -> None:
+    points = [
+        _fake_result("binomial", 20, 0.02, 0.03),
+        _fake_result("binomial", 60, 0.05, 0.001),
+        _fake_result("trinomial_allocation", 40, 0.03, 0.005),
+    ]
+    selected = fastest_at_error_target(points, 0.01)
+    assert selected is not None
+    assert selected.model == "trinomial_allocation"
+    assert selected.nb_steps == 40
+    # The selected configuration must be the fastest actually observed feasible run.
+    assert fastest_at_error_target(points, 1e-5) is None
+
+
+def test_exact_zero_error_not_put_on_log_axis() -> None:
+    points = [
+        _fake_result("binomial", 20, 0.02, 0.0),
+        _fake_result("binomial", 40, 0.04, 0.005),
+    ]
+    xs, ys = _positive_points(points, "median_runtime_seconds", "absolute_error")
+    assert xs == [0.04]
+    assert ys == [0.005]
+
+
+def test_contract_selection_excludes_other_options() -> None:
+    points = [_fake_result("binomial", 20, 0.01, 0.1)]
+    assert len(contract_results(points, "call", 100.0)) == 1
+    # A model comparison must not mix different option contracts.
+    assert contract_results(points, "put", 100.0) == []
+
+
+@pytest.mark.parametrize("model", MODELS)
+def test_no_dividend_atm_prices_and_node_counts(model: str) -> None:
+    steps = 40
+    tree = make_tree(model, steps)
+    price = RecursivePricer().price(tree, create_option("call", 100.0))
+    assert math.isfinite(price)
+    assert abs(price - bs_reference("call", 100.0)) < 0.25
+    node_count = allocated_nodes(model, steps, tree)
+    assert node_count > 0
+    if model == "binomial":
+        assert node_count == (steps + 1) * (steps + 2) // 2
+    elif model in ("trinomial_full", "trinomial_branch"):
+        assert node_count == (steps + 1) ** 2
+    else:
+        # Use the same at-the-money contract when comparing prices and lattice sizes.
+        assert node_count <= (steps + 1) ** 2
+
+
+def test_allocation_and_branch_agree_for_atm_put() -> None:
+    steps = 100
+    option = create_option("put", 100.0)
+    branch = RecursivePricer().price(make_tree("trinomial_branch", steps), option)
+    allocation = RecursivePricer().price(make_tree("trinomial_allocation", steps), option)
+    assert allocation == pytest.approx(branch, abs=1e-9)
+
+
+def test_put_call_parity_diagnostics() -> None:
+    reference_call = bs_reference("call", 100.0)
+    reference_put = bs_reference("put", 100.0)
+    target = 100.0 - 100.0 * math.exp(-0.02)
+    assert reference_call - reference_put == pytest.approx(target, abs=1e-10)
+    assert parity_deviations([]) == []
+
+
+# test_pareto_frontier_consistency.py (tests preserved)
+def test_pure_frontier_retains_ties_zero_errors_and_tradeoffs() -> None:
+    points = [(1., .2), (2., .1), (3., .15), (1., .2), (4., 0.)]
+    assert nondominated_indices(points) == (0, 1, 3, 4)
+    assert nondominated_indices([]) == ()
+    assert nondominated_indices([(1, 0), (1, 0)]) == (0, 1)
+
+
+def test_live_archive_accept_same_observations_and_duplicate_coordinates() -> None:
+    frame = pd.DataFrame({
+        'model': ['A', 'B', 'C', 'D', 'E'],
+        'max_median_runtime_seconds': [1., 2., 3., 1., 4.],
+        'worst_absolute_error': [.2, .1, .15, .2, 0.],
+    })
+    assert observed_pareto(frame)['model'].tolist() == ['A', 'D', 'B', 'E']
+
+
+def test_phase_one_frontier_keeps_observation_order_on_equal_runtimes() -> None:
+    points = []
+    for steps, runtime, gap in [(20, 1., .2), (40, 2., .1),
+                                (60, 3., .15), (80, 1., .2)]:
+        points.append(Result(
+            nb_steps=steps, strike=100., option_kind='call', model='binomial',
+            reference_price=10., price=10. + gap, absolute_error=gap,
+            relative_error=gap/10., median_runtime_seconds=runtime,
+            min_runtime_seconds=runtime, max_runtime_seconds=runtime,
+            allocated_nodes=100, status='success', failure_reason='',
+        ))
+    assert [r.nb_steps for r in pareto_front(points)] == [20, 80, 40]
+
+
+def test_phase_two_frontier_retains_original_secondary_error_sort() -> None:
+    rows = []
+    for steps, runtime, gap in [(20, 1., .2), (40, 2., .1),
+                                (60, 3., .15), (80, 1., .2)]:
+        rows.append(Aggregate(
+            model='binomial', nb_steps=steps, worst_absolute_error=gap,
+            mean_absolute_error=gap, root_mean_square_error=gap,
+            worst_strike=100., max_median_runtime_seconds=runtime,
+            sum_median_runtime_seconds=runtime * 3,
+            allocated_nodes_per_tree=100, source='phase1',
+        ))
+    assert [r.nb_steps for r in pareto_multi(rows)] == [20, 80, 40]

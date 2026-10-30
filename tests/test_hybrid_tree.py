@@ -1,11 +1,286 @@
-import math
+"""Hybrid-tree construction and pricing with discrete dividends.
 
+Consolidated without dropping individual regression cases.
+"""
+
+from __future__ import annotations
+
+import math
 from src.binomial_tree import BinomialTree
 from src.dividend import CashDividend
 from src.hybrid_tree import HybridTree
+from src.option import CallOption, PutOption
+from src.recursive_pricer import RecursivePricer
+from src.trinomial_tree import TrinomialTree
 from src.node import Node
 
 
+# test_hybrid_pricing.py (tests preserved)
+# Without dividends, hybrid pricing must reduce exactly to binomial pricing.
+def test_hybrid_without_dividend_matches_binomial_price() -> None:
+    option = CallOption(
+        strike=100.0
+    )
+
+    binomial_price = RecursivePricer().price(
+        BinomialTree(
+            spot=100.0,
+            rate=0.02,
+            volatility=0.20,
+            maturity=1.0,
+            nb_steps=10,
+        ),
+        option,
+    )
+
+    # Without dividends, the hybrid tree reduces to binomial pricing.
+    hybrid_price = RecursivePricer().price(
+        HybridTree(
+            spot=100.0,
+            rate=0.02,
+            volatility=0.20,
+            maturity=1.0,
+            nb_steps=10,
+        ),
+        option,
+    )
+
+    assert math.isclose(
+        hybrid_price,
+        binomial_price,
+        rel_tol=1e-12,
+        abs_tol=1e-12,
+    )
+
+
+# At zero rates, a cash dividend must lower the hybrid European call price.
+def test_hybrid_dividend_reduces_call_price() -> None:
+    option = CallOption(
+        strike=100.0
+    )
+
+    no_dividend_price = RecursivePricer().price(
+        HybridTree(
+            spot=100.0,
+            rate=0.0,
+            volatility=0.20,
+            maturity=1.0,
+            nb_steps=20,
+        ),
+        option,
+    )
+
+    # At zero rates, a positive cash dividend lowers the European call.
+    dividend_price = RecursivePricer().price(
+        HybridTree(
+            spot=100.0,
+            rate=0.0,
+            volatility=0.20,
+            maturity=1.0,
+            nb_steps=20,
+            dividends=[
+                CashDividend(
+                    time=0.5,
+                    amount=3.0,
+                )
+            ],
+        ),
+        option,
+    )
+
+    assert dividend_price < no_dividend_price
+
+
+# At zero rates, a cash dividend must raise the hybrid European put price.
+def test_hybrid_dividend_increases_put_price() -> None:
+    option = PutOption(
+        strike=100.0
+    )
+
+    no_dividend_price = RecursivePricer().price(
+        HybridTree(
+            spot=100.0,
+            rate=0.0,
+            volatility=0.20,
+            maturity=1.0,
+            nb_steps=20,
+        ),
+        option,
+    )
+
+    # At zero rates, a cash dividend raises the European put.
+    dividend_price = RecursivePricer().price(
+        HybridTree(
+            spot=100.0,
+            rate=0.0,
+            volatility=0.20,
+            maturity=1.0,
+            nb_steps=20,
+            dividends=[
+                CashDividend(
+                    time=0.5,
+                    amount=3.0,
+                )
+            ],
+        ),
+        option,
+    )
+
+    assert dividend_price > no_dividend_price
+
+
+# Hybrid European prices must satisfy discrete-dividend put-call parity.
+def test_hybrid_put_call_parity_with_dividend() -> None:
+    spot = 100.0
+    strike = 100.0
+    dividend_amount = 3.0
+
+    dividends = [
+        CashDividend(
+            time=0.5,
+            amount=dividend_amount,
+        )
+    ]
+
+    # The present value of cash dividends enters put-call parity explicitly.
+    call_price = RecursivePricer().price(
+        HybridTree(
+            spot=spot,
+            rate=0.0,
+            volatility=0.20,
+            maturity=1.0,
+            nb_steps=20,
+            dividends=dividends,
+        ),
+        CallOption(
+            strike=strike
+        ),
+    )
+
+    # The present value of cash dividends enters put-call parity explicitly.
+    put_price = RecursivePricer().price(
+        HybridTree(
+            spot=spot,
+            rate=0.0,
+            volatility=0.20,
+            maturity=1.0,
+            nb_steps=20,
+            dividends=dividends,
+        ),
+        PutOption(
+            strike=strike
+        ),
+    )
+
+    expected_difference = (
+        spot
+        - dividend_amount
+        - strike
+    )
+
+    assert math.isclose(
+        call_price - put_price,
+        expected_difference,
+        rel_tol=1e-10,
+        abs_tol=1e-10,
+    )
+
+
+# Hybrid and full trinomial prices should remain close with one cash dividend.
+def test_hybrid_price_is_close_to_full_trinomial() -> None:
+    option = CallOption(
+        strike=100.0
+    )
+
+    dividends = [
+        CashDividend(
+            time=0.5,
+            amount=3.0,
+        )
+    ]
+
+    # Price differences must stay within tolerance for matched dividend inputs.
+    hybrid_price = RecursivePricer().price(
+        HybridTree(
+            spot=100.0,
+            rate=0.02,
+            volatility=0.20,
+            maturity=1.0,
+            nb_steps=50,
+            dividends=dividends,
+        ),
+        option,
+    )
+
+    # Price differences must stay within tolerance for matched dividend inputs.
+    trinomial_price = RecursivePricer().price(
+        TrinomialTree(
+            spot=100.0,
+            rate=0.02,
+            volatility=0.20,
+            maturity=1.0,
+            nb_steps=50,
+            dividends=dividends,
+        ),
+        option,
+    )
+
+    assert math.isclose(
+        hybrid_price,
+        trinomial_price,
+        abs_tol=0.10,
+    )
+
+
+# Several dividends must also be priceable by the hybrid lattice.
+def test_hybrid_prices_multiple_dividends() -> None:
+    option = CallOption(
+        strike=100.0
+    )
+
+    one_dividend_price = RecursivePricer().price(
+        HybridTree(
+            spot=100.0,
+            rate=0.0,
+            volatility=0.20,
+            maturity=1.0,
+            nb_steps=40,
+            dividends=[
+                CashDividend(
+                    time=0.25,
+                    amount=2.0,
+                )
+            ],
+        ),
+        option,
+    )
+
+    # Several ex-dates must be handled without losing a dividend payment.
+    two_dividend_price = RecursivePricer().price(
+        HybridTree(
+            spot=100.0,
+            rate=0.0,
+            volatility=0.20,
+            maturity=1.0,
+            nb_steps=40,
+            dividends=[
+                CashDividend(
+                    time=0.25,
+                    amount=2.0,
+                ),
+                CashDividend(
+                    time=0.75,
+                    amount=3.0,
+                ),
+            ],
+        ),
+        option,
+    )
+
+    assert two_dividend_price < one_dividend_price
+
+
+# test_hybrid_tree.py (tests preserved)
 def _build_hybrid(
     nb_steps: int = 3,
     dividends: list[CashDividend] | None = None

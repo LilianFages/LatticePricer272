@@ -1,24 +1,135 @@
-"""Regression: bounded lattice chart sampling, exact local views and real links.
+"""Lattice chart sampling, depth limits and spot-focused visualization.
 
-Consolidates former fast-render / v26 / v27 test modules. Their behavioral
-invariants are preserved; one overlapping N=100 scenario is merged into the
-rendering test. Snapshot fixture is read-only and shared within this module.
+Consolidated without dropping individual regression cases.
 """
+
 from __future__ import annotations
 
+import altair as alt
+import pytest
+from frontend.lattice_explorer import (
+    _chart, _has_ghost_allocations, _lattice_chart_data, _plot_domain,
+)
+from frontend.lattice_explorer_service import snapshot_priced_tree
+from frontend.pricing_service import PricingRequest
+from dataclasses import replace
+from frontend.lattice_explorer import focus_lattice_snapshot, _chart
 from collections import Counter
 from dataclasses import dataclass
-
 import pandas as pd
-import pytest
-
 from frontend.lattice_plot_sampling import (
     overview_step_indices, representative_transitions, select_chart_rows,
 )
 from frontend.lattice_explorer import _chart, _lattice_chart_data, _plot_domain
-from frontend.lattice_explorer_service import snapshot_priced_tree
-from frontend.pricing_service import PricingRequest
 
+
+# test_lattice_depth100_visualization.py (tests preserved)
+def test_allocation_filter_is_noop_for_fully_connected_tree():
+    snap = snapshot_priced_tree(PricingRequest(steps=20, model="Binomial"))
+    assert snap.unreached_allocations == 0
+    assert not _has_ghost_allocations([snap])
+    assert _plot_domain([snap], True) == _plot_domain([snap], False)
+
+
+def test_allocation_filter_reveals_real_branch_pruning_ghosts():
+    snap = snapshot_priced_tree(PricingRequest(
+        steps=10, model="Trinomial · Branch pruning", pruning_threshold=1e-5,
+    ))
+    assert snap.unreached_allocations > 0
+    assert _has_ghost_allocations([snap])
+    assert sum(not node.connected for node in snap.allocated_geometry) == snap.unreached_allocations
+    assert snap.measured_allocations > snap.displayed_nodes
+    domain = _plot_domain([snap], True)
+    with alt.data_transformers.enable("default", max_rows=None):
+        all_nodes = _chart(snap, domain, all_allocated=True,
+                           height=350, show_links=True).to_dict()
+        connected = _chart(snap, domain, all_allocated=False,
+                           height=350, show_links=True).to_dict()
+    assert len(all_nodes["layer"]) == len(connected["layer"]) + 1
+
+
+def test_hundred_step_trinomial_nodes_can_render_without_heavy_edges():
+    snap = snapshot_priced_tree(PricingRequest(
+        steps=100, model="Trinomial · Allocation pruning",
+    ))
+    assert 5000 < snap.displayed_nodes <= 10201
+    assert 0 < len(snap.edges) <= 30000
+    nodes, links = _lattice_chart_data(snap, include_links=False)
+    assert len(nodes) == snap.displayed_nodes
+    assert links == []
+    # Altair ordinarily rejects >5000 DataFrame rows: the UI's scoped
+    # transformer override must support all actual priced nodes.
+    with alt.data_transformers.enable("default", max_rows=None):
+        chart = _chart(snap, _plot_domain([snap], False),
+                       all_allocated=False, height=450, show_links=False)
+        spec = chart.to_dict()
+    assert "layer" in spec
+    assert len(spec["layer"]) >= 1
+
+
+# test_lattice_spot_focus.py (tests preserved)
+def test_n100_local_spot_corridor_is_exact_and_lightweight():
+    base = snapshot_priced_tree(PricingRequest(
+        steps=100, model="Trinomial · Allocation pruning",
+    ))
+    window = (45, 55)
+    band = (85.0, 115.0)
+    focused = focus_lattice_snapshot(base, window, band)
+    originals = {n.node_id for n in base.nodes}
+    ids = {n.node_id for n in focused.nodes}
+    assert ids <= originals
+    assert ids == {n.node_id for n in base.nodes
+                   if window[0] <= n.step <= window[1] and band[0] <= n.price <= band[1]}
+    assert focused.edges == tuple(e for e in base.edges
+                                  if window[0] <= e.step < window[1]
+                                  and e.from_id in ids and e.to_id in ids)
+    assert focused.edges
+    assert all(e in base.edges for e in focused.edges)
+    assert all(e.from_id in ids and e.to_id in ids for e in focused.edges)
+    assert len(focused.nodes) < 450
+    assert len(focused.edges) < 1200
+    assert len(base.nodes) > len(focused.nodes)
+    assert base.model_price == focused.model_price
+    assert base.request == focused.request
+    # Chart serializes only the focused induced subgraph, including every edge.
+    fig = _chart(focused, band, all_allocated=False, height=370,
+                 show_links=True, step_window=window, max_links=None)
+    assert "layer" in fig.to_dict()
+
+
+def test_full_tree_remains_unchanged_and_view_is_deterministic():
+    base = snapshot_priced_tree(PricingRequest(steps=20, model="Binomial"))
+    old_nodes, old_edges = base.nodes, base.edges
+    a = focus_lattice_snapshot(base, (7, 11), (88.0, 116.0))
+    b = focus_lattice_snapshot(base, (7, 11), (88.0, 116.0))
+    assert a.nodes == b.nodes
+    assert a.edges == b.edges
+    assert base.nodes is old_nodes
+    assert base.edges is old_edges
+    assert base.displayed_nodes > a.displayed_nodes
+
+
+def test_branch_pruning_ghosts_are_real_and_local_only():
+    base = snapshot_priced_tree(PricingRequest(
+        steps=10, model="Trinomial · Branch pruning", pruning_threshold=1e-5,
+    ))
+    assert base.unreached_allocations > 0
+    focus = focus_lattice_snapshot(base, (0, 10), (0.0, 10000.0))
+    assert focus.nodes == base.nodes
+    assert focus.edges == base.edges
+    assert focus.allocated_geometry == base.allocated_geometry
+
+
+def test_invalid_focus_bounds_fail_explicitly():
+    base = snapshot_priced_tree(PricingRequest(steps=5, model="Binomial"))
+    for window, band in [((-1, 3), (80., 120.)), ((4, 3), (80., 120.)),
+                         ((0, 6), (80., 120.)), ((0, 4), (120., 80.)),
+                         ((0, 4), (-10., 120.))]:
+        with pytest.raises(ValueError):
+            focus_lattice_snapshot(base, window, band)
+
+
+# test_lattice_visual_sampling.py (tests preserved)
 # Lot 5B.7A — consolidated lattice sampling/links regressions.
 
 

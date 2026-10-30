@@ -1,14 +1,20 @@
-"""D4.3c regression: event-time cash exercise, stability and engine parity."""
+"""Discrete dividend events, early-exercise decisions and tree propagation.
+
+Consolidated without dropping individual regression cases.
+"""
 
 from __future__ import annotations
 
 import math
 from dataclasses import replace
-
 import pytest
-
-from frontend.greeks_service import roll_calendar_day
 from frontend.pricing_service import DividendInput, PricingRequest, price_contract
+from src.dividend_exercise import aligned_event_step, dividend_exercise_steps
+from src.risk.dividend_events import (
+    assess_dividend_exercise,
+    deterministic_american_reference,
+)
+from frontend.greeks_service import roll_calendar_day
 from frontend.trading_risk import compute_desk_risk
 from src.dividend_exercise import (
     DividendStepEvent,
@@ -21,13 +27,155 @@ from src.dividend import CashDividend
 from src.node import Node
 from src.option import CallOption, PutOption
 from src.black_scholes import BlackScholesPricer
-from src.risk.dividend_events import (
-    assess_dividend_exercise,
-    deterministic_american_reference,
-)
 from src.trinomial_tree import TrinomialTree
 from src.hybrid_tree import HybridTree
+from frontend.exercise_boundary_service import _exercise
+from frontend.exercise_policy import dividend_events_for_request
+from frontend.lattice_explorer_service import _exercise_state
+from frontend.pricing_service import DividendInput, PricingRequest, _build_tree
+from src.backward_pricer import BackwardPricer
+from src.option import CallOption
+from src.recursive_pricer import RecursivePricer
 
+
+# test_american_dividend_events.py (tests preserved)
+FAMILIES = (
+    "Hybrid", "Trinomial · Full", "Trinomial · Branch pruning",
+    "Trinomial · Allocation pruning",
+)
+
+
+def contract(**changes: object) -> PricingRequest:
+    base = PricingRequest(
+        spot=120.0, strike=100.0, rate=0.05, volatility=0.0,
+        maturity=1.0, steps=4, model="Hybrid", option_type="Call",
+        exercise="American",
+        dividends=(DividendInput(time=0.5, amount=20.0),),
+    )
+    return replace(base, **changes)
+
+
+# Aligned deterministic events test the pre-ex-date optimal exercise decision.
+@pytest.mark.parametrize("model", FAMILIES)
+@pytest.mark.parametrize("algorithm", ALGORITHMS)
+@pytest.mark.parametrize("steps", (2, 4, 10))
+def test_aligned_zero_vol_call_exercises_pre_dividend(
+    model: str, algorithm: str, steps: int,
+) -> None:
+    request = contract(model=model, steps=steps)
+    exact, event = deterministic_american_reference(request)
+    assert event == "pre-dividend"
+    assert exact == pytest.approx(120.0 - 100.0 * math.exp(-0.025))
+    measured = price_contract(request, algorithm=algorithm)
+    assert measured.price == pytest.approx(exact, abs=1e-8)
+    assert assess_dividend_exercise(request, measured.price).warning is None
+
+
+@pytest.mark.parametrize("model", FAMILIES)
+@pytest.mark.parametrize("algorithm", ALGORITHMS)
+def test_aligned_stochastic_american_call_has_event_value(
+    model: str, algorithm: str,
+) -> None:
+    request = contract(model=model, steps=16, volatility=0.20)
+    value = price_contract(request, algorithm=algorithm).price
+    european = price_contract(
+        replace(request, exercise="European"), algorithm=algorithm,
+    ).price
+    assert value >= european - 1e-10
+    assert assess_dividend_exercise(request, value).warning is None
+
+
+# Off-grid dividend warnings must not introduce algorithm disagreement.
+@pytest.mark.parametrize("model", FAMILIES)
+@pytest.mark.parametrize("algorithm", ALGORITHMS)
+def test_off_grid_warns_and_preserves_recursive_backward_parity(
+    model: str, algorithm: str,
+) -> None:
+    request = contract(model=model, steps=4, dividends=(
+        DividendInput(time=0.6, amount=20.0),
+    ))
+    result = price_contract(request, algorithm=algorithm)
+    assessment = assess_dividend_exercise(request, result.price)
+    assert assessment.warning is not None
+    assert "off-grid" in assessment.warning
+    assert assessment.deterministic_reference is not None
+    assert assessment.optimal_exercise_event == "pre-dividend"
+    assert result.price >= 20.0
+
+
+@pytest.mark.parametrize("model", FAMILIES)
+def test_parity_on_grid_dividends_with_american_put(model: str) -> None:
+    request = contract(
+        model=model, option_type="Put", strike=135.0, steps=12,
+        dividends=(DividendInput(time=0.25, amount=7.0),
+                   DividendInput(time=0.75, amount=9.0)),
+    )
+    recursive = price_contract(request, algorithm="Recursive")
+    backward = price_contract(request, algorithm="Backward")
+    assert recursive.price == pytest.approx(backward.price, abs=1e-10)
+    assert recursive.price >= 0.0
+
+
+# Event-time boundaries are explicit and must not be fabricated on the lattice.
+def test_exact_time_boundary_rejects_off_grid_date() -> None:
+    assert aligned_event_step(0.50, 1.0, 4) == 2
+    assert aligned_event_step(0.60, 1.0, 4) is None
+    assert aligned_event_step(195 / 365, 1.0, 73) == 39
+
+
+def test_no_dividend_and_non_american_have_no_event_warning() -> None:
+    assert assess_dividend_exercise(contract(dividends=()), 20.0).warning is None
+    assert assess_dividend_exercise(contract(exercise="European"), 20.0).warning is None
+
+
+# The deterministic reference distinguishes before/after dividend decisions.
+def test_deterministic_reference_identifies_post_dividend_put() -> None:
+    request = contract(spot=100.0, strike=105.0, option_type="Put",
+                       dividends=(DividendInput(time=0.5, amount=10.0),))
+    value, event = deterministic_american_reference(request)
+    expected_spot = 100.0 * math.exp(0.025) - 10.0
+    assert event == "post-dividend"
+    assert value == pytest.approx(math.exp(-0.025) * (105.0 - expected_spot))
+
+
+def test_reference_does_not_modify_frozen_request() -> None:
+    request = contract()
+    original = replace(request)
+    deterministic_american_reference(request)
+    assert original == request
+
+
+# Dividend event logic must not alter the no-dividend binomial baseline.
+@pytest.mark.parametrize("algorithm", ALGORITHMS)
+@pytest.mark.parametrize("option_type", ("Call", "Put"))
+def test_binomial_american_without_dividend_unchanged(
+    algorithm: str, option_type: str,
+) -> None:
+    request = contract(
+        model="Binomial", option_type=option_type,
+        steps=8, dividends=(),
+    )
+    result = price_contract(request, algorithm=algorithm)
+    assert math.isfinite(result.price)
+    assert result.price >= 0.0
+    assert assess_dividend_exercise(request, result.price).warning is None
+
+
+@pytest.mark.parametrize("algorithm", ALGORITHMS)
+def test_aligned_american_exceeds_european_at_sigma_zero(
+    algorithm: str,
+) -> None:
+    request = contract()
+    american = price_contract(request, algorithm=algorithm).price
+    european = price_contract(
+        replace(request, exercise="European"), algorithm=algorithm,
+    ).price
+    assert american > european + 1.0
+
+# LOT_5C3_GUARDED_REFACTOR
+
+
+# test_dividend_event_bridge.py (tests preserved)
 MODELS = (
     "Hybrid", "Trinomial · Full", "Trinomial · Branch pruning",
     "Trinomial · Allocation pruning",
@@ -301,3 +449,62 @@ def test_zero_strike_call_with_dividend_uses_shifted_strike() -> None:
     assert actual == pytest.approx(expected, rel=1e-12, abs=1e-12)
 
 # LOT_5C3_GUARDED_REFACTOR
+
+
+# test_exercise_policy_events.py (tests preserved)
+@pytest.mark.parametrize("model", ("Hybrid", "Trinomial · Allocation pruning"))
+@pytest.mark.parametrize("ex_date,vol,amount,step", (
+    (.50, 0.0, 20.0, 4),
+    (.55, 0.0, 20.0, 5),
+    (.50, .20, 8.0, 4),
+    (.55, .20, 8.0, 5),
+))
+def test_cash_dividend_event_does_not_create_false_parent_exercise(
+    model: str, ex_date: float, vol: float, amount: float, step: int,
+) -> None:
+    request = PricingRequest(
+        spot=120.0, strike=100.0, rate=.05,
+        volatility=vol, maturity=1.0, steps=10, model=model,
+        option_type="Call", exercise="American",
+        dividends=(DividendInput(ex_date, amount),),
+    )
+    tree = _build_tree(request)
+    price = RecursivePricer().price(tree, CallOption(100., is_american=True))
+    assert math.isfinite(price)
+    layers = BackwardPricer._reachable_levels(tree.root, request.steps)
+    event_steps = dividend_events_for_request(request)
+    assert step + 1 in event_steps
+    dt = request.maturity / request.steps
+    old_false_positives = 0
+    for node in layers[step]:
+        intrinsic = max(node.price - request.strike, 0.)
+        raw_hold = math.exp(-request.rate * dt) * math.fsum(
+            p * float(child.option_value)
+            for child, p in (
+                (node.next_up, node.up_probability),
+                (node.next_mid, node.mid_probability),
+                (node.next_down, node.down_probability),
+            ) if child is not None and p is not None
+        )
+        if intrinsic > raw_hold + 1e-10 * max(1., intrinsic, abs(raw_hold)):
+            if float(node.option_value) > intrinsic + 1e-8:
+                old_false_positives += 1
+        # If the engine values continuing strictly more, an immediate
+        # node exercise label is mathematically inconsistent.
+        if float(node.option_value) > intrinsic + 1e-8:
+            assert not _exercise(node, request, step, dt)
+            assert _exercise_state(node, request, step) == "Continuation"
+        assert (_exercise(node, request, step, dt)
+                == (_exercise_state(node, request, step) == "Early exercise"))
+    assert old_false_positives > 0
+
+
+def test_contract_mapping_matches_engine_event_steps() -> None:
+    from src.dividend_exercise import dividend_exercise_steps
+    request = PricingRequest(
+        model="Hybrid", steps=20, option_type="Put", exercise="American",
+        dividends=(DividendInput(.25, 2.), DividendInput(.775, 3.)),
+    )
+    actual_tree = _build_tree(request)
+    assert dividend_events_for_request(request) == dividend_exercise_steps(actual_tree)
+    assert dividend_events_for_request(replace(request, exercise="European")) == {}

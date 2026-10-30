@@ -1,12 +1,13 @@
-"""Dividend ex-date boundaries and true within-step timing regression tests."""
+"""Dividend input validation, boundary conventions and transition moments.
+
+Consolidated without dropping individual regression cases.
+"""
 
 from __future__ import annotations
 
 import math
 from dataclasses import replace
-
 import pytest
-
 from frontend.pricing_service import (
     DividendInput,
     PricingInputError,
@@ -18,8 +19,12 @@ from frontend.pricing_service import (
 from src.dividend import CashDividend
 from src.dividend_timing import dividend_grid_step, dividend_time_in_step
 from src.transition_moments import TransitionMoments
+import pandas as pd
+from frontend.dividend_input import parse_cash_dividends, parse_dividends
+from frontend.pricing_service import DividendInput, PricingInputError
 
 
+# test_dividend_grid_boundaries.py (tests preserved)
 def test_calendar_fraction_matches_exact_grid_endpoint() -> None:
     # 195/365 = 39/73 mathematically, but not always as binary floats.
     assert 195 / 365 > 39 * (1.0 / 73)
@@ -136,3 +141,64 @@ def test_equivalent_on_grid_dates_reprice_identically(
     exact = price_contract(req, algorithm=algorithm).price
     calendar = price_contract(from_calendar, algorithm=algorithm).price
     assert math.isclose(exact, calendar, rel_tol=1e-12, abs_tol=1e-12)
+
+
+# test_dividend_input.py (tests preserved)
+def test_zero_and_blank_rows_are_ignored():
+    frame = pd.DataFrame([
+        {"time": .5, "amount": 0.}, {"time": None, "amount": None},
+    ])
+    assert parse_cash_dividends(frame) == ()
+    assert parse_dividends(frame) == ()
+
+
+def test_cashflows_are_sorted_without_mutating_source_frame():
+    frame = pd.DataFrame([
+        {"time": .75, "amount": 1.2}, {"time": .25, "amount": 2.4},
+    ])
+    copy = frame.copy(deep=True)
+    expected = (DividendInput(.25, 2.4), DividendInput(.75, 1.2))
+    assert parse_cash_dividends(frame) == expected
+    assert parse_cash_dividends(frame, context="terminal") == expected
+    pd.testing.assert_frame_equal(frame, copy)
+
+
+@pytest.mark.parametrize("context,fragment", [
+    ("analysis", "supply an amount"),
+    ("terminal", "enter an amount"),
+])
+def test_missing_amount_with_nonblank_date_is_rejected(context, fragment):
+    with pytest.raises(PricingInputError, match=fragment):
+        parse_cash_dividends(pd.DataFrame([{"time": .5, "amount": None}]),
+                             context=context)
+
+
+@pytest.mark.parametrize("context,fragment", [
+    ("analysis", "supply a payment time"),
+    ("terminal", "enter the payment time in years"),
+])
+def test_missing_time_with_positive_amount_is_rejected(context, fragment):
+    with pytest.raises(PricingInputError, match=fragment):
+        parse_cash_dividends(pd.DataFrame([{"time": None, "amount": 2.}]),
+                             context=context)
+
+
+@pytest.mark.parametrize("field,value,fragment", [
+    ("amount", "bad", "amounts must be numeric"),
+    ("amount", float("inf"), "amounts must be finite"),
+    ("time", "bad", "times must be numeric"),
+])
+def test_invalid_values_fail_explicitly(field, value, fragment):
+    row = {"time": .5, "amount": 1.}
+    row[field] = value
+    with pytest.raises(PricingInputError, match=fragment):
+        parse_cash_dividends(pd.DataFrame([row]))
+
+
+def test_no_dividend_is_invented_from_empty_frame():
+    assert parse_dividends(pd.DataFrame(columns=["time", "amount"])) == ()
+
+
+def test_unknown_context_rejected_without_parsing():
+    with pytest.raises(ValueError, match="context"):
+        parse_cash_dividends(pd.DataFrame(), context="unknown")

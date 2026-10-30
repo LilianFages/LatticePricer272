@@ -1,15 +1,14 @@
-"""Integration checks for the Streamlit adapter, using the REAL src/ engines.
+"""Frontend pricing requests, algorithm routing and model selection.
 
-Run from repository root:
-    python -m pytest tests/test_frontend_pricing.py -q
+Consolidated without dropping individual regression cases.
 """
+
+from __future__ import annotations
 
 import csv
 import io
 import math
-
 import pytest
-
 from frontend.pricing_service import (
     MODELS,
     DividendInput,
@@ -21,8 +20,26 @@ from frontend.pricing_service import (
     validate_request,
 )
 from src.node import Node
+from dataclasses import replace
+from functools import partial
+from frontend.greeks_service import calculate_greeks
+from frontend.pricing_service import (
+    PRICING_ALGORITHMS,
+    DividendInput,
+    PricingInputError,
+    PricingRequest,
+    PricingResult,
+    price_contract,
+    ticket_csv,
+)
+from frontend.trading_risk import compute_desk_risk, compute_greek_curve
+from frontend.model_selection import (
+    FAMILIES, PRUNING_THRESHOLDS, resolve_model_selection,
+)
+from frontend.pricing_service import MODELS, PricingInputError, PricingRequest
 
 
+# test_frontend_pricing.py (tests preserved)
 # Check nonnegative prices, populated references and coherent lattice sizes.
 @pytest.mark.parametrize("model", MODELS)
 @pytest.mark.parametrize("kind", ("Call", "Put"))
@@ -153,3 +170,282 @@ def test_black_scholes_difference_sign_is_correct() -> None:
     assert result.black_scholes_error == pytest.approx(
         result.price - result.black_scholes
     )
+
+
+# test_pricing_algorithm_routing.py (tests preserved)
+MODELS = (
+    "Binomial",
+    "Hybrid",
+    "Trinomial · Full",
+    "Trinomial · Branch pruning",
+    "Trinomial · Allocation pruning",
+)
+
+
+def make_request(
+    model: str,
+    option_type: str,
+    exercise: str,
+    *,
+    dividends: tuple[DividendInput, ...] = (),
+    steps: int = 14,
+) -> PricingRequest:
+    return PricingRequest(
+        model=model,
+        option_type=option_type,
+        exercise=exercise,
+        dividends=dividends,
+        steps=steps,
+        spot=103.0,
+        strike=100.0,
+        rate=0.02,
+        volatility=0.22,
+        maturity=1.0,
+    )
+
+
+# Recursive and backward algorithms should agree on prices and node accounting.
+@pytest.mark.parametrize("model", MODELS)
+@pytest.mark.parametrize("option_type", ("Call", "Put"))
+@pytest.mark.parametrize("exercise", ("European", "American"))
+def test_public_api_parity_no_dividends(
+    model: str, option_type: str, exercise: str,
+) -> None:
+    request = make_request(model, option_type, exercise)
+    recursive = price_contract(request, algorithm="Recursive")
+    backward = price_contract(request, algorithm="Backward")
+    assert math.isclose(recursive.price, backward.price, rel_tol=1e-12, abs_tol=1e-12)
+    assert recursive.request == backward.request == request
+    assert recursive.algorithm == "Recursive"
+    assert backward.algorithm == "Backward"
+    assert recursive.reachable_nodes == backward.reachable_nodes
+    assert recursive.allocated_nodes == backward.allocated_nodes
+    assert recursive.pruned_transitions == backward.pruned_transitions
+
+
+# Cash-dividend parity also guards ex-date event ordering across engines.
+@pytest.mark.parametrize("model", MODELS[1:])
+@pytest.mark.parametrize("option_type", ("Call", "Put"))
+@pytest.mark.parametrize("exercise", ("European", "American"))
+def test_public_api_parity_cash_dividends(
+    model: str, option_type: str, exercise: str,
+) -> None:
+    request = make_request(
+        model, option_type, exercise,
+        dividends=(DividendInput(time=0.5, amount=3.0),),
+        steps=20,
+    )
+    recursive = price_contract(request, algorithm="Recursive")
+    backward = price_contract(request, algorithm="Backward")
+    assert math.isclose(recursive.price, backward.price, rel_tol=1e-12, abs_tol=1e-12)
+    assert recursive.reachable_nodes == backward.reachable_nodes
+    assert recursive.allocated_nodes == backward.allocated_nodes
+    assert recursive.pruned_transitions == backward.pruned_transitions
+
+
+# Backward pricing is opt-in and must not change the public default.
+def test_default_stays_recursive() -> None:
+    request = PricingRequest(steps=8)
+    default = price_contract(request)
+    explicit = price_contract(request, algorithm="Recursive")
+    assert default.algorithm == explicit.algorithm == "Recursive"
+    assert default.price == explicit.price
+
+
+@pytest.mark.parametrize("bad", ("Unknown", "forward", "", None))
+def test_invalid_algorithm_is_rejected(bad: object) -> None:
+    with pytest.raises(PricingInputError, match="pricing algorithm"):
+        price_contract(PricingRequest(steps=6), algorithm=bad)
+
+
+def test_csv_exports_executed_algorithm() -> None:
+    result = price_contract(PricingRequest(steps=7), algorithm="Backward")
+    fields = dict(csv.reader(io.StringIO(ticket_csv(result))))
+    assert fields["pricing_algorithm"] == "Backward"
+    assert fields["price"] == str(result.price)
+
+
+# Algorithm selection is execution metadata, never mutable contract state.
+def test_immutable_request_is_shared_between_methods() -> None:
+    request = PricingRequest(
+        model="Hybrid", steps=14, option_type="Put", exercise="American",
+        dividends=(DividendInput(time=0.5, amount=2.0),),
+    )
+    baseline = replace(request)
+    price_contract(request, algorithm="Backward")
+    price_contract(request, algorithm="Recursive")
+    assert request == baseline
+    assert not hasattr(request, "algorithm")
+
+
+# Every Greek shock must use the chosen pricing algorithm consistently.
+@pytest.mark.parametrize("algorithm", PRICING_ALGORITHMS)
+def test_seven_greeks_use_injected_pricing_algorithm(algorithm: str) -> None:
+    request = PricingRequest(
+        model="Trinomial · Allocation pruning", steps=14, volatility=0.22,
+    )
+    observed: list[str] = []
+
+    def observed_pricer(shocked: PricingRequest) -> PricingResult:
+        value = price_contract(shocked, algorithm=algorithm)
+        observed.append(value.algorithm)
+        return value
+
+    snapshot = compute_desk_risk(request, pricer=observed_pricer)
+    assert len(observed) == snapshot.base.evaluations + snapshot.extra_evaluations
+    assert len(observed) > 8
+    assert set(observed) == {algorithm}
+    for name in ("Delta", "Gamma", "Vega", "Theta", "Rho", "Vanna", "Vomma"):
+        assert snapshot.value(name) is not None
+
+
+def test_greek_values_agree_across_algorithms() -> None:
+    request = PricingRequest(
+        model="Hybrid", option_type="Put", exercise="American",
+        spot=104.0, strike=100.0, steps=20,
+        dividends=(DividendInput(time=0.5, amount=2.0),),
+    )
+    recursive = compute_desk_risk(
+        request, pricer=partial(price_contract, algorithm="Recursive"),
+    )
+    backward = compute_desk_risk(
+        request, pricer=partial(price_contract, algorithm="Backward"),
+    )
+    for name in ("Delta", "Gamma", "Vega", "Theta", "Rho", "Vanna", "Vomma"):
+        r_value, b_value = recursive.value(name), backward.value(name)
+        if r_value is None or b_value is None:
+            assert r_value is b_value
+        else:
+            assert math.isclose(r_value, b_value, rel_tol=1e-7, abs_tol=1e-7)
+
+
+# The callback must propagate through selected-curve repricing.
+def test_selected_greek_curve_uses_backward_callback() -> None:
+    request = PricingRequest(model="Binomial", steps=9)
+    seen = []
+
+    def backward(shocked: PricingRequest) -> PricingResult:
+        result = price_contract(shocked, algorithm="Backward")
+        seen.append(result.algorithm)
+        return result
+
+    curve = compute_greek_curve(request, "Delta", count=3, pricer=backward)
+    assert len(curve) == 3
+    assert seen and set(seen) == {"Backward"}
+    assert all(point.value is not None for point in curve)
+
+
+def test_binomial_cash_dividend_restriction_remains() -> None:
+    request = PricingRequest(
+        model="Binomial", steps=8,
+        dividends=(DividendInput(time=0.5, amount=3.0),),
+    )
+    with pytest.raises(PricingInputError, match="BinomialTree"):
+        price_contract(request, algorithm="Backward")
+
+# LOT_5C3_GUARDED_REFACTOR
+
+
+# test_model_selection.py (tests preserved)
+# Model routing: pricing families and non-pruned defaults must remain distinct.
+def test_three_distinct_families():
+    assert FAMILIES == ("Binomial", "Hybrid", "Trinomial")
+
+
+def test_binomial_without_pruning_maps_exactly():
+    model, threshold = resolve_model_selection("Binomial")
+    assert model == "Binomial" and threshold == 1e-18
+
+
+def test_hybrid_without_pruning_maps_exactly():
+    model, threshold = resolve_model_selection("Hybrid")
+    assert model == "Hybrid" and threshold == 1e-18
+
+
+def test_trinomial_full_requires_no_pruning():
+    assert resolve_model_selection("Trinomial", False) == (
+        "Trinomial · Full", 1e-18,
+    )
+
+
+# Trinomial pruning selections must retain exact method and threshold.
+def test_trinomial_on_defaults_to_allocation():
+    assert resolve_model_selection("Trinomial", True) == (
+        "Trinomial · Allocation pruning", 1e-18,
+    )
+
+
+def test_trinomial_branch_preserves_threshold():
+    assert resolve_model_selection("Trinomial", True, "Branch", 1e-12) == (
+        "Trinomial · Branch pruning", 1e-12,
+    )
+
+
+def test_trinomial_allocation_preserves_threshold():
+    assert resolve_model_selection("Trinomial", True, "Allocation", 1e-15) == (
+        "Trinomial · Allocation pruning", 1e-15,
+    )
+
+
+# Reject ambiguous, unsupported, or non-finite pruning configurations.
+@pytest.mark.parametrize("threshold", PRUNING_THRESHOLDS)
+def test_all_supported_thresholds_map_identically(threshold):
+    _, selected = resolve_model_selection("Trinomial", True, "Branch", threshold)
+    assert selected == threshold
+
+
+@pytest.mark.parametrize("family", ("Binomial", "Hybrid"))
+def test_non_trinomial_cannot_silently_enable_pruning(family):
+    with pytest.raises(PricingInputError, match="only for Trinomial"):
+        resolve_model_selection(family, True)
+
+
+@pytest.mark.parametrize("family", ("Unknown", "", "trinomial"))
+def test_unknown_family_rejected(family):
+    with pytest.raises(PricingInputError, match="Unknown model"):
+        resolve_model_selection(family)
+
+
+def test_unknown_method_rejected():
+    with pytest.raises(PricingInputError, match="implementation"):
+        resolve_model_selection("Trinomial", True, "Guess")
+
+
+@pytest.mark.parametrize("threshold", (0.0, -1e-18, 0.5, float("nan"), float("inf")))
+def test_unsupported_or_nonfinite_pruning_threshold_rejected(threshold):
+    with pytest.raises(PricingInputError):
+        resolve_model_selection("Trinomial", True, threshold=threshold)
+
+
+@pytest.mark.parametrize("pruning", (0, 1, "On", None))
+def test_pruning_must_be_a_boolean(pruning):
+    with pytest.raises(PricingInputError, match="boolean"):
+        resolve_model_selection("Trinomial", pruning)
+
+
+# Backwards-compatible engine coverage after translating UI selections.
+@pytest.mark.parametrize(
+    ("family", "enabled", "method"),
+    [
+        ("Binomial", False, "Allocation"),
+        ("Hybrid", False, "Allocation"),
+        ("Trinomial", False, "Allocation"),
+        ("Trinomial", True, "Branch"),
+        ("Trinomial", True, "Allocation"),
+    ],
+)
+def test_every_existing_engine_remains_available(family, enabled, method):
+    model, threshold = resolve_model_selection(family, enabled, method)
+    assert model in MODELS
+    request = PricingRequest(model=model, pruning_threshold=threshold)
+    assert request.model == model
+
+
+def test_full_is_never_mislabeled_as_pruned_when_off():
+    for method in ("Allocation", "Branch"):
+        model, threshold = resolve_model_selection(
+            "Trinomial", False, method, 1e-12,
+        )
+        assert model == "Trinomial · Full" and threshold == 1e-18
+
+# LOT_5C4_GUARDED_REFACTOR
