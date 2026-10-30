@@ -111,7 +111,7 @@ def _vanna_from_pricings(
     selected: GreekBumps,
     prices: dict[str, float],
     bump_price: Callable[[float, float], float | None],
-    issues: list[str],
+    issues: list[str]
 ) -> float | None:
     """Evaluate the mixed spot/volatility stencil with the original shocks."""
     h_s = request.spot * selected.spot_pct / 100.0
@@ -142,7 +142,7 @@ def _vomma_from_pricings(
     request: PricingRequest,
     selected: GreekBumps,
     base: GreeksResult,
-    issues: list[str],
+    issues: list[str]
 ) -> float | None:
     """Use the same central/forward volatility stencils as before."""
     h_vol = selected.vol_pp / 100.0
@@ -167,7 +167,7 @@ def compute_desk_risk(
     *,
     pricer: PricingFunction,
     validate_request: RiskValidator,
-    calculate_greeks: Callable[..., GreeksResult],
+    calculate_greeks: Callable[..., GreeksResult]
 ) -> DeskRiskSnapshot:
     """Compute seven desk Greeks; extras never invalidate valid base Greeks.
 
@@ -230,7 +230,7 @@ def _curve_value_at_spot(
     selected: GreekBumps,
     pricer: PricingFunction,
     calculate_greeks: Callable[..., GreeksResult],
-    compute_desk_risk: Callable[..., DeskRiskSnapshot],
+    compute_desk_risk: Callable[..., DeskRiskSnapshot]
 ) -> float | None:
     """Return one shock's requested Greek without changing its convention."""
     if name in ("Vanna", "Vomma"):
@@ -245,7 +245,7 @@ def _evaluate_curve_point(
     selected: GreekBumps,
     pricer: PricingFunction,
     calculate_greeks: Callable[..., GreeksResult],
-    compute_desk_risk: Callable[..., DeskRiskSnapshot],
+    compute_desk_risk: Callable[..., DeskRiskSnapshot]
 ) -> GreekCurvePoint:
     """Handle one scenario's numerical and financial failure independently."""
     try:
@@ -273,7 +273,7 @@ def compute_greek_curve(
     pricer: PricingFunction,
     validate_request: RiskValidator,
     calculate_greeks: Callable[..., GreeksResult],
-    compute_desk_risk: Callable[..., DeskRiskSnapshot],
+    compute_desk_risk: Callable[..., DeskRiskSnapshot]
 ) -> tuple[GreekCurvePoint, ...]:
     """Explicitly requested spot curve. Individual failures are not zero-filled."""
     validate_request(request)

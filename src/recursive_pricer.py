@@ -52,7 +52,7 @@ class RecursivePricer:
         remaining_steps: int,
         option: Option,
         discount_factor: float,
-        event_dividends: dict[int, DividendStepEvent],
+        event_dividends: dict[int, DividendStepEvent]
     ) -> float:
         """Recursively price the option from one node."""
 
@@ -97,7 +97,7 @@ class RecursivePricer:
         option: Option,
         discount_factor: float,
         events: dict[int, DividendStepEvent],
-        ex_dividend: DividendStepEvent | None,
+        ex_dividend: DividendStepEvent | None
     ) -> float:
         """Aggregate successor values without altering transition order."""
         if node.next_up is None or node.next_down is None:
@@ -118,6 +118,7 @@ class RecursivePricer:
             node.up_probability * up_value
             + node.down_probability * down_value
         )
+        # Binomial nodes have no middle child; trinomial nodes include it.
         if node.next_mid is not None:
             if node.mid_probability is None:
                 raise RuntimeError("Missing middle transition probability.")
@@ -135,7 +136,7 @@ class RecursivePricer:
         option: Option,
         discount_factor: float,
         event_dividends: dict[int, DividendStepEvent],
-        ex_dividend: DividendStepEvent | None,
+        ex_dividend: DividendStepEvent | None
     ) -> float:
         """Price a successor once and apply the same ex-date event rule."""
         # A recombining child is memoized by _price_node before its

@@ -77,7 +77,7 @@ def before_dividend_value(
     child: Node,
     post_dividend_value: float,
     option: Option,
-    dividend: DividendStepEvent | None,
+    dividend: DividendStepEvent | None
 ) -> float:
     """Exact pre/post cash-jump choice ONLY when the ex-date is on the grid.
 
@@ -99,7 +99,7 @@ def _exercise_at_ex_date(
     volatility: float,
     time: float,
     *,
-    cash_adjustment: float = 0.0,
+    cash_adjustment: float = 0.0
 ) -> float:
     """Price forced exercise on either side of the actual cash jump.
 
@@ -141,7 +141,7 @@ def offgrid_exercise_bound(
     parent: Node,
     hold_value: float,
     option: Option,
-    dividend: DividendStepEvent | None,
+    dividend: DividendStepEvent | None
 ) -> float:
     """Add a nonanticipative event-time exercise policy to the parent value.
 

@@ -50,7 +50,7 @@ class BackwardPricer:
 
     @staticmethod
     def _transition_value(
-        node: Node, option: Option, ex_dividend: object,
+        node: Node, option: Option, ex_dividend: object
     ) -> float:
         """Collect discounted-successor inputs without changing edge order."""
         up, down = node.next_up, node.next_down
@@ -82,7 +82,7 @@ class BackwardPricer:
 
     @staticmethod
     def _price_node(
-        node: Node, option: Option, discount_factor: float, ex_dividend: object,
+        node: Node, option: Option, discount_factor: float, ex_dividend: object
     ) -> None:
         """Discount expected payoff and compare continuation with exercise."""
         expected = BackwardPricer._transition_value(
@@ -97,7 +97,7 @@ class BackwardPricer:
 
     @staticmethod
     def _next_level(
-        current: list[Node], seen_earlier: set[int],
+        current: list[Node], seen_earlier: set[int]
     ) -> dict[int, Node]:
         """Deduplicate a time layer and reject cross-layer node reuse."""
         following: dict[int, Node] = {}

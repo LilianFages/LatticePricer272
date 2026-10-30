@@ -35,7 +35,7 @@ def _event_exercise_candidates(
     request: RiskRequest,
     stock_before: float,
     event_time: float,
-    cash_amount: float,
+    cash_amount: float
 ) -> tuple[float, float]:
     """Discount deterministic intrinsic payoffs on both sides of a cash jump."""
     discount = math.exp(-request.rate * event_time)
@@ -54,7 +54,7 @@ def _exercise_at_cash_jump(
     dividend_time: float,
     amount: float,
     current_best: float,
-    current_event: str,
+    current_event: str
 ) -> tuple[float, str, float]:
     """Compare event-side payoffs and preserve the selected event label."""
     before, after = _event_exercise_candidates(
@@ -104,7 +104,7 @@ def deterministic_american_reference(request: RiskRequest) -> tuple[float, str]:
 
 def assess_dividend_exercise(
     request: RiskRequest,
-    model_price: float,
+    model_price: float
 ) -> DividendExerciseAudit:
     """Disclose off-grid exercise resolution, and independent sigma=0 gaps."""
     if request.exercise != "American" or not request.dividends:

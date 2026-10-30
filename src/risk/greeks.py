@@ -177,7 +177,7 @@ def _gamma_diagnostics(
     request: PricingRequest,
     gamma: float | None,
     clipped_gamma: bool,
-    issues: list[str],
+    issues: list[str]
 ) -> dict[str, float] | None:
     """Explain numerical Gamma limitations without modifying its estimate."""
     if clipped_gamma:
@@ -207,7 +207,7 @@ def _gamma_sides(
     delta_bump: float,
     gamma_bump: float,
     original_sides: tuple[float | None, float | None],
-    eval_shock: Callable[[str, PricingRequest], float | None],
+    eval_shock: Callable[[str, PricingRequest], float | None]
 ) -> tuple[float | None, float | None]:
     """Reuse existing spot shocks when the Gamma stencil is identical."""
     if math.isclose(gamma_bump, delta_bump, rel_tol=1e-12):
@@ -228,7 +228,7 @@ def _compute_spot_greeks(
     central_sides: Callable[[str, float], tuple[float | None, float | None]],
     eval_shock: Callable[[str, PricingRequest], float | None],
     base: float,
-    issues: list[str],
+    issues: list[str]
 ) -> tuple[float | None, float | None, float, str, dict[str, float] | None]:
     """Calculate Delta and grid-aware Gamma without repricing changes."""
     h_s = request.spot * bumps.spot_pct / 100.0
@@ -255,7 +255,7 @@ def _compute_vega_greek(
     bumps: GreekBumps,
     central_sides: Callable[[str, float], tuple[float | None, float | None]],
     eval_shock: Callable[[str, PricingRequest], float | None],
-    base: float,
+    base: float
 ) -> tuple[float | None, str]:
     """Keep central and second-order forward volatility bumps."""
     h_vol = bumps.vol_pp / 100.0
@@ -277,7 +277,7 @@ def _compute_vega_greek(
 
 def _compute_rho_greek(
     bumps: GreekBumps,
-    central_sides: Callable[[str, float], tuple[float | None, float | None]],
+    central_sides: Callable[[str, float], tuple[float | None, float | None]]
 ) -> float | None:
     """Keep the basis-point scaling of rate risk."""
     h_r = bumps.rate_bp * BP
@@ -291,7 +291,7 @@ def _compute_theta_greek(
     request: PricingRequest,
     eval_shock: Callable[[str, PricingRequest], float | None],
     base: float,
-    issues: list[str],
+    issues: list[str]
 ) -> float | None:
     """Reprice calendar day with unchanged expiry and ex dates."""
     rolled = roll_calendar_day(request)
@@ -310,7 +310,7 @@ def calculate_greeks(
     bumps: GreekBumps | None = None,
     *,
     pricer: PricingFunction,
-    validate_request: RiskValidator,
+    validate_request: RiskValidator
 ) -> GreeksResult:
     """Calculate independent finite-difference lattice repricings.
 

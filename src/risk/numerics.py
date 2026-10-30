@@ -25,7 +25,7 @@ def vanna_from_samples(
     minus_low: float | None,
     spot_bump: float,
     vol_bump: float,
-    centered: bool,
+    centered: bool
 ) -> float | None:
     """Mixed d²V/dS dσ from crossed spot/volatility bumps, per vol pp.
 
@@ -50,7 +50,7 @@ def vomma_from_samples(
     high: float | None,
     low: float | None,
     vol_bump: float,
-    centered: bool,
+    centered: bool
 ) -> float | None:
     """Second volatility derivative per (1 volatility percentage point)².
 
@@ -69,7 +69,7 @@ def vomma_from_samples(
 
 def black_scholes_vanna_vomma(
     *, spot: float, strike: float, rate: float,
-    volatility: float, maturity: float,
+    volatility: float, maturity: float
 ) -> tuple[float, float]:
     """Analytical European no-dividend BS second-order Greeks, pp-normalized.
 
