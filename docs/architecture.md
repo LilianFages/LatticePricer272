@@ -22,8 +22,15 @@ not maintain a separate pricing implementation.
   allocations and connected/reachable pricing nodes are different metrics.
 - **Hybrid:** combines binomial and dividend-compatible trinomial transitions
   to handle known cash-dividend events.
-- **Valuation:** recursive and backward execution paths selected through the
-  common adapter when supported by the chosen model and contract.
+- **Valuation:** one `RecursivePricer` and one `BackwardPricer` handle all
+  three tree families. The backward algorithm traverses the built lattice
+  from expiry to valuation, computing discounted conditional expectations
+  and the American early-exercise maximum.
+
+The unique backward implementation builds the complete graph, so its memory
+use grows with lattice size. The older binomial-only column-rebuilding
+implementation has been removed; historical timing measurements in `results/`
+are retained but must not be attributed to the current unified engine.
 
 The core reuses `src/dividend_timing.py` for dividend-to-step mapping,
 `src/transition_moments.py` for local transition moments,
