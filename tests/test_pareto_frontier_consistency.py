@@ -4,7 +4,7 @@ from __future__ import annotations
 import pandas as pd
 
 from experiments.accuracy_cost_multistrike import Aggregate, pareto_multi
-from experiments.accuracy_vs_cost import Result, pareto_front
+from experiments.pricing_accuracy_cost import Result, pareto_front
 from frontend.research_lab_service import observed_pareto
 from src.accuracy_metrics import nondominated_indices
 

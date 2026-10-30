@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from experiments import option_by_dates_sensitivity as study
+from experiments import exercise_profile_step_sensitivity as study
 
 
 def make_profiles(n: int) -> list[dict[str, float | int | str]]:

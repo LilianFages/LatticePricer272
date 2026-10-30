@@ -28,7 +28,7 @@ import matplotlib.pyplot as plt
 
 from src.accuracy_metrics import nondominated_indices
 
-from experiments.accuracy_vs_cost import (
+from experiments.pricing_accuracy_cost import (
     MODELS,
     MODEL_LABELS,
     REPEATS,

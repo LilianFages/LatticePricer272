@@ -1,7 +1,7 @@
 """Sensitivity of professor-style temporal option metrics to lattice depth.
 
 Run from the repository root after the N=100 baseline has been saved:
-    python -m experiments.option_by_dates_sensitivity
+    python -m experiments.exercise_profile_step_sensitivity
 
 Reuses the N=100 CSV (read-only) and freshly prices N=50 and N=200.
 All new data/figures use distinct paths. Does not modify src/ or the
@@ -21,7 +21,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from experiments.option_value_exercise_by_dates import (
+from experiments.option_value_exercise_profiles import (
     DIVIDEND_AMOUNT,
     DIVIDEND_TIME,
     MATURITY,
@@ -106,7 +106,7 @@ def load_baseline(path: Path = BASELINE_CSV) -> list[dict[str, float | int | str
     if not path.is_file():
         raise FileNotFoundError(
             f"Missing N={BASELINE_N} profiles: {path}. "
-            "First run python -m experiments.option_value_exercise_by_dates --steps 100"
+            "First run python -m experiments.option_value_exercise_profiles --steps 100"
         )
     with path.open(encoding="utf-8", newline="") as handle:
         return [convert_row(r) for r in csv.DictReader(handle)]

@@ -1,8 +1,8 @@
 """Accuracy / computational-cost experiment for European vanilla options.
 
 Run from the repository root:
-    python -m experiments.accuracy_vs_cost
-    python -m experiments.accuracy_vs_cost --quick
+    python -m experiments.pricing_accuracy_cost
+    python -m experiments.pricing_accuracy_cost --quick
 
 No existing pricing engine is modified. Timings are end-to-end, including
 lattice initialization, construction and option backward induction.

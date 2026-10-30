@@ -8,8 +8,8 @@ A supplementary first-exercise (stopping-time) distribution avoids counting
 paths more than once.  Uses existing src/ objects without modifying them.
 
 Run from repository root:
-    python -m experiments.option_value_exercise_by_dates
-    python -m experiments.option_value_exercise_by_dates --steps 150
+    python -m experiments.option_value_exercise_profiles
+    python -m experiments.option_value_exercise_profiles --steps 150
 """
 from __future__ import annotations
 

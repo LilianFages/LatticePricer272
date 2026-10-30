@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from experiments.accuracy_vs_cost import MODELS, Result
+from experiments.pricing_accuracy_cost import MODELS, Result
 from experiments.accuracy_cost_multistrike import (
     ADDITIONAL_STEPS,
     Aggregate,
@@ -45,7 +45,7 @@ def _sample_aggregate(model: str, n: int, error: float, runtime: float) -> Aggre
 
 # Preserve the separation between original and incremental benchmark grids.
 def test_new_steps_are_disjoint_from_old() -> None:
-    from experiments.accuracy_vs_cost import STEP_COUNTS
+    from experiments.pricing_accuracy_cost import STEP_COUNTS
     assert not set(STEP_COUNTS) & set(ADDITIONAL_STEPS)
     assert len(ADDITIONAL_STEPS) == len(set(ADDITIONAL_STEPS))
 

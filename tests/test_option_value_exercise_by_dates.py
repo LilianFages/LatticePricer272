@@ -11,7 +11,7 @@ import pytest
 
 from src.node import Node
 from src.option import PutOption
-from experiments.option_value_exercise_by_dates import (
+from experiments.option_value_exercise_profiles import (
     DIVIDEND_AMOUNT,
     DIVIDEND_TIME,
     RATE,

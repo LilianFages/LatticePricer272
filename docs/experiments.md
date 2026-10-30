@@ -6,7 +6,7 @@ overwritten simply to validate a code change or open the Streamlit UI.
 
 ## Accuracy versus computational cost
 
-Scripts: `experiments.accuracy_vs_cost`,
+Scripts: `experiments.pricing_accuracy_cost`,
 `experiments.accuracy_cost_multistrike`.
 
 No-dividend European options use `S0=100`, `r=2%`, `sigma=20%`,
@@ -33,7 +33,7 @@ sample-dependent, not continuous theoretical optima. Exact zero
 errors are retained as zero in CSVs but omitted from logarithmic plots.
 
 ```bash
-python -m experiments.accuracy_vs_cost --quick
+python -m experiments.pricing_accuracy_cost --quick
 python -m experiments.accuracy_cost_multistrike --baseline-only
 python -m experiments.accuracy_cost_multistrike --quick
 ```
@@ -44,8 +44,8 @@ CSVs, Pareto/target tables and associated figures.
 
 ## Option value and exercise by date
 
-Scripts: `experiments.option_value_exercise_by_dates` and
-`experiments.option_by_dates_sensitivity`.
+Scripts: `experiments.option_value_exercise_profiles` and
+`experiments.exercise_profile_step_sensitivity`.
 
 Compare an American put with a known cash dividend, an American put
 without dividend and a European put without dividend. For the
@@ -78,8 +78,8 @@ already recorded N=100 baseline. This is a numerical stability
 comparison, **not** proof of convergence.
 
 ```bash
-python -m experiments.option_value_exercise_by_dates --steps 100
-python -m experiments.option_by_dates_sensitivity
+python -m experiments.option_value_exercise_profiles --steps 100
+python -m experiments.exercise_profile_step_sensitivity
 ```
 
 Main outputs: `results/data/option_by_dates_profiles.csv` and
