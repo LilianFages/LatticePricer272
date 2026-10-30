@@ -43,6 +43,7 @@ FAMILIES = (
     "Hybrid", "Trinomial · Full", "Trinomial · Branch pruning",
     "Trinomial · Allocation pruning",
 )
+ALGORITHMS = ("Recursive", "Backward")
 
 
 def contract(**changes: object) -> PricingRequest:
@@ -180,7 +181,6 @@ MODELS = (
     "Hybrid", "Trinomial · Full", "Trinomial · Branch pruning",
     "Trinomial · Allocation pruning",
 )
-ALGORITHMS = ("Recursive", "Backward")
 
 
 def make_request(*, ex_date: float = 0.6, **kwargs) -> PricingRequest:
