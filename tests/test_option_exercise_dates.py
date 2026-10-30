@@ -154,9 +154,7 @@ def test_baseline_parameter_validation(tmp_path: Path) -> None:
         study.check_baseline(path)
 
 
-def _prepare_readonly_baseline(
-    tmp_path: Path,
-) -> tuple[Path, Path, Path, Path, Path, bytes]:
+def _prepare_readonly_baseline(tmp_path: Path) -> tuple[Path, Path, Path, Path, Path, bytes]:
     """Persist the N=100 reference, preserving its original bytes for audit."""
     result_root = tmp_path / "results"
     data = result_root / "data"
@@ -177,8 +175,23 @@ def _prepare_readonly_baseline(
             baseline_summary, original_bytes)
 
 
-def test_read_only_n100_and_no_n100_output(monkeypatch: pytest.MonkeyPatch,
-                                              tmp_path: Path) -> None:
+
+def _assert_sensitivity_evidence(data: Path, figures: Path) -> None:
+    """Check N=50/200 exports and the three sensitivity figures."""
+    assert (data / "option_by_dates_sensitivity_N50.csv").exists()
+    assert (data / "option_by_dates_sensitivity_N200.csv").exists()
+    assert not (data / "option_by_dates_sensitivity_N100.csv").exists()
+    assert (figures / "option_by_dates_sensitivity_prices.png").exists()
+    # Verify the expected numerical or workflow invariant on this case.
+    assert (figures / "option_by_dates_sensitivity_early_exercise.png").exists()
+    assert (figures / "option_by_dates_sensitivity_dividend_spike.png").exists()
+    with (data / "option_by_dates_sensitivity_summary.csv").open(encoding="utf-8") as fp:
+        out = list(csv.DictReader(fp))
+    assert len(out) == 9
+    assert [int(x["nb_steps"]) for x in out] == [50] * 3 + [100] * 3 + [200] * 3
+
+
+def test_read_only_n100_and_no_n100_output(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Mock expensive engine; check output routing, never benchmark numerics."""
     (result_root, data, figures, baseline_csv,
      baseline_summary, original_bytes) = _prepare_readonly_baseline(tmp_path)
@@ -201,17 +214,7 @@ def test_read_only_n100_and_no_n100_output(monkeypatch: pytest.MonkeyPatch,
     assert calls == [50, 200]
     assert len(summary) == 9
     assert baseline_csv.read_bytes() == original_bytes
-    assert (data / "option_by_dates_sensitivity_N50.csv").exists()
-    assert (data / "option_by_dates_sensitivity_N200.csv").exists()
-    assert not (data / "option_by_dates_sensitivity_N100.csv").exists()
-    assert (figures / "option_by_dates_sensitivity_prices.png").exists()
-    # Verify the expected numerical or workflow invariant on this case.
-    assert (figures / "option_by_dates_sensitivity_early_exercise.png").exists()
-    assert (figures / "option_by_dates_sensitivity_dividend_spike.png").exists()
-    with (data / "option_by_dates_sensitivity_summary.csv").open(encoding="utf-8") as fp:
-        out = list(csv.DictReader(fp))
-    assert len(out) == 9
-    assert [int(x["nb_steps"]) for x in out] == [50] * 3 + [100] * 3 + [200] * 3
+    _assert_sensitivity_evidence(data, figures)
 
 
 # test_option_value_exercise_by_dates.py (tests preserved)
