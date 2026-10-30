@@ -64,11 +64,8 @@ def parity_target(ex_date: float) -> float:
             - STRIKE * math.exp(-RATE * MATURITY))
 
 
-def measure_case(
-    model: str, steps: int, dividend_time: float,
-    *, pricer: Callable = price_contract,
-) -> dict[str, object]:
-    """Price one contract triplet atomically; disclose any failed valuation."""
+def _case_request(model: str, steps: int, dividend_time: float) -> PricingRequest:
+    """Validate and construct the matched European-put reference contract."""
     # Reject invalid configurations before constructing the lattice.
     if model not in MODELS:
         raise ValueError(f"Unsupported study model: {model}")
@@ -79,11 +76,34 @@ def measure_case(
 
     # All three payoffs share the exact same dividend event.
     dividend = (DividendInput(time=dividend_time, amount=DIVIDEND_AMOUNT),)
-    request = PricingRequest(
+    return PricingRequest(
         spot=SPOT, strike=STRIKE, rate=RATE, volatility=VOLATILITY,
         maturity=MATURITY, steps=steps, model=model, dividends=dividend,
         option_type="Put", exercise="European", pruning_threshold=1e-18,
     )
+
+
+
+def _price_triplet(
+    request: PricingRequest, pricer: Callable
+) -> tuple[float, float, float]:
+    """Value matched European put, American put and European call."""
+    eur_put = float(pricer(request).price)
+    amer_put = float(pricer(replace(request, exercise="American")).price)
+    eur_call = float(pricer(replace(request, option_type="Call")).price)
+    if not all(map(math.isfinite, (eur_put, amer_put, eur_call))):
+        raise ArithmeticError("Non-finite option premium")
+    if min(eur_put, amer_put, eur_call) < -1e-10:
+        raise ArithmeticError("Negative option premium beyond tolerance")
+    return eur_put, amer_put, eur_call
+
+
+def measure_case(
+    model: str, steps: int, dividend_time: float,
+    *, pricer: Callable = price_contract,
+) -> dict[str, object]:
+    """Price one contract triplet atomically; disclose any failed valuation."""
+    request = _case_request(model, steps, dividend_time)
     step = dividend_grid_step(dividend_time, MATURITY, steps)
     dt = MATURITY / steps
     position = (dividend_time - (step - 1) * dt) / dt
@@ -96,13 +116,7 @@ def measure_case(
     }
     # Measure put exercise premium and European parity from one market.
     try:
-        eur_put = float(pricer(request).price)
-        amer_put = float(pricer(replace(request, exercise="American")).price)
-        eur_call = float(pricer(replace(request, option_type="Call")).price)
-        if not all(map(math.isfinite, (eur_put, amer_put, eur_call))):
-            raise ArithmeticError("Non-finite option premium")
-        if min(eur_put, amer_put, eur_call) < -1e-10:
-            raise ArithmeticError("Negative option premium beyond tolerance")
+        eur_put, amer_put, eur_call = _price_triplet(request, pricer)
     except (ValueError, ArithmeticError, RuntimeError, OverflowError, TypeError) as exc:
         data["failure"] = f"{type(exc).__name__}: {exc}"
         return data
@@ -114,6 +128,49 @@ def measure_case(
         parity_residual=eur_call - eur_put - parity_target(dividend_time),
     )
     return data
+
+
+def _grid_panel(
+    model: str, steps: Sequence[int],
+    observe: Callable[[str, int, float], dict[str, object]]
+) -> list[dict[str, object]]:
+    """Vary N for a fixed cash-dividend ex-date."""
+    fixed_rows: list[dict[str, object]] = []
+    for n in sorted(steps):
+        row = dict(observe(model, n, DIVIDEND_TIME), panel="grid",
+                   date_shift_days=0, gap_to_finest_sample=None,
+                   finest_reference_steps=None, date_shift_put=None)
+        fixed_rows.append(row)
+    # The reference is the finest successful observation, not an exact price.
+    successes = [r for r in fixed_rows if r["status"] == "success"]
+    if successes:
+        finest = max(successes, key=lambda r: int(r["steps"]))
+        for row in successes:
+            row["gap_to_finest_sample"] = (
+                float(row["european_put"]) - float(finest["european_put"])
+            )
+            row["finest_reference_steps"] = finest["steps"]
+    return fixed_rows
+
+
+def _date_panel(
+    model: str, shifts: Sequence[int], date_steps: int,
+    observe: Callable[[str, int, float], dict[str, object]]
+) -> list[dict[str, object]]:
+    """Vary the actual ex-date while holding N fixed."""
+    records: list[dict[str, object]] = []
+    baseline = observe(model, date_steps, DIVIDEND_TIME)
+    for days in sorted(shifts):
+        t = DIVIDEND_TIME + days / 365.0
+        row = dict(observe(model, date_steps, t), panel="date",
+                   date_shift_days=days, gap_to_finest_sample=None,
+                   finest_reference_steps=None, date_shift_put=None)
+        if row["status"] == "success" and baseline["status"] == "success":
+            row["date_shift_put"] = (
+                float(row["european_put"]) - float(baseline["european_put"])
+            )
+        records.append(row)
+    return records
 
 
 def run_experiment(
@@ -139,35 +196,8 @@ def run_experiment(
         return cache[key]
 
     for model in models:
-        fixed_rows: list[dict[str, object]] = []
-        for n in sorted(steps):
-            row = dict(observe(model, n, DIVIDEND_TIME), panel="grid",
-                       date_shift_days=0, gap_to_finest_sample=None,
-                       finest_reference_steps=None, date_shift_put=None)
-            fixed_rows.append(row)
-        # Compare each N to the finest successful observation for its model.
-        successes = [r for r in fixed_rows if r["status"] == "success"]
-        if successes:
-            finest = max(successes, key=lambda r: int(r["steps"]))
-            for row in successes:
-                row["gap_to_finest_sample"] = (
-                    float(row["european_put"]) - float(finest["european_put"])
-                )
-                row["finest_reference_steps"] = finest["steps"]
-        records.extend(fixed_rows)
-
-        # Vary the ex-date while holding the discretization depth fixed.
-        baseline = observe(model, date_steps, DIVIDEND_TIME)
-        for days in sorted(shifts):
-            t = DIVIDEND_TIME + days / 365.0
-            row = dict(observe(model, date_steps, t), panel="date",
-                       date_shift_days=days, gap_to_finest_sample=None,
-                       finest_reference_steps=None, date_shift_put=None)
-            if row["status"] == "success" and baseline["status"] == "success":
-                row["date_shift_put"] = (
-                    float(row["european_put"]) - float(baseline["european_put"])
-                )
-            records.append(row)
+        records.extend(_grid_panel(model, steps, observe))
+        records.extend(_date_panel(model, shifts, date_steps, observe))
     return records
 
 
