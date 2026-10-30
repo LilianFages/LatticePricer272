@@ -220,6 +220,7 @@ def _profile_row(
     }
 
 
+# Unconditional and surviving paths must remain separate at every date.
 def _profile_step(
     all_states: dict[Node, float],
     alive_states: dict[Node, float],
@@ -289,6 +290,7 @@ def profile_from_priced_tree(
     exercised_total = 0.0
     expiry_without_exercise = 0.0
     final_forward = float("nan")
+    # Propagate all paths and non-exercised paths under the same transitions.
     for step in range(nb_steps + 1):
         row, remaining, exercised_total, mean_stock = _profile_step(
             all_states, alive_states, option, step, nb_steps,
@@ -308,6 +310,7 @@ def profile_from_priced_tree(
     )
 
 
+# Price each scenario first, then analyze its resulting exercise policy.
 def run_scenario(scenario: Scenario, nb_steps: int) -> Result:
     dividends = [CashDividend(time=t, amount=d) for t, d in scenario.dividends]
     option = PutOption(strike=STRIKE, is_american=scenario.is_american)

@@ -239,6 +239,16 @@ def make_tree(model: str, steps: int) -> BenchTree:
     raise ValueError(f"Unknown benchmark model: {model}")
 
 
+def _timing_failure(model: str, steps: int, error: Exception) -> dict:
+    """Keep the original failure record for a timed pricing attempt."""
+    return {
+        "nb_steps": steps,
+        "model": model,
+        "status": "failed",
+        "error": f"{type(error).__name__}: {error}",
+    }
+
+
 def _timed_samples(
     model: str, steps: int
 ) -> dict | tuple[list[float], list[float], list[float], list[float]]:
@@ -256,12 +266,7 @@ def _timed_samples(
         try:
             price = pricer.price(tree, option)
         except (RuntimeError, ValueError, OverflowError) as exc:
-            return {
-                "nb_steps": steps,
-                "model": model,
-                "status": "failed",
-                "error": f"{type(exc).__name__}: {exc}",
-            }
+            return _timing_failure(model, steps, exc)
         total = time.perf_counter() - start
         elapsed.append(total)
         builds.append(tree.build_seconds)

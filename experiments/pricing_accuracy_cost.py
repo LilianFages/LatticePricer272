@@ -321,6 +321,7 @@ def _print_measurement(counter: int, total: int, result: Result) -> None:
 
 
 
+# Traverse the specified contracts without changing the comparison grid.
 def run_experiment(
     steps: tuple[int, ...],
     strikes: tuple[float, ...],
@@ -612,6 +613,7 @@ def _save_benchmark_figures(
         )
     if "call" not in kinds or 100.0 not in strikes:
         return
+    # The ATM-only panels share the same observed configurations.
     atm = contract_results(results, "call", 100.0)
     plot_comparison(
         atm, "allocated_nodes", "Allocated lattice nodes",
@@ -626,6 +628,7 @@ def _save_benchmark_figures(
     plot_pareto(atm, figure_dir / "accuracy_cost_pareto_atm_call.png")
 
 
+# Preserve the benchmark's timing methodology and reproducibility metadata.
 def _summary_header(
     results: list[Result], repeats: int,
     steps: tuple[int, ...], strikes: tuple[float, ...],
