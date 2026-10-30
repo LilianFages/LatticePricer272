@@ -190,6 +190,7 @@ def _gamma_diagnostics(
             "Gamma / dividend: grid-aware bump is a spacing heuristic only; "
             "check sensitivity to bump and N near cash dividend dates."
         )
+    # Analytical curvature is only a diagnostic for eligible vanilla contracts.
     reference_greeks = analytic_bs_greeks(request)
     if reference_greeks is not None and gamma is not None:
         reference_gamma = reference_greeks["Gamma"]
@@ -211,6 +212,7 @@ def _gamma_sides(
     """Reuse existing spot shocks when the Gamma stencil is identical."""
     if math.isclose(gamma_bump, delta_bump, rel_tol=1e-12):
         return original_sides
+    # When Gamma needs wider shocks, evaluate the same pricer at both ends.
     low = eval_shock(
         "spot_gamma-", replace(request, spot=request.spot-gamma_bump),
     )
