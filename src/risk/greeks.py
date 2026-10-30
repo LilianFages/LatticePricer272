@@ -201,6 +201,25 @@ def _gamma_diagnostics(
     return reference_greeks
 
 
+def _gamma_sides(
+    request: PricingRequest,
+    delta_bump: float,
+    gamma_bump: float,
+    original_sides: tuple[float | None, float | None],
+    eval_shock: Callable[[str, PricingRequest], float | None],
+) -> tuple[float | None, float | None]:
+    """Reuse existing spot shocks when the Gamma stencil is identical."""
+    if math.isclose(gamma_bump, delta_bump, rel_tol=1e-12):
+        return original_sides
+    low = eval_shock(
+        "spot_gamma-", replace(request, spot=request.spot-gamma_bump),
+    )
+    high = eval_shock(
+        "spot_gamma+", replace(request, spot=request.spot+gamma_bump),
+    )
+    return low, high
+
+
 def _compute_spot_greeks(
     request: PricingRequest,
     bumps: GreekBumps,
@@ -217,16 +236,9 @@ def _compute_spot_greeks(
 
     gamma_pct, gamma_scheme, clipped_gamma = select_gamma_bump(request, bumps)
     h_gamma = request.spot * gamma_pct / 100.0
-    if math.isclose(h_gamma, h_s, rel_tol=1e-12):
-        gamma_minus, gamma_plus = s_minus, s_plus
-    else:
-        gamma_minus = eval_shock(
-            "spot_gamma-", replace(request, spot=request.spot-h_gamma)
-        )
-        gamma_plus = eval_shock(
-            # Use the documented finite-difference scheme for each Greek.
-            "spot_gamma+", replace(request, spot=request.spot+h_gamma)
-        )
+    gamma_minus, gamma_plus = _gamma_sides(
+        request, h_s, h_gamma, (s_minus, s_plus), eval_shock,
+    )
     gamma = ((gamma_plus - 2 * base + gamma_minus) / (h_gamma * h_gamma)
              if gamma_plus is not None and gamma_minus is not None else None)
     # A diagnostic does not change the finite-difference Delta or Gamma.
@@ -375,12 +387,14 @@ def greeks_csv(result: GreeksResult) -> str:
     writer = csv.writer(stream)
     writer.writerow(["section", "field", "value", "analytic_BS", "model_minus_BS"])
     req, b = result.request, result.bumps
+    # Export the selected model and the unshocked contract assumptions.
     fields = {
         "model": req.model, "option": req.option_type, "exercise": req.exercise,
         "spot": req.spot, "strike": req.strike, "volatility": req.volatility,
         "rate": req.rate, "maturity": req.maturity, "steps": req.steps,
         "pruning_threshold": req.pruning_threshold,
         "dividends": ";".join(f"{d.time}:{d.amount}" for d in req.dividends),
+        # Record both applied numerical shock sizes and their report units.
         "spot_bump_pct": b.spot_pct, "gamma_bump_pct_used": result.gamma_spot_bump_pct,
         "gamma_scheme": result.gamma_scheme, "vol_bump_pp": b.vol_pp,
         "rate_bump_bp": b.rate_bp, "theta_roll_days": 1,
@@ -390,6 +404,7 @@ def greeks_csv(result: GreeksResult) -> str:
         # Compute finite-difference sensitivities with explicit bump conventions.
         "base_price": result.price,
     }
+    # Serialize contract and observed Greeks separately from shocked premiums.
     for key, value in fields.items():
         writer.writerow(["contract", key, value, "", ""])
     for label, estimate in result.measured().items():
