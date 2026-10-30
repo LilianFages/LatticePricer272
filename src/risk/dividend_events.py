@@ -42,6 +42,7 @@ def deterministic_american_reference(request: RiskRequest) -> tuple[float, str]:
     if request.exercise != "American":
         raise ValueError("American exercise is required for this benchmark.")
 
+    # Exercise at valuation is the initial admissible candidate.
     best = _intrinsic(request.spot, request.strike, request.option_type)
     best_event = "valuation"
     current_spot = request.spot
@@ -49,12 +50,14 @@ def deterministic_american_reference(request: RiskRequest) -> tuple[float, str]:
     for dividend in sorted(request.dividends, key=lambda event: event.time):
         current_spot *= math.exp(request.rate * (dividend.time - previous_date))
         discount = math.exp(-request.rate * dividend.time)
+        # Test exercise just before the deterministic dividend jump.
         before = discount * _intrinsic(
             current_spot, request.strike, request.option_type,
         )
         if before > best:
             best, best_event = before, "pre-dividend"
         current_spot -= dividend.amount
+        # Test exercise just after the jump, with the ex-dividend stock.
         after = discount * _intrinsic(
             current_spot, request.strike, request.option_type,
         )
@@ -62,6 +65,7 @@ def deterministic_american_reference(request: RiskRequest) -> tuple[float, str]:
             best, best_event = after, "post-dividend"
         previous_date = dividend.time
 
+    # Expiry completes the finite set of exercise-date candidates.
     current_spot *= math.exp(request.rate * (request.maturity - previous_date))
     terminal = math.exp(-request.rate * request.maturity) * _intrinsic(
         current_spot, request.strike, request.option_type,
@@ -79,6 +83,7 @@ def assess_dividend_exercise(
     if request.exercise != "American" or not request.dividends:
         return DividendExerciseAudit(warning=None)
 
+    # An off-grid event needs a qualified exercise-policy disclosure.
     off_grid = sum(
         aligned_event_step(dividend.time, request.maturity, request.steps) is None
         for dividend in request.dividends
@@ -97,6 +102,7 @@ def assess_dividend_exercise(
     if request.volatility != 0.0:
         return DividendExerciseAudit(warning=warning)
 
+    # Sigma-zero admits an independent exact reference valuation.
     reference, event = deterministic_american_reference(request)
     gap = model_price - reference
     if not math.isclose(model_price, reference, rel_tol=1e-10, abs_tol=1e-10):
