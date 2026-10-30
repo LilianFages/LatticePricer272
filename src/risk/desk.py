@@ -100,6 +100,61 @@ def _bs_second_order(request: PricingRequest) -> tuple[float | None, float | Non
     )
 
 
+def _vanna_from_pricings(
+    request: PricingRequest,
+    selected: GreekBumps,
+    prices: dict[str, float],
+    bump_price: Callable[[float, float], float | None],
+    issues: list[str],
+) -> float | None:
+    """Evaluate the mixed spot/volatility stencil with the original shocks."""
+    h_s = request.spot * selected.spot_pct / 100.0
+    h_vol = selected.vol_pp / 100.0
+
+    # Centered spot differences are reused at two volatility levels.
+    plus_hi = bump_price(request.spot + h_s, request.volatility + h_vol)
+    minus_hi = bump_price(request.spot - h_s, request.volatility + h_vol)
+    if request.volatility >= h_vol:
+        plus_lo = bump_price(request.spot + h_s, request.volatility - h_vol)
+        minus_lo = bump_price(request.spot - h_s, request.volatility - h_vol)
+        return vanna_from_samples(
+            plus_high=plus_hi, minus_high=minus_hi,
+            plus_low=plus_lo, minus_low=minus_lo,
+            spot_bump=h_s, vol_bump=h_vol, centered=True,
+        )
+
+    # Close to zero volatility, existing spot shocks form the lower level.
+    issues.append("Vanna uses a forward volatility difference near zero volatility.")
+    return vanna_from_samples(
+        plus_high=plus_hi, minus_high=minus_hi,
+        plus_low=prices.get("spot+"), minus_low=prices.get("spot-"),
+        spot_bump=h_s, vol_bump=h_vol, centered=False,
+    )
+
+
+def _vomma_from_pricings(
+    request: PricingRequest,
+    selected: GreekBumps,
+    base: GreeksResult,
+    issues: list[str],
+) -> float | None:
+    """Use the same central/forward volatility stencils as before."""
+    h_vol = selected.vol_pp / 100.0
+    prices = base.scenario_prices
+    if request.volatility >= h_vol:
+        return vomma_from_samples(
+            base=base.price, high=prices.get("volatility+"),
+            low=prices.get("volatility-"), vol_bump=h_vol, centered=True,
+        )
+
+    # The forward scheme avoids evaluating an invalid negative volatility.
+    issues.append("Vomma uses a forward second difference near zero volatility.")
+    return vomma_from_samples(
+        base=base.price, high=prices.get("volatility+"),
+        low=prices.get("volatility++"), vol_bump=h_vol, centered=False,
+    )
+
+
 def compute_desk_risk(
     request: PricingRequest,
     bumps: GreekBumps | None = None,
@@ -120,8 +175,7 @@ def compute_desk_risk(
     base = calculate_greeks(request, selected, pricer=pricer)
     issues: list[str] = []
     extra_calls = 0
-    h_s = request.spot * selected.spot_pct / 100.0
-    h_vol = selected.vol_pp / 100.0
+    # Reuse first-order scenario prices for the forward second-order stencils.
     prices = base.scenario_prices
 
     def bump_price(spot: float, volatility: float) -> float | None:
@@ -136,40 +190,9 @@ def compute_desk_risk(
             issues.append(f"Vanna shock unavailable: {type(exc).__name__}: {exc}")
             return None
 
-    plus_hi = bump_price(request.spot + h_s, request.volatility + h_vol)
-    minus_hi = bump_price(request.spot - h_s, request.volatility + h_vol)
-    if request.volatility >= h_vol:
-        plus_lo = bump_price(request.spot + h_s, request.volatility - h_vol)
-        minus_lo = bump_price(request.spot - h_s, request.volatility - h_vol)
-        vanna = vanna_from_samples(
-            plus_high=plus_hi, minus_high=minus_hi,
-            plus_low=plus_lo, minus_low=minus_lo,
-            spot_bump=h_s, vol_bump=h_vol, centered=True,
-        )
-    else:
-        # Forward volatility difference; reuse already computed spot shocks.
-        spot_plus = prices.get("spot+")
-        spot_minus = prices.get("spot-")
-        vanna = vanna_from_samples(
-            plus_high=plus_hi, minus_high=minus_hi,
-            plus_low=spot_plus, minus_low=spot_minus,
-            spot_bump=h_s, vol_bump=h_vol, centered=False,
-        )
-        issues.append("Vanna uses a forward volatility difference near zero volatility.")
-    vol_up = prices.get("volatility+")
-    if request.volatility >= h_vol:
-        vol_down = prices.get("volatility-")
-        vomma = vomma_from_samples(
-            base=base.price, high=vol_up, low=vol_down,
-            vol_bump=h_vol, centered=True,
-        )
-    else:
-        vol_up2 = prices.get("volatility++")
-        vomma = vomma_from_samples(
-            base=base.price, high=vol_up, low=vol_up2,
-            vol_bump=h_vol, centered=False,
-        )
-        issues.append("Vomma uses a forward second difference near zero volatility.")
+    # Keep callback failure tracking and scenario order in dedicated helpers.
+    vanna = _vanna_from_pricings(request, selected, prices, bump_price, issues)
+    vomma = _vomma_from_pricings(request, selected, base, issues)
     analytic_vanna, analytic_vomma = _bs_second_order(request)
     return DeskRiskSnapshot(
         base=base, vanna_1pp=vanna, vomma_1pp2=vomma,
@@ -218,15 +241,18 @@ def compute_greek_curve(
     selected = bumps or GreekBumps()
     selected.validate()
     points: list[GreekCurvePoint] = []
+    # Each curve point is repriced independently; failures do not propagate.
     for i in range(count):
         spot = request.spot * (1.0 + span_pct / 100.0 * (2 * i / (count - 1) - 1))
         shocked = replace(request, spot=spot)
         try:
+            # Cross/curvature Greeks require the extended desk risk snapshot.
             if name in ("Vanna", "Vomma"):
                 value = compute_desk_risk(shocked, selected, pricer=pricer).value(name)
             else:
                 greeks = calculate_greeks(shocked, selected, pricer=pricer)
                 value = greeks.measured()[GREEK_KEYS[name]]
+            # Preserve missing values as explicit unavailable observations.
             if value is None or not math.isfinite(value):
                 points.append(GreekCurvePoint(spot, None, "Greek unavailable for this spot."))
             else:
