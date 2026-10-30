@@ -19,6 +19,7 @@ from typing import Self
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib.axes import Axes
 
 from src.allocation_pruned_trinomial_tree import AllocationPrunedTrinomialTree
 from src.dividend import CashDividend
@@ -238,19 +239,19 @@ def make_tree(model: str, steps: int) -> BenchTree:
     raise ValueError(f"Unknown benchmark model: {model}")
 
 
-def run_timed_case(model: str, steps: int) -> dict:
-    """Measure uncoupled from tracemalloc, then measure peak memory once."""
+def _timed_samples(
+    model: str, steps: int
+) -> dict | tuple[list[float], list[float], list[float], list[float]]:
+    """Measure repeated runs without tracing allocations."""
     elapsed: list[float] = []
     builds: list[float] = []
     pricing: list[float] = []
     prices: list[float] = []
-
     for _ in range(RUNTIME_REPEATS):
         gc.collect()
         tree = make_tree(model, steps)
         pricer = RecursivePricer()
         option = CallOption(strike=STRIKE)
-
         start = time.perf_counter()
         try:
             price = pricer.price(tree, option)
@@ -261,40 +262,45 @@ def run_timed_case(model: str, steps: int) -> dict:
                 "status": "failed",
                 "error": f"{type(exc).__name__}: {exc}",
             }
-
         total = time.perf_counter() - start
-
         elapsed.append(total)
         builds.append(tree.build_seconds)
         pricing.append(max(0.0, total - tree.build_seconds))
         prices.append(price)
-
-        # Ensure the expensive objects don't accumulate across repetitions.
+        # Prevent objects from accumulating between repetitions.
         del tree, pricer, option
     gc.collect()
+    return elapsed, builds, pricing, prices
 
-    # Separate run: tracemalloc has measurable overhead, so it must not
-    # contaminate the timing regressions.
+
+def _memory_observation(model: str, steps: int) -> tuple[BenchTree, int]:
+    """Measure peak traced memory in a separate, untimed pricing run."""
     tracemalloc.start()
     try:
         memory_tree = make_tree(model, steps)
-        memory_price = RecursivePricer().price(
-            memory_tree, CallOption(strike=STRIKE),
-        )
+        RecursivePricer().price(memory_tree, CallOption(strike=STRIKE))
         _, peak_bytes = tracemalloc.get_traced_memory()
     finally:
         tracemalloc.stop()
+    return memory_tree, peak_bytes
 
+
+def _successful_timing_row(
+    model: str,
+    steps: int,
+    samples: tuple[list[float], list[float], list[float], list[float]],
+    memory_tree: BenchTree,
+    peak_bytes: int
+) -> dict:
+    """Aggregate medians and observable allocation counts."""
+    elapsed, builds, pricing, prices = samples
     allocated = memory_tree.allocated_node_count
     reachable = count_reachable_nodes(memory_tree.root)
-
     if reachable > allocated:
         raise AssertionError(
-            # Do not contaminate timing measurements with separate memory instrumentation.
             f"{model} N={steps}: reachable ({reachable}) "
             f"exceeds allocated ({allocated})."
         )
-
     return {
         "nb_steps": steps,
         "model": model,
@@ -313,50 +319,54 @@ def run_timed_case(model: str, steps: int) -> dict:
     }
 
 
+def run_timed_case(model: str, steps: int) -> dict:
+    """Benchmark normal timings and independent traced allocations."""
+    samples = _timed_samples(model, steps)
+    if isinstance(samples, dict):
+        return samples
+    memory_tree, peak_bytes = _memory_observation(model, steps)
+    return _successful_timing_row(model, steps, samples, memory_tree, peak_bytes)
+
+
+def _report_benchmark_row(
+    record: dict, steps: int, reference_price: float | None
+) -> None:
+    """Attach observed price gaps and display a pricing observation."""
+    price = record.get("price")
+    if price is not None and reference_price is not None:
+        gap = price - reference_price
+        record["price_gap_to_branch"] = gap
+        record["relative_gap_to_branch"] = (
+            abs(gap) / abs(reference_price) if reference_price != 0.0 else None
+        )
+    if record["status"] == "failed":
+        print(f"  {record['model']:30s} FAILED: {record['error']}")
+    else:
+        print(
+            f"  {record['model']:30s} "
+            f"Price={record['price']:.8f}  "
+            f"Nodes={record['allocated_nodes']:>7d}/"
+            f"{record['reachable_nodes']:>7d}  "
+            f"Total={record['total_seconds']:.4f}s  "
+            f"Peak={record['peak_python_mib']:.2f}MiB"
+        )
+
+
 def run_benchmark() -> list[dict]:
     """Run each lattice configuration for every discretization level."""
     rows: list[dict] = []
-
     for steps in STEP_COUNTS:
         print(f"\nN = {steps}")
-
-        step_rows: list[dict] = []
-        for model in MODEL_NAMES:
-            record = run_timed_case(model, steps)
-            step_rows.append(record)
-
+        step_rows = [run_timed_case(model, steps) for model in MODEL_NAMES]
         reference = next(
             row for row in step_rows
             if row["model"] == "trinomial_branch_pruning"
         )
         reference_price = reference.get("price")
-
+        # Each depth compares contracts with one shared branch-pruning anchor.
         for record in step_rows:
-            # Use the declared step grid and matching contracts for every benchmark.
-            price = record.get("price")
-
-            if price is not None and reference_price is not None:
-                gap = price - reference_price
-                record["price_gap_to_branch"] = gap
-                record["relative_gap_to_branch"] = (
-                    abs(gap) / abs(reference_price)
-                    if reference_price != 0.0 else None
-                )
-
-            if record["status"] == "failed":
-                print(f"  {record['model']:30s} FAILED: {record['error']}")
-            else:
-                print(
-                    f"  {record['model']:30s} "
-                    f"Price={record['price']:.8f}  "
-                    f"Nodes={record['allocated_nodes']:>7d}/"
-                    f"{record['reachable_nodes']:>7d}  "
-                    f"Total={record['total_seconds']:.4f}s  "
-                    f"Peak={record['peak_python_mib']:.2f}MiB"
-                )
-
+            _report_benchmark_row(record, steps, reference_price)
             rows.append(record)
-
     return rows
 
 
@@ -445,65 +455,62 @@ def save_csv(path: Path, rows: list[dict], fieldnames: list[str]) -> None:
         writer.writerows(rows)
 
 
+def _plot_metric_model(
+    ax: Axes,
+    rows: list[dict],
+    model: str,
+    label: str,
+    metric: str,
+    fit: dict | None
+) -> None:
+    """Draw sampled measurements and optional fitted scaling for one model."""
+    observations = sorted(
+        (
+            row for row in rows
+            if row["model"] == model
+            and row["status"] == "success"
+            and row.get(metric) is not None and row[metric] > 0.0
+        ),
+        key=lambda row: row["nb_steps"],
+    )
+    if not observations:
+        return
+    xs = [row["nb_steps"] for row in observations]
+    ys = [row[metric] for row in observations]
+    display_label = label
+    if fit is not None:
+        display_label += (
+            f" (p={fit['exponent']:.2f}, R²={fit['r_squared']:.3f})"
+        )
+    line, = ax.plot(xs, ys, marker="o", label=display_label)
+    if fit is not None:
+        # Only the declared fitting range contributes to the fitted line.
+        fit_xs = [x for x in xs if x >= FIT_MIN_STEPS]
+        fit_ys = [
+            math.exp(fit["log_intercept"]) * x ** fit["exponent"]
+            for x in fit_xs
+        ]
+        ax.plot(
+            fit_xs, fit_ys, "--", linewidth=1.3,
+            alpha=0.65, color=line.get_color(),
+        )
+
+
 def save_plots(rows: list[dict], fits: list[dict]) -> None:
     """Create one log-log figure for each measured complexity metric."""
     FIGURES_DIR.mkdir(parents=True, exist_ok=True)
-    fit_lookup = {
-        (r["model"], r["metric"]): r for r in fits
-    }
-
+    fit_lookup = {(r["model"], r["metric"]): r for r in fits}
     for metric, (ylabel, short_name) in METRICS.items():
         fig, ax = plt.subplots(figsize=(9, 5.5))
-
+        # Each model is drawn against its own observed fit, if available.
         for model, label in MODEL_NAMES.items():
-            observations = sorted(
-                (
-                    r for r in rows
-                    if r["model"] == model
-                    and r["status"] == "success"
-                    and r.get(metric) is not None
-                    and r[metric] > 0.0
-                ),
-                # Retain the same market and stopping rules across benchmark engines.
-                key=lambda r: r["nb_steps"],
+            _plot_metric_model(
+                ax, rows, model, label, metric, fit_lookup.get((model, metric))
             )
-            if not observations:
-                continue
-
-            xs = [r["nb_steps"] for r in observations]
-            ys = [r[metric] for r in observations]
-            fit = fit_lookup.get((model, metric))
-
-            display_label = label
-            if fit is not None:
-                display_label += (
-                    f" (p={fit['exponent']:.2f}, "
-                    f"R²={fit['r_squared']:.3f})"
-                )
-
-            line, = ax.plot(
-                xs, ys, marker="o", label=display_label,
-            )
-
-            # Regressions use only the declared fitting range.
-            if fit is not None:
-                fit_xs = [
-                    x for x in xs if x >= FIT_MIN_STEPS
-                ]
-                fit_ys = [
-                    math.exp(fit["log_intercept"]) * x ** fit["exponent"]
-                    for x in fit_xs
-                ]
-                ax.plot(
-                    fit_xs, fit_ys, "--", linewidth=1.3,
-                    alpha=0.65, color=line.get_color(),
-                )
-
         ax.set_xscale("log")
         ax.set_yscale("log")
         ax.set_xlabel("Number of time steps N")
         ax.set_ylabel(ylabel)
-        # Separate build-time measurements from peak-allocation measurements.
         ax.set_title(f"Allocation pruning benchmark — {short_name} (log-log)")
         ax.grid(True, which="both", alpha=0.25)
         ax.legend(fontsize=8)

@@ -167,6 +167,108 @@ def _value(node: Node) -> float:
     return float(node.option_value)
 
 
+def _exercise_partition(
+    all_states: dict[Node, float],
+    alive_states: dict[Node, float],
+    option: PutOption,
+    dt: float,
+    rate: float,
+    is_maturity: bool
+) -> tuple[float, float, dict[Node, float]]:
+    """Measure exercise-region mass and surviving first-exercise paths."""
+    exercise_set = {
+        node for node in all_states
+        if exercise_decision(node, option, dt, rate, is_maturity)
+    }
+    region_mass = sum(all_states[node] for node in exercise_set)
+    first_mass = sum(alive_states.get(node, 0.0) for node in exercise_set)
+    remaining = {
+        node: prob for node, prob in alive_states.items()
+        if node not in exercise_set
+    }
+    return region_mass, first_mass, remaining
+
+
+def _profile_row(
+    scenario: Scenario,
+    step: int,
+    dt: float,
+    rate: float,
+    mean_value: float,
+    mean_stock: float,
+    all_mass: float,
+    region_mass: float,
+    first_mass: float,
+    exercised_total: float,
+    remaining_mass: float
+) -> dict[str, float | int | str]:
+    """Record exactly the original professor and stopping-time measures."""
+    t = step * dt
+    discount = math.exp(-rate * t)
+    return {
+        "scenario": scenario.key,
+        "step": step,
+        "time": t,
+        "mean_option_value": mean_value,
+        "discounted_mean_option_value": discount * mean_value,
+        "mean_stock_price": mean_stock,
+        "unconditional_probability_mass": all_mass,
+        "exercise_region_probability": region_mass,
+        "first_exercise_probability": first_mass,
+        "cumulative_first_exercise_probability": exercised_total,
+        "survival_probability_after_step": remaining_mass,
+    }
+
+
+def _profile_step(
+    all_states: dict[Node, float],
+    alive_states: dict[Node, float],
+    option: PutOption,
+    step: int,
+    nb_steps: int,
+    dt: float,
+    rate: float,
+    scenario: Scenario,
+    exercised_total: float
+) -> tuple[dict[str, float | int | str], dict[Node, float], float, float]:
+    """Compute one unconditional and stopping-time probability observation."""
+    all_mass = sum(all_states.values())
+    if not math.isclose(all_mass, 1.0, abs_tol=MASS_TOLERANCE, rel_tol=0):
+        raise AssertionError(f"Lost unconditional mass at step {step}: {all_mass}.")
+    mean_value = sum(prob * _value(node) for node, prob in all_states.items())
+    mean_stock = sum(prob * node.price for node, prob in all_states.items())
+    # Exercise-region mass uses all paths; stopping mass uses surviving paths.
+    region_mass, first_mass, remaining = _exercise_partition(
+        all_states, alive_states, option, dt, rate, step == nb_steps
+    )
+    exercised_total += first_mass
+    row = _profile_row(
+        scenario, step, dt, rate, mean_value, mean_stock, all_mass,
+        region_mass, first_mass, exercised_total, sum(remaining.values())
+    )
+    return row, remaining, exercised_total, mean_stock
+
+
+def _validated_profile_result(
+    root: Node,
+    scenario: Scenario,
+    rows: list[dict[str, float | int | str]],
+    final_forward: float,
+    exercised_total: float,
+    expiry_without_exercise: float
+) -> Result:
+    """Verify normalized stopping mass and the initial discounted price."""
+    if not math.isclose(exercised_total + expiry_without_exercise,
+                        1.0, abs_tol=MASS_TOLERANCE, rel_tol=0):
+        raise AssertionError("First-exercise plus worthless expiry must sum to one.")
+    initial_price = _value(root)
+    if not math.isclose(float(rows[0]["discounted_mean_option_value"]),
+                        initial_price, abs_tol=1e-12, rel_tol=1e-12):
+        raise AssertionError("Wrong initial option value.")
+    return Result(scenario, initial_price, rows, final_forward,
+                  exercised_total, expiry_without_exercise)
+
+
 def profile_from_priced_tree(
     root: Node,
     option: PutOption,
@@ -175,14 +277,10 @@ def profile_from_priced_tree(
     rate: float,
     scenario: Scenario
 ) -> Result:
-    """Compute both professor metrics and a first-exercise distribution.
+    """Compute datewise discounted option value and exercise probabilities.
 
-    `all_states` follows *unconditional* underlying paths, even if the
-    option would have been exercised at earlier dates.  That is necessary
-    for average discounted V_t and the exercise-region mass on each date.
-    `alive_states` instead stops paths at their first optimal exercise;
-    resulting first-exercise masses form a probability distribution when
-    combined with worthless expiry.
+    Unconditional paths measure the professor's exercise-region mass.
+    Surviving paths measure a separate first-exercise distribution.
     """
     dt = maturity / nb_steps
     all_states: dict[Node, float] = {root: 1.0}
@@ -191,59 +289,23 @@ def profile_from_priced_tree(
     exercised_total = 0.0
     expiry_without_exercise = 0.0
     final_forward = float("nan")
-
     for step in range(nb_steps + 1):
-        t = step * dt
-        discount = math.exp(-rate * t)
-        all_mass = sum(all_states.values())
-        if not math.isclose(all_mass, 1.0, abs_tol=MASS_TOLERANCE, rel_tol=0):
-            raise AssertionError(f"Lost unconditional mass at step {step}: {all_mass}.")
-        mean_value = sum(prob * _value(node) for node, prob in all_states.items())
-        mean_stock = sum(prob * node.price for node, prob in all_states.items())
-        is_maturity = (step == nb_steps)
-        # Separate conditional values, exercise regions and first stopping times.
-        exercise_set = {
-            node for node in all_states
-            if exercise_decision(node, option, dt, rate, is_maturity)
-        }
-        region_mass = sum(all_states[node] for node in exercise_set)
-        first_mass = sum(alive_states.get(node, 0.0) for node in exercise_set)
-        exercised_total += first_mass
-        remaining = {
-            node: prob for node, prob in alive_states.items()
-            if node not in exercise_set
-        }
-        if is_maturity:
+        row, remaining, exercised_total, mean_stock = _profile_step(
+            all_states, alive_states, option, step, nb_steps,
+            dt, rate, scenario, exercised_total
+        )
+        rows.append(row)
+        if step == nb_steps:
             expiry_without_exercise = sum(remaining.values())
             final_forward = mean_stock
-        rows.append({
-            "scenario": scenario.key,
-            "step": step,
-            # A European option must carry zero early-exercise probability.
-            "time": t,
-            "mean_option_value": mean_value,
-            "discounted_mean_option_value": discount * mean_value,
-            "mean_stock_price": mean_stock,
-            "unconditional_probability_mass": all_mass,
-            "exercise_region_probability": region_mass,
-            "first_exercise_probability": first_mass,
-            "cumulative_first_exercise_probability": exercised_total,
-            "survival_probability_after_step": sum(remaining.values()),
-        })
-        if not is_maturity:
+        else:
             all_states = propagate(all_states)
             alive_states = propagate(remaining)
 
-    if not math.isclose(exercised_total + expiry_without_exercise,
-                        1.0, abs_tol=MASS_TOLERANCE, rel_tol=0):
-        raise AssertionError("First-exercise plus worthless expiry must sum to one.")
-    # Preserve the option stopping rule for each simulated scenario.
-    initial_price = _value(root)
-    if not math.isclose(float(rows[0]["discounted_mean_option_value"]),
-                        initial_price, abs_tol=1e-12, rel_tol=1e-12):
-        raise AssertionError("Wrong initial option value.")
-    return Result(scenario, initial_price, rows, final_forward,
-                  exercised_total, expiry_without_exercise)
+    return _validated_profile_result(
+        root, scenario, rows, final_forward,
+        exercised_total, expiry_without_exercise
+    )
 
 
 def run_scenario(scenario: Scenario, nb_steps: int) -> Result:

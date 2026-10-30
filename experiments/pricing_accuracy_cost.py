@@ -27,6 +27,7 @@ import matplotlib
 # Evaluate each lattice engine with identical option and market inputs.
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib.axes import Axes
 
 from src.allocation_pruned_trinomial_tree import AllocationPrunedTrinomialTree
 from src.binomial_tree import BinomialTree
@@ -161,6 +162,112 @@ def bs_reference(kind: str, strike: float) -> float:
     )
 
 
+def _timed_repetition(
+    model: str, nb_steps: int, kind: str, strike: float,
+    repetition: int, option: Option
+) -> tuple[TimingObservation, int]:
+    """Time a fresh lattice and calculate its allocated node count."""
+    gc.collect()
+    started = time.perf_counter_ns()
+    tree = make_tree(model, nb_steps)
+    price = RecursivePricer().price(tree, option)
+    elapsed = (time.perf_counter_ns() - started) / 1e9
+    if not (math.isfinite(price) and elapsed > 0.0):
+        raise ArithmeticError("Non-finite price or non-positive runtime.")
+    count = allocated_nodes(model, nb_steps, tree)
+    observation = TimingObservation(
+        nb_steps=nb_steps, strike=strike, option_kind=kind,
+        model=model, repetition=repetition, runtime_seconds=elapsed,
+        price=price,
+    )
+    del tree
+    return observation, count
+
+
+def _validate_repetitions(prices: list[float], counts: list[int]) -> None:
+    """Reject nondeterministic prices and node allocations."""
+    if any(count != counts[0] for count in counts):
+        raise ArithmeticError("Non-deterministic node allocation count.")
+    if any(
+        not math.isclose(price, prices[0], rel_tol=1e-12, abs_tol=1e-12)
+        for price in prices[1:]
+    ):
+        raise ArithmeticError("Non-deterministic option prices across runs.")
+
+
+def _timing_samples(
+    model: str, nb_steps: int, kind: str, strike: float,
+    repeats: int, option: Option, observations: list[TimingObservation]
+) -> tuple[list[float], list[float], list[int]]:
+    """Warm up the model, then record independent full pricing runs."""
+    warmup_tree = make_tree(model, nb_steps)
+    RecursivePricer().price(warmup_tree, option)
+    del warmup_tree
+    gc.collect()
+    runtimes: list[float] = []
+    prices: list[float] = []
+    counts: list[int] = []
+    # Keep the raw repetitions even if a later repetition fails.
+    for repetition in range(1, repeats + 1):
+        observation, count = _timed_repetition(
+            model, nb_steps, kind, strike, repetition, option
+        )
+        runtimes.append(observation.runtime_seconds)
+        prices.append(observation.price)
+        counts.append(count)
+        observations.append(observation)
+    _validate_repetitions(prices, counts)
+    return runtimes, prices, counts
+
+
+def _successful_measurement(
+    model: str, nb_steps: int, kind: str, strike: float,
+    reference: float, samples: tuple[list[float], list[float], list[int]]
+) -> Result:
+    """Aggregate deterministic repetitions with original statistics."""
+    runtimes, prices, counts = samples
+    error = abs(prices[0] - reference)
+    return Result(
+        nb_steps=nb_steps,
+        strike=strike,
+        option_kind=kind,
+        model=model,
+        reference_price=reference,
+        price=prices[0],
+        absolute_error=error,
+        relative_error=error / reference if reference > 0 else None,
+        median_runtime_seconds=statistics.median(runtimes),
+        min_runtime_seconds=min(runtimes),
+        max_runtime_seconds=max(runtimes),
+        allocated_nodes=counts[0],
+        status="success",
+        failure_reason="",
+    )
+
+
+def _failed_measurement(
+    model: str, nb_steps: int, kind: str,
+    strike: float, reference: float, error: Exception
+) -> Result:
+    """Preserve the failed-case schema without imputing a premium."""
+    return Result(
+        nb_steps=nb_steps,
+        strike=strike,
+        option_kind=kind,
+        model=model,
+        reference_price=reference,
+        price=None,
+        absolute_error=None,
+        relative_error=None,
+        median_runtime_seconds=None,
+        min_runtime_seconds=None,
+        max_runtime_seconds=None,
+        allocated_nodes=None,
+        status="failed",
+        failure_reason=f"{type(error).__name__}: {error}",
+    )
+
+
 def measure_case(
     model: str,
     nb_steps: int,
@@ -169,99 +276,21 @@ def measure_case(
     repeats: int,
     reference: float
 ) -> tuple[Result, list[TimingObservation]]:
-    """Warm up, measure independent runs, then aggregate by median.
-
-    gc.collect() and plot/file operations are outside timed sections.
-    A new tree is created for each timed repetition.
-    """
+    """Warm up and time independently before computing valuation errors."""
     if repeats < 1:
         raise ValueError("At least one timed repetition is required.")
-
     option = create_option(kind, strike)
     observations: list[TimingObservation] = []
-    runtimes: list[float] = []
-    prices: list[float] = []
-    node_counts: list[int] = []
-
     try:
-        # Untimed warmup: imports, caches, and initial dispatch costs.
-        warmup_tree = make_tree(model, nb_steps)
-        RecursivePricer().price(warmup_tree, option)
-        del warmup_tree
-        gc.collect()
-
-        for repetition in range(1, repeats + 1):
-            gc.collect()
-            started = time.perf_counter_ns()
-            tree = make_tree(model, nb_steps)
-            price = RecursivePricer().price(tree, option)
-            elapsed = (time.perf_counter_ns() - started) / 1e9
-
-            if not (math.isfinite(price) and elapsed > 0.0):
-                raise ArithmeticError("Non-finite price or non-positive runtime.")
-
-            counts = allocated_nodes(model, nb_steps, tree)
-            runtimes.append(elapsed)
-            # Separate warmup, timing repetitions, and valuation-error calculation.
-            prices.append(price)
-            node_counts.append(counts)
-            observations.append(
-                TimingObservation(
-                    nb_steps=nb_steps,
-                    strike=strike,
-                    option_kind=kind,
-                    model=model,
-                    repetition=repetition,
-                    runtime_seconds=elapsed,
-                    price=price,
-                )
-            )
-            del tree
-
-        if any(count != node_counts[0] for count in node_counts):
-            raise ArithmeticError("Non-deterministic node allocation count.")
-        # Evaluate each lattice engine with identical option and market inputs.
-        if any(
-            not math.isclose(price, prices[0], rel_tol=1e-12, abs_tol=1e-12)
-            for price in prices[1:]
-        ):
-            raise ArithmeticError("Non-deterministic option prices across runs.")
-
-        error = abs(prices[0] - reference)
-        result = Result(
-            nb_steps=nb_steps,
-            strike=strike,
-            option_kind=kind,
-            model=model,
-            reference_price=reference,
-            price=prices[0],
-            absolute_error=error,
-            relative_error=error / reference if reference > 0 else None,
-            median_runtime_seconds=statistics.median(runtimes),
-            # Separate untimed warmup from the execution-time sample.
-            min_runtime_seconds=min(runtimes),
-            max_runtime_seconds=max(runtimes),
-            allocated_nodes=node_counts[0],
-            status="success",
-            failure_reason="",
+        samples = _timing_samples(
+            model, nb_steps, kind, strike, repeats, option, observations
+        )
+        result = _successful_measurement(
+            model, nb_steps, kind, strike, reference, samples
         )
     except (ValueError, RuntimeError, OverflowError, RecursionError, ArithmeticError) as error:
-        result = Result(
-            nb_steps=nb_steps,
-            strike=strike,
-            option_kind=kind,
-            model=model,
-            reference_price=reference,
-            price=None,
-            absolute_error=None,
-            relative_error=None,
-            median_runtime_seconds=None,
-            # Compare numerical errors against the applicable analytic reference.
-            min_runtime_seconds=None,
-            max_runtime_seconds=None,
-            allocated_nodes=None,
-            status="failed",
-            failure_reason=f"{type(error).__name__}: {error}",
+        result = _failed_measurement(
+            model, nb_steps, kind, strike, reference, error
         )
     return result, observations
 
@@ -299,6 +328,7 @@ def run_experiment(
     repeats: int
 ) -> tuple[list[Result], list[TimingObservation]]:
     """Execute the complete deterministic grid and print each status."""
+    # Validate all grid inputs before starting expensive pricing runs.
     if any(n < 1 for n in steps) or len(set(steps)) != len(steps):
         raise ValueError("Steps must be distinct positive integers.")
     if len(set(strikes)) != len(strikes) or any(k <= 0 for k in strikes):
@@ -470,8 +500,29 @@ def plot_comparison(
     plt.close(fig)
 
 
+def _annotate_pareto_front(ax: Axes, results: list[Result]) -> None:
+    """Draw only the sampled nondominated configurations and step labels."""
+    front = pareto_front(results)
+    fx, fy = _positive_points(
+        front, "median_runtime_seconds", "absolute_error"
+    )
+    if not fx:
+        return
+    ax.plot(
+        fx, fy, color="black", linestyle="--", linewidth=1.4,
+        label="Observed Pareto frontier",
+    )
+    for row in front:
+        if row.absolute_error is not None and row.absolute_error > 0:
+            ax.annotate(
+                str(row.nb_steps),
+                (float(row.median_runtime_seconds), float(row.absolute_error)),
+                xytext=(4, 5), textcoords="offset points", fontsize=7,
+            )
+
+
 def plot_pareto(results: list[Result], path: Path) -> None:
-    """Visualize all accuracy/cost choices and the sampled Pareto front."""
+    """Visualize accuracy versus cost and the observed Pareto frontier."""
     fig, ax = plt.subplots(figsize=(9.5, 6.0))
     for model in MODELS:
         subset = [row for row in results if row.model == model]
@@ -480,22 +531,7 @@ def plot_pareto(results: list[Result], path: Path) -> None:
         )
         if x:
             ax.scatter(x, y, s=55, label=MODEL_LABELS[model], alpha=0.8)
-
-    front = pareto_front(results)
-    fx, fy = _positive_points(
-        front, "median_runtime_seconds", "absolute_error"
-    )
-    if fx:
-        ax.plot(fx, fy, color="black", linestyle="--", linewidth=1.4,
-                label="Observed Pareto frontier")
-        for row in front:
-            # Compare numerical errors against the applicable analytic reference.
-            if row.absolute_error is not None and row.absolute_error > 0:
-                ax.annotate(
-                    str(row.nb_steps),
-                    (float(row.median_runtime_seconds), float(row.absolute_error)),
-                    xytext=(4, 5), textcoords="offset points", fontsize=7,
-                )
+    _annotate_pareto_front(ax, results)
     ax.set_xscale("log")
     ax.set_yscale("log")
     ax.set(
@@ -542,13 +578,10 @@ def git_head() -> str:
         return "not_available"
 
 
-def save_outputs(
-    results: list[Result], raw: list[TimingObservation],
-    repeats: int, steps: tuple[int, ...], strikes: tuple[float, ...],
-    kinds: tuple[str, ...], data_dir: Path, figure_dir: Path,
-    summary_path: Path
+def _save_benchmark_tables(
+    results: list[Result], raw: list[TimingObservation], data_dir: Path
 ) -> None:
-    """Export complete raw and aggregated tables, figures, and provenance."""
+    """Persist the raw timings, aggregated prices and observed targets."""
     write_csv(
         data_dir / "accuracy_cost_benchmark.csv",
         [asdict(row) for row in results],
@@ -558,55 +591,48 @@ def save_outputs(
         [asdict(row) for row in raw],
         fieldnames=list(TimingObservation.__dataclass_fields__),
     )
-    targets = target_table(results)
-    write_csv(data_dir / "accuracy_cost_targets.csv", targets)
+    write_csv(data_dir / "accuracy_cost_targets.csv", target_table(results))
 
+
+def _save_benchmark_figures(
+    results: list[Result], strikes: tuple[float, ...],
+    kinds: tuple[str, ...], figure_dir: Path
+) -> None:
+    """Preserve the original strike-specific and ATM figure paths."""
     for strike in strikes:
         if "call" not in kinds:
             break
         subset = contract_results(results, "call", strike)
         plot_comparison(
-            # Retain only observed configurations when selecting an accuracy target.
             subset,
             "median_runtime_seconds",
             "Median end-to-end runtime (seconds)",
             figure_dir / f"accuracy_cost_runtime_call_K{strike:g}.png",
             f"Accuracy vs runtime — European call, K={strike:g}",
         )
-
-    if "call" in kinds and 100.0 in strikes:
-        atm = contract_results(results, "call", 100.0)
-        plot_comparison(
-            atm,
-            "allocated_nodes",
-            "Allocated lattice nodes",
-            figure_dir / "accuracy_cost_nodes_atm_call.png",
-            "Accuracy vs allocated nodes — ATM European call",
-        )
-        plot_comparison(
-            # Keep raw timing observations distinct from summary statistics.
-            atm,
-            "nb_steps",
-            "Time steps N",
-            figure_dir / "accuracy_cost_steps_atm_call.png",
-            "Convergence vs steps — ATM European call",
-        )
-        plot_pareto(
-            atm, figure_dir / "accuracy_cost_pareto_atm_call.png",
-        )
-
-    failed = [row for row in results if row.status != "success"]
-    zero_errors = sum(
-        row.absolute_error == 0.0 for row in results
-        if row.status == "success"
+    if "call" not in kinds or 100.0 not in strikes:
+        return
+    atm = contract_results(results, "call", 100.0)
+    plot_comparison(
+        atm, "allocated_nodes", "Allocated lattice nodes",
+        figure_dir / "accuracy_cost_nodes_atm_call.png",
+        "Accuracy vs allocated nodes — ATM European call",
     )
-    parity = parity_deviations(results)
-    # Evaluate each lattice engine with identical option and market inputs.
-    atm_front = (
-        pareto_front(contract_results(results, "call", 100.0))
-        if "call" in kinds and 100.0 in strikes else []
+    plot_comparison(
+        atm, "nb_steps", "Time steps N",
+        figure_dir / "accuracy_cost_steps_atm_call.png",
+        "Convergence vs steps — ATM European call",
     )
-    lines = [
+    plot_pareto(atm, figure_dir / "accuracy_cost_pareto_atm_call.png")
+
+
+def _summary_header(
+    results: list[Result], repeats: int,
+    steps: tuple[int, ...], strikes: tuple[float, ...],
+    kinds: tuple[str, ...], failed: list[Result]
+) -> list[str]:
+    """Describe experiment inputs, timing semantics and provenance."""
+    return [
         "Accuracy versus computational cost — European vanilla options",
         "============================================================",
         "",
@@ -619,12 +645,24 @@ def save_outputs(
         "Explicit gc.collect() before, but not inside, the timed section.",
         "Timings exclude graphs, CSV, tracemalloc and explicit gc.collect().",
         "Automatic GC remains enabled and may occur during pricing.",
-        # Separate untimed warmup from the execution-time sample.
         f"Python={platform.python_version()}; OS={platform.platform()}",
         f"Git HEAD={git_head()}",
         "",
         f"Total configurations={len(results)}; successes={len(results) - len(failed)}; "
         f"failures={len(failed)}",
+    ]
+
+
+def _summary_interpretation(
+    results: list[Result]
+) -> list[str]:
+    """Summarize numerical and methodological limitations."""
+    zero_errors = sum(
+        row.absolute_error == 0.0 for row in results
+        if row.status == "success"
+    )
+    parity = parity_deviations(results)
+    return [
         f"Exactly zero absolute errors={zero_errors} (excluded from log axes)",
         f"Maximum put-call parity residual={max(parity):.12e}"
         if parity else "Put-call parity: no matched pairs measured.",
@@ -637,15 +675,29 @@ def save_outputs(
         "  Hybrid omitted: without dividends it has binomial transitions.",
         "  Pareto frontier is limited to sampled points; no interpolation.",
         "",
-        # Compare numerical errors against the applicable analytic reference.
         "Observed sampled Pareto frontier (ATM European call):",
     ]
-    for row in atm_front:
+
+
+def _append_observed_frontier(
+    lines: list[str], results: list[Result],
+    strikes: tuple[float, ...], kinds: tuple[str, ...]
+) -> None:
+    """Report only Pareto configurations in the measured ATM call sample."""
+    if "call" in kinds and 100.0 in strikes:
+        front = pareto_front(contract_results(results, "call", 100.0))
+    else:
+        front = []
+    for row in front:
         lines.append(
             f"  {row.model:22s} N={row.nb_steps:<4d} "
             f"time={row.median_runtime_seconds:.9f} s "
             f"error={row.absolute_error:.12e} €"
         )
+
+
+def _append_accuracy_targets(lines: list[str], results: list[Result]) -> None:
+    """Document the fastest observed configuration for each error target."""
     lines.extend(["", "Fastest sampled model attaining each ATM-call target:"])
     for target in ERROR_TARGETS:
         fastest = fastest_at_error_target(
@@ -655,25 +707,89 @@ def save_outputs(
             lines.append(f"  error <= {target:g} €: not reached")
         else:
             lines.append(
-                # Retain only observed configurations when selecting an accuracy target.
                 f"  error <= {target:g} €: {fastest.model} "
                 f"N={fastest.nb_steps} time={fastest.median_runtime_seconds:.9f} s "
                 f"error={fastest.absolute_error:.12e} €"
             )
-    if failed:
-        lines.extend(["", "Failed configurations:"])
-        for row in failed:
-            lines.append(
-                f"  {row.model} {row.option_kind} K={row.strike:g} "
-                f"N={row.nb_steps}: {row.failure_reason}"
-            )
+
+
+def _append_failed_configurations(
+    lines: list[str], failed: list[Result]
+) -> None:
+    """Retain detailed failure diagnostics without altering observation counts."""
+    if not failed:
+        return
+    lines.extend(["", "Failed configurations:"])
+    for row in failed:
+        lines.append(
+            f"  {row.model} {row.option_kind} K={row.strike:g} "
+            f"N={row.nb_steps}: {row.failure_reason}"
+        )
+
+
+def _benchmark_summary(
+    results: list[Result], repeats: int, steps: tuple[int, ...],
+    strikes: tuple[float, ...], kinds: tuple[str, ...]
+) -> str:
+    """Format the complete reproducibility summary before writing it."""
+    failed = [row for row in results if row.status != "success"]
+    lines = _summary_header(results, repeats, steps, strikes, kinds, failed)
+    lines.extend(_summary_interpretation(results))
+    _append_observed_frontier(lines, results, strikes, kinds)
+    _append_accuracy_targets(lines, results)
+    _append_failed_configurations(lines, failed)
+    return "\n".join(lines) + "\n"
+
+
+def save_outputs(
+    results: list[Result], raw: list[TimingObservation],
+    repeats: int, steps: tuple[int, ...], strikes: tuple[float, ...],
+    kinds: tuple[str, ...], data_dir: Path, figure_dir: Path,
+    summary_path: Path
+) -> None:
+    """Export unchanged tables, figures and experiment provenance."""
+    _save_benchmark_tables(results, raw, data_dir)
+    _save_benchmark_figures(results, strikes, kinds, figure_dir)
+    content = _benchmark_summary(results, repeats, steps, strikes, kinds)
     summary_path.parent.mkdir(parents=True, exist_ok=True)
-    summary_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    summary_path.write_text(content, encoding="utf-8")
+
+
+def _output_settings(
+    quick: bool
+) -> tuple[tuple[int, ...], tuple[float, ...], tuple[str, ...], Path, Path, Path]:
+    """Keep quick-run outputs segregated from historical full results."""
+    if quick:
+        root = RESULTS / "accuracy_cost_quick"
+        return (
+            (20, 40), (100.0,), ("call",),
+            root / "data", root / "figures",
+            root / "accuracy_cost_summary.txt",
+        )
+    return (
+        STEP_COUNTS, STRIKES, OPTION_KINDS,
+        DEFAULT_DATA_DIR, DEFAULT_FIGURES_DIR,
+        RESULTS / "accuracy_cost_summary.txt",
+    )
+
+
+def _print_benchmark_completion(
+    results: list[Result], data_dir: Path, figure_dir: Path, summary_path: Path
+) -> int:
+    """Keep the original CLI result paths and exit status."""
+    failures = sum(row.status != "success" for row in results)
+    print(f"\nCompleted: {len(results)-failures}/{len(results)} configurations successful.")
+    print("Aggregated CSV:", data_dir / "accuracy_cost_benchmark.csv")
+    print("Raw timings:", data_dir / "accuracy_cost_timings_raw.csv")
+    print("Target table:", data_dir / "accuracy_cost_targets.csv")
+    print("Summary:", summary_path)
+    print("Figures:", figure_dir)
+    return 1 if failures else 0
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run the full benchmark or isolated quick smoke measurement."""
     parser = argparse.ArgumentParser(description=__doc__)
-    # Keep raw timing observations distinct from summary statistics.
     parser.add_argument(
         "--quick", action="store_true",
         help="Run a small smoke benchmark in a separate quick-output folder",
@@ -685,42 +801,22 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.repeats < 1:
         parser.error("--repeats must be at least 1")
-
-    if args.quick:
-        steps = (20, 40)
-        strikes = (100.0,)
-        kinds = ("call",)
-        data_dir = RESULTS / "accuracy_cost_quick" / "data"
-        # Evaluate each lattice engine with identical option and market inputs.
-        figure_dir = RESULTS / "accuracy_cost_quick" / "figures"
-        summary_path = RESULTS / "accuracy_cost_quick" / "accuracy_cost_summary.txt"
-    else:
-        steps = STEP_COUNTS
-        strikes = STRIKES
-        kinds = OPTION_KINDS
-        data_dir = DEFAULT_DATA_DIR
-        figure_dir = DEFAULT_FIGURES_DIR
-        summary_path = RESULTS / "accuracy_cost_summary.txt"
-
+    steps, strikes, kinds, data_dir, figure_dir, summary_path = (
+        _output_settings(args.quick)
+    )
     print("Accuracy vs Computational Cost — Black-Scholes reference")
     print(f"Configurations={len(steps)*len(strikes)*len(kinds)*len(MODELS)} "
           f"timed runs each={args.repeats}", flush=True)
     print("Time measurements may vary with CPU load.\n", flush=True)
-
+    # Export measurements only after the complete declared grid has run.
     results, raw = run_experiment(steps, strikes, kinds, args.repeats)
     save_outputs(
-        # Separate untimed warmup from the execution-time sample.
         results, raw, args.repeats, steps, strikes, kinds,
         data_dir, figure_dir, summary_path,
     )
-    failures = sum(row.status != "success" for row in results)
-    print(f"\nCompleted: {len(results)-failures}/{len(results)} configurations successful.")
-    print("Aggregated CSV:", data_dir / "accuracy_cost_benchmark.csv")
-    print("Raw timings:", data_dir / "accuracy_cost_timings_raw.csv")
-    print("Target table:", data_dir / "accuracy_cost_targets.csv")
-    print("Summary:", summary_path)
-    print("Figures:", figure_dir)
-    return 1 if failures else 0
+    return _print_benchmark_completion(
+        results, data_dir, figure_dir, summary_path
+    )
 
 
 if __name__ == "__main__":

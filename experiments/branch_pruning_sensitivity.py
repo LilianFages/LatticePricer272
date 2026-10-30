@@ -150,113 +150,59 @@ def run_case(
     }
 
 
+def _pricing_gap(
+    price_value: float | int | str | None,
+    baseline_price: float | None
+) -> tuple[float | None, float | None]:
+    """Compare the price to its matching unpruned reference."""
+    if baseline_price is None or not isinstance(price_value, float):
+        return None, None
+    gap = price_value - baseline_price
+    return gap, abs(gap) / baseline_price
+
+
+def _print_sensitivity_case(
+    result: dict[str, float | int | str | None],
+    nb_steps: int,
+    threshold: float,
+    price_gap: float | None
+) -> None:
+    """Report success or failure in the existing console format."""
+    if result["status"] != "success":
+        print(
+            f"N={nb_steps:>3} | Threshold={threshold:.0e} | "
+            f"FAILED | Pruned={int(result['pruned_nodes'])} | {result['error']}"
+        )
+        return
+    price = float(result["price"])
+    pruned_nodes = int(result["pruned_nodes"])
+    runtime = float(result["runtime"])
+    gap_text = "n/a" if price_gap is None else f"{price_gap:+.3e}"
+    print(
+        f"N={nb_steps:>3} | Threshold={threshold:.0e} | "
+        f"Price={price:.10f} | Gap={gap_text} | "
+        f"Pruned={pruned_nodes:>5} | Time={runtime:.5f}s"
+    )
+
+
 def run_experiment(
 ) -> list[dict[str, float | int | str | None]]:
     """Measure price sensitivity to the pruning threshold."""
-    results: list[
-        dict[str, float | int | str | None]
-    ] = []
-
+    results: list[dict[str, float | int | str | None]] = []
     for nb_steps in STEP_COUNTS:
         baseline_price: float | None = None
-
         for threshold in PRUNING_THRESHOLDS:
-            result = run_case(
-                nb_steps,
-                threshold,
-            )
-
+            result = run_case(nb_steps, threshold)
             price_value = result["price"]
-
-            if (
-                threshold == 0.0
-                and isinstance(
-                    # Run each predefined scenario without changing the comparison baseline.
-                    price_value,
-                    float,
-                )
-            ):
-                baseline_price = (
-                    price_value
-                )
-
-            if (
-                baseline_price is not None
-                and isinstance(
-                    price_value,
-                    float,
-                )
-            ):
-                # Report both node savings and pricing impact for each threshold.
-                price_gap = (
-                    price_value
-                    - baseline_price
-                )
-
-                relative_gap = (
-                    abs(price_gap)
-                    / baseline_price
-                )
-
-            else:
-                price_gap = None
-                relative_gap = None
-
-            result["price_gap"] = (
-                price_gap
-            )
-
-            # Keep threshold-specific build times as descriptive measurements.
-            result["relative_gap"] = (
-                relative_gap
-            )
-
-            results.append(
-                result
-            )
-
-            if result["status"] == "success":
-                price = float(
-                    result["price"]
-                )
-
-                pruned_nodes = int(
-                    result["pruned_nodes"]
-                )
-
-                # Change pruning thresholds without changing the market or dividend schedule.
-                runtime = float(
-                    result["runtime"]
-                )
-
-                if price_gap is None:
-                    gap_text = "n/a"
-                else:
-                    gap_text = (
-                        f"{price_gap:+.3e}"
-                    )
-
-                print(
-                    f"N={nb_steps:>3} | "
-                    f"Threshold={threshold:.0e} | "
-                    f"Price={price:.10f} | "
-                    f"Gap={gap_text} | "
-                    f"Pruned={pruned_nodes:>5} | "
-                    f"Time={runtime:.5f}s"
-                )
-
-            else:
-                # Compare the resulting prices against an unpruned reference.
-                print(
-                    f"N={nb_steps:>3} | "
-                    f"Threshold={threshold:.0e} | "
-                    f"FAILED | "
-                    f"Pruned={int(result['pruned_nodes'])} | "
-                    f"{result['error']}"
-                )
-
+            # Fix the comparison baseline independently at each tree depth.
+            if threshold == 0.0 and isinstance(price_value, float):
+                baseline_price = price_value
+            price_gap, relative_gap = _pricing_gap(price_value, baseline_price)
+            result["price_gap"] = price_gap
+            result["relative_gap"] = relative_gap
+            results.append(result)
+            _print_sensitivity_case(result, nb_steps, threshold, price_gap)
         print()
-
     return results
 
 
@@ -297,94 +243,44 @@ def save_csv(
         )
 
 
+def _absolute_price_gaps(
+    results: list[dict[str, float | int | str | None]],
+    nb_steps: int
+) -> list[float]:
+    """Preserve missing gap observations as NaN rather than zero."""
+    gaps: list[float] = []
+    for threshold in PRUNING_THRESHOLDS:
+        matching = next(
+            row for row in results
+            if row["nb_steps"] == nb_steps and row["threshold"] == threshold
+        )
+        gap = matching["price_gap"]
+        gaps.append(float("nan") if gap is None else abs(float(gap)))
+    return gaps
+
+
 def save_price_impact_figure(
     results: list[dict[str, float | int | str | None]]
 ) -> None:
     """Save the pricing impact of each pruning threshold."""
-    FIGURES_DIR.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
-
-    threshold_labels = [
-        "0",
-        "1e-18",
-        "1e-15",
-        "1e-12",
-    ]
-
-    plt.figure(
-        figsize=(9, 5)
-    )
-
-    for nb_steps in [
-        # Keep threshold-specific build times as descriptive measurements.
-        50,
-        100,
-        200,
-    ]:
-        gaps: list[float] = []
-
-        for threshold in PRUNING_THRESHOLDS:
-            matching_result = next(
-                result
-                for result in results
-                if (
-                    result["nb_steps"] == nb_steps
-                    and result["threshold"] == threshold
-                )
-            )
-
-            # Change pruning thresholds without changing the market or dividend schedule.
-            gap = matching_result[
-                "price_gap"
-            ]
-
-            if gap is None:
-                gaps.append(
-                    float("nan")
-                )
-            else:
-                gaps.append(
-                    abs(
-                        float(gap)
-                    )
-                )
-
+    FIGURES_DIR.mkdir(parents=True, exist_ok=True)
+    threshold_labels = ["0", "1e-18", "1e-15", "1e-12"]
+    plt.figure(figsize=(9, 5))
+    # Keep the original discretization grid and plotting parameters.
+    for nb_steps in [50, 100, 200]:
         plt.plot(
             threshold_labels,
-            # Compare the resulting prices against an unpruned reference.
-            gaps,
+            _absolute_price_gaps(results, nb_steps),
             marker="o",
             label=f"N={nb_steps}",
         )
-
-    plt.xlabel(
-        "Pruning threshold"
-    )
-
-    plt.ylabel(
-        "Absolute price impact versus no pruning"
-    )
-
-    plt.title(
-        "Pricing sensitivity to the pruning threshold"
-    )
-
-    # Report both node savings and pricing impact for each threshold.
+    plt.xlabel("Pruning threshold")
+    plt.ylabel("Absolute price impact versus no pruning")
+    plt.title("Pricing sensitivity to the pruning threshold")
     plt.legend()
-
-    plt.grid(
-        alpha=0.3
-    )
-
+    plt.grid(alpha=0.3)
     plt.tight_layout()
-
-    plt.savefig(
-        PRICE_IMPACT_FIGURE_PATH,
-        dpi=200,
-    )
-
+    plt.savefig(PRICE_IMPACT_FIGURE_PATH, dpi=200)
     plt.close()
 
 
