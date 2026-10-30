@@ -1,4 +1,4 @@
-"""Iterative backward induction on the existing recombining pricing graph.
+"""Backward induction for binomial, trinomial and hybrid option trees.
 
 This course-style backward induction values the existing lattice from
 maturity to valuation. It applies the same transition probabilities and
