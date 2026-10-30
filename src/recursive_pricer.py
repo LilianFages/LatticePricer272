@@ -138,6 +138,8 @@ class RecursivePricer:
         ex_dividend: DividendStepEvent | None,
     ) -> float:
         """Price a successor once and apply the same ex-date event rule."""
+        # A recombining child is memoized by _price_node before its
+        # ex-dividend value is adjusted for the current transition.
         child_value = self._price_node(
             node=child,
             remaining_steps=remaining_steps - 1,
