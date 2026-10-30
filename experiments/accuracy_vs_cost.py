@@ -33,7 +33,7 @@ from src.binomial_tree import BinomialTree
 from src.black_scholes import BlackScholesPricer
 from src.option import CallOption, Option, PutOption
 from src.recursive_pricer import RecursivePricer
-from src.observed_frontier import nondominated_indices
+from src.accuracy_metrics import nondominated_indices
 from src.trinomial_tree import TrinomialTree
 
 

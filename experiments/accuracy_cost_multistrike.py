@@ -26,7 +26,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from src.observed_frontier import nondominated_indices
+from src.accuracy_metrics import nondominated_indices
 
 from experiments.accuracy_vs_cost import (
     MODELS,

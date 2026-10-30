@@ -2,7 +2,7 @@ import csv
 from pathlib import Path
 
 from src.backward_pricer import BackwardPricer
-from src.binomial_error import BinomialErrorEstimator
+from src.accuracy_metrics import BinomialErrorEstimator
 from src.binomial_tree import BinomialTree
 from src.black_scholes import BlackScholesPricer
 from src.option import CallOption

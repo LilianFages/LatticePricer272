@@ -2,7 +2,7 @@ import math
 
 import pytest
 
-from src.binomial_error import BinomialErrorEstimator
+from src.accuracy_metrics import BinomialErrorEstimator
 
 
 # The theoretical relative gap must decrease exactly as 1 / N.

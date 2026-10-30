@@ -8,7 +8,7 @@ import pytest
 from src.dividend import CashDividend
 from src.dividend_timing import dividend_for_lattice_step
 from src.hybrid_tree import HybridTree
-from src.lattice_graph import count_reachable_nodes
+from src.node import count_reachable_nodes
 from src.node import Node
 from src.transition_moments import TransitionMoments
 from src.trinomial_tree import TrinomialTree

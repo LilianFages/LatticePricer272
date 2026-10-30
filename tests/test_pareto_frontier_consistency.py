@@ -6,7 +6,7 @@ import pandas as pd
 from experiments.accuracy_cost_multistrike import Aggregate, pareto_multi
 from experiments.accuracy_vs_cost import Result, pareto_front
 from frontend.research_lab_service import observed_pareto
-from src.observed_frontier import nondominated_indices
+from src.accuracy_metrics import nondominated_indices
 
 
 def test_pure_frontier_retains_ties_zero_errors_and_tradeoffs() -> None:
