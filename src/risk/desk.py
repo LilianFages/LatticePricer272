@@ -29,15 +29,18 @@ GreekName = Literal["Delta", "Gamma", "Vega", "Vanna", "Vomma", "Theta", "Rho"]
 GREEK_NAMES: tuple[GreekName, ...] = (
     "Delta", "Gamma", "Vega", "Vanna", "Vomma", "Theta", "Rho",
 )
+# Pricing Greeks use premium units; curvature/cross terms are separately scaled.
 GREEK_UNITS = {
     "Delta": "EUR premium / EUR spot",
     "Gamma": "EUR premium / EUR spot²",
     "Vega": "EUR premium / +1 volatility pp",
+    # Both cross and volatility-curvature estimates are reported at one pp.
     "Vanna": "Delta / +1 volatility pp",
     "Vomma": "EUR premium / (1 volatility pp)²",
     "Theta": "EUR premium / +1 calendar day",
     "Rho": "EUR premium / +1 bp of rate",
 }
+# Map the five core Greeks to the stable exported risk-table labels.
 GREEK_KEYS = {
     "Delta": "Delta",
     "Gamma": "Gamma",
@@ -45,6 +48,7 @@ GREEK_KEYS = {
     "Theta": "Theta / 1d",
     "Rho": "Rho / 1bp",
 }
+# Expected model failures are isolated to the shocked observation.
 EXPECTED_PRICING_ERRORS = (
     PricingInputError, ValueError, RuntimeError, OverflowError, ZeroDivisionError,
     ArithmeticError,
@@ -55,11 +59,13 @@ EXPECTED_PRICING_ERRORS = (
 class DeskRiskSnapshot:
     """Five existing Greeks plus independently bumped cross/vol convexities."""
 
+    # The five baseline Greek values are computed by the shared core.
     base: GreeksResult
     vanna_1pp: float | None
     vomma_1pp2: float | None
     bs_vanna_1pp: float | None
     bs_vomma_1pp2: float | None
+    # Higher-order derivative samples may fail without hiding the base price.
     extra_evaluations: int
     extra_issues: tuple[str, ...]
 
@@ -233,6 +239,30 @@ def _curve_value_at_spot(
     return greeks.measured()[GREEK_KEYS[name]]
 
 
+def _evaluate_curve_point(
+    shocked: PricingRequest,
+    name: GreekName,
+    selected: GreekBumps,
+    pricer: PricingFunction,
+    calculate_greeks: Callable[..., GreeksResult],
+    compute_desk_risk: Callable[..., DeskRiskSnapshot],
+) -> GreekCurvePoint:
+    """Handle one scenario's numerical and financial failure independently."""
+    try:
+        value = _curve_value_at_spot(
+            shocked, name, selected, pricer, calculate_greeks, compute_desk_risk,
+        )
+        if value is None or not math.isfinite(value):
+            return GreekCurvePoint(
+                shocked.spot, None, "Greek unavailable for this spot.",
+            )
+        return GreekCurvePoint(shocked.spot, float(value))
+    except EXPECTED_PRICING_ERRORS as exc:
+        return GreekCurvePoint(
+            shocked.spot, None, f"{type(exc).__name__}: {exc}",
+        )
+
+
 def compute_greek_curve(
     request: PricingRequest,
     name: GreekName,
@@ -260,16 +290,8 @@ def compute_greek_curve(
     for i in range(count):
         spot = request.spot * (1.0 + span_pct / 100.0 * (2 * i / (count - 1) - 1))
         shocked = replace(request, spot=spot)
-        try:
-            value = _curve_value_at_spot(
-                shocked, name, selected, pricer, calculate_greeks,
-                compute_desk_risk,
-            )
-            # Preserve missing values as explicit unavailable observations.
-            if value is None or not math.isfinite(value):
-                points.append(GreekCurvePoint(spot, None, "Greek unavailable for this spot."))
-            else:
-                points.append(GreekCurvePoint(spot, float(value)))
-        except EXPECTED_PRICING_ERRORS as exc:
-            points.append(GreekCurvePoint(spot, None, f"{type(exc).__name__}: {exc}"))
+        points.append(_evaluate_curve_point(
+            shocked, name, selected, pricer, calculate_greeks,
+            compute_desk_risk,
+        ))
     return tuple(points)
