@@ -54,7 +54,6 @@ def nearest_geometric_exponent(
     expected_value: float,
     reference_price: float,
     level_ratio: float,
-    *,
     zero_volatility: bool = False,
 ) -> int:
     """Select the closest geometric price level, preferring the lower on ties.
@@ -80,7 +79,6 @@ def middle_successors(
     expected_value: float,
     upper_candidate: Node,
     middle_candidate: Node,
-    *,
     grid_name: str,
 ) -> tuple[Node, Node, Node]:
     """Slide a three-node successor stencil down to the closest middle level."""
