@@ -35,14 +35,13 @@ def test_rolling_matches_object_binomial(option_type: str, exercise: str) -> Non
     assert rolling == pytest.approx(reference, abs=1e-9)
 
 
-@pytest.mark.parametrize("algorithm", ("Recursive", "Backward"))
-def test_deep_binomial_10k_is_finite_without_full_tree(algorithm: str) -> None:
+def test_deep_binomial_10k_is_finite_without_full_tree() -> None:
     request = PricingRequest(model="Binomial", steps=10_000)
-    result = price_contract(request, algorithm=algorithm)
+    result = price_contract(request, algorithm="Backward")
     assert math.isfinite(result.price)
     assert result.price == pytest.approx(8.916037278572539, abs=0.002)
     assert result.reachable_nodes == 50_015_001
-    assert result.algorithm == algorithm
+    assert result.algorithm == "Backward"
 
 
 def test_other_models_remain_guarded() -> None:
@@ -61,3 +60,8 @@ def test_deep_binomial_cash_dividends_still_rejected() -> None:
             model="Binomial", steps=10_000,
             dividends=(DividendInput(0.5, 3.0),),
         ))
+
+
+def test_deep_binomial_requires_backward() -> None:
+    with pytest.raises(PricingInputError, match="requires the Backward"):
+        price_contract(PricingRequest(model="Binomial", steps=10_000))
