@@ -129,6 +129,12 @@ Full evidence:
 
 ## Other self-contained studies
 
+Shared no-dividend European-call analytical and backward-binomial valuations
+are implemented in `experiments.binomial_pricing_helpers`. The individual
+experiments retain their original parameters, public entry points, and outputs.
+Recursive pricing is deliberately kept separate from backward induction.
+
+
 Each file defines one numerical question. The filenames below distinguish
 the underlying lattice, the measured quantity and the experiment's purpose.
 

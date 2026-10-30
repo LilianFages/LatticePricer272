@@ -3,8 +3,9 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 
+from experiments.binomial_pricing_helpers import black_scholes_call_price
+
 from src.binomial_tree import BinomialTree
-from src.black_scholes import BlackScholesPricer
 from src.option import CallOption
 from src.recursive_pricer import RecursivePricer
 from src.trinomial_tree import TrinomialTree
@@ -71,13 +72,9 @@ SUMMARY_PATH = (
 
 def black_scholes_price() -> float:
     """Return the Black-Scholes reference price."""
-    option = CallOption(
-        strike=STRIKE
-    )
-
-    return BlackScholesPricer().price(
-        option=option,
+    return black_scholes_call_price(
         spot=SPOT,
+        strike=STRIKE,
         rate=RATE,
         volatility=VOLATILITY,
         maturity=MATURITY,

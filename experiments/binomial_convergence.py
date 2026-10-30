@@ -4,10 +4,11 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 
-from src.backward_pricer import BackwardPricer
-from src.binomial_tree import BinomialTree
-from src.black_scholes import BlackScholesPricer
-from src.option import CallOption
+from experiments.binomial_pricing_helpers import (
+    backward_binomial_call_price,
+    black_scholes_call_price,
+)
+
 
 
 SPOT = 100.0
@@ -72,13 +73,9 @@ SUMMARY_PATH = (
 
 def black_scholes_price() -> float:
     """Return the Black-Scholes reference price."""
-    option = CallOption(
-        strike=STRIKE
-    )
-
-    return BlackScholesPricer().price(
-        option=option,
+    return black_scholes_call_price(
         spot=SPOT,
+        strike=STRIKE,
         rate=RATE,
         volatility=VOLATILITY,
         maturity=MATURITY,
@@ -88,22 +85,14 @@ def black_scholes_price() -> float:
 def tree_price(
     nb_steps: int
 ) -> float:
-    """Return the backward lattice price."""
-    tree = BinomialTree(
+    """Return the backward binomial call price."""
+    return backward_binomial_call_price(
         spot=SPOT,
+        strike=STRIKE,
         rate=RATE,
         volatility=VOLATILITY,
         maturity=MATURITY,
         nb_steps=nb_steps,
-    )
-
-    option = CallOption(
-        strike=STRIKE
-    )
-
-    return BackwardPricer().price(
-        tree,
-        option,
     )
 
 
