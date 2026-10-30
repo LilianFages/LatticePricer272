@@ -10,7 +10,7 @@ from frontend.exercise_boundary_service import _exercise
 from frontend.exercise_policy import dividend_events_for_request
 from frontend.lattice_explorer_service import _exercise_state
 from frontend.pricing_service import DividendInput, PricingRequest, _build_tree
-from src.iterative_backward_pricer import IterativeBackwardPricer
+from src.backward_pricer import BackwardPricer
 from src.option import CallOption
 from src.recursive_pricer import RecursivePricer
 
@@ -34,7 +34,7 @@ def test_cash_dividend_event_does_not_create_false_parent_exercise(
     tree = _build_tree(request)
     price = RecursivePricer().price(tree, CallOption(100., is_american=True))
     assert math.isfinite(price)
-    layers = IterativeBackwardPricer._reachable_levels(tree.root, request.steps)
+    layers = BackwardPricer._reachable_levels(tree.root, request.steps)
     event_steps = dividend_events_for_request(request)
     assert step + 1 in event_steps
     dt = request.maturity / request.steps
