@@ -118,12 +118,14 @@ def _exercise_at_ex_date(
             return max(discount_strike - spot, 0.0)
         raise TypeError("Unsupported vanilla option type.")
 
+    # The zero-strike option is a legitimate limiting contract.
     if effective_strike == 0.0:
         if isinstance(option, CallOption):
             return spot
         if isinstance(option, PutOption):
             return 0.0
         raise TypeError("Unsupported vanilla option type.")
+    # A precommitted ex-date exercise is a European payoff to that date.
     d1, d2 = standardized_terms(
         spot, effective_strike, rate, volatility, time,
     )
@@ -153,6 +155,7 @@ def offgrid_exercise_bound(
         or dividend.remaining_time == 0.0
     ):
         return hold_value
+    # The parent chooses to exercise before the future cash jump.
     pre_event_value = _exercise_at_ex_date(
         parent.price,
         option,
@@ -160,6 +163,7 @@ def offgrid_exercise_bound(
         dividend.volatility,
         dividend.elapsed_before_event,
     )
+    # Exercise after the jump is represented by the shifted strike K + D.
     post_event_value = _exercise_at_ex_date(
         parent.price,
         option,
