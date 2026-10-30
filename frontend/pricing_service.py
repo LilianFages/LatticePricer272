@@ -229,6 +229,10 @@ def price_contract(
     use_rolling = (
         request.model == "Binomial" and request.steps > FULL_GRAPH_MAX_STEPS
     )
+    if use_rolling and algorithm != "Backward":
+        raise PricingInputError(
+            "Deep binomial pricing requires the Backward algorithm."
+        )
     tree = None if use_rolling else _build_tree(request)
     option = (CallOption if request.option_type == "Call" else PutOption)(
         strike=request.strike,
