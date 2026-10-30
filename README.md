@@ -39,7 +39,7 @@ Saved experimental evidence is available through an **optional, read-only archiv
 | `tests/` | Pricing, dividend-boundary, numerical, frontend and provenance regression tests |
 | `results/data/` | Versioned CSV measurements and experiment outputs |
 | `results/figures/` | Versioned visual evidence from offline studies |
-| `docs/` | Experiment protocols, model assumptions, historical release notes and research design |
+| `docs/` | Current architecture, quantitative research, experiment, validation and course references |
 
 ## Numerical integrity and limitations
 
@@ -49,23 +49,15 @@ Saved experimental evidence is available through an **optional, read-only archiv
 - **Performance:** recorded timings depend on hardware, Python version, run order and system load. Single-run live timings are not statistically equivalent to repeated offline benchmarks.
 - **Pruning:** allocation savings and price differences must be measured on comparable successful cases. Failed reference calculations are never interpreted as a zero gap.
 
-## Reproducible offline experiments
+## Documentation
 
-Each entry point has its own input grid and output protocol. Two examples:
-
-```bash
-python -m experiments.accuracy_vs_cost --quick
-python -m experiments.option_value_exercise_by_dates --steps 100
-```
-
-These commands can generate files; review their corresponding protocols and output paths first. Do **not** indiscriminately rerun full historical benchmarks or overwrite versioned results when you only want to explore the dashboard.
-
-For the current Quant Research organization, see [`docs/Quant_Research_Phase6.md`](docs/Quant_Research_Phase6.md). Existing detailed protocols include `docs/Accuracy_vs_Cost_protocol.md`, `docs/Accuracy_vs_Cost_Phase2_protocol.md` and `docs/Temporal_Experiments_Protocol.md`. Older frontend notes are preserved in [docs/archive/](docs/archive/README.md) as historical release documentation; they do not describe the current navigation.
+- [Architecture](docs/architecture.md): code structure and numerical conventions.
+- [Research](docs/research.md): current Streamlit workspaces and financial interpretation.
+- [Experiments](docs/experiments.md): quantitative designs and recorded evidence.
+- [Validation](docs/validation.md): maintained tests and manual acceptance checks.
+- [Project brief (PDF)](docs/project_brief.pdf) and [lattice mathematics (PDF)](docs/lattice_math.pdf): original course references.
 
 ## Final verification
-
-The delivered project is validated with the maintained unit and integration
-tests, followed by a direct Streamlit smoke test:
 
 ```bash
 python -m pytest -q
@@ -73,13 +65,5 @@ python -m compileall -q src frontend experiments tests
 python -m streamlit run frontend/app.py
 ```
 
-The regression suite covers option pricing, exercise rules, dividend timing,
-market sensitivities, calendar contracts and the current application services.
-The offline research datasets remain available in `results/` with their
-methodological limitations documented in `docs/`.
-
-For further details, see [`docs/README.md`](docs/README.md),
-[`docs/Release_Protocol.md`](docs/Release_Protocol.md) and
-[`docs/Architecture_Snapshot.md`](docs/Architecture_Snapshot.md).
-The current **Exercise & dividends** section also offers the recorded
-[dividend-grid robustness study](docs/Dividend_Grid_Robustness_Protocol.md).
+Research datasets and figures remain versioned under `results/`.
+Do not rerun full historical benchmarks just to validate a code patch.
