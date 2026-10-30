@@ -20,6 +20,7 @@ from src.dividend import CashDividend
 from src.dividend_timing import dividend_grid_step
 from src.hybrid_tree import HybridTree
 from src.iterative_backward_pricer import IterativeBackwardPricer
+from src.large_binomial_pricer import price_large_binomial
 from src.node import Node
 from src.lattice_graph import count_reachable_nodes as _count_priced_nodes
 from src.option import CallOption, PutOption
@@ -43,7 +44,8 @@ MODELS: tuple[ModelName, ...] = (
     "Trinomial · Allocation pruning",
     "Hybrid",
 )
-MAX_STEPS = 350  # Interactive latency cap, not a financial/model restriction.
+MAX_STEPS = 10_000  # Deep vanilla Binomial only.
+FULL_GRAPH_MAX_STEPS = 350  # Memory safety cap for materialized lattices.
 DEFAULT_THRESHOLD = 1e-18
 
 
@@ -161,6 +163,11 @@ def validate_request(request: PricingRequest) -> None:
         raise PricingInputError("Maturity must be strictly positive.")
     if type(request.steps) is not int or not (1 <= request.steps <= MAX_STEPS):
         raise PricingInputError(f"Steps must be an integer between 1 and {MAX_STEPS}.")
+    if request.model != "Binomial" and request.steps > FULL_GRAPH_MAX_STEPS:
+        raise PricingInputError(
+            f"Explicit-graph models are limited to N={FULL_GRAPH_MAX_STEPS}. "
+            "Select Binomial for the memory-bounded deep-pricing mode."
+        )
     if request.model not in MODELS:
         # Report numerical failures without substituting synthetic prices.
         raise PricingInputError("Unknown pricing model.")
@@ -219,13 +226,25 @@ def price_contract(
         raise PricingInputError("Unknown pricing algorithm.")
     validate_request(request)
     start = time.perf_counter()
-    tree = _build_tree(request)
+    use_rolling = (
+        request.model == "Binomial" and request.steps > FULL_GRAPH_MAX_STEPS
+    )
+    tree = None if use_rolling else _build_tree(request)
     option = (CallOption if request.option_type == "Call" else PutOption)(
         strike=request.strike,
         is_american=request.exercise == "American",
     )
-    pricer = RecursivePricer() if algorithm == "Recursive" else IterativeBackwardPricer()
-    price = pricer.price(tree, option)
+    if use_rolling:
+        price = price_large_binomial(
+            spot=request.spot, strike=request.strike,
+            rate=request.rate, volatility=request.volatility,
+            maturity=request.maturity, steps=request.steps,
+            is_call=request.option_type == "Call",
+            is_american=request.exercise == "American",
+        )
+    else:
+        pricer = RecursivePricer() if algorithm == "Recursive" else IterativeBackwardPricer()
+        price = pricer.price(tree, option)
     elapsed_ms = (time.perf_counter() - start) * 1000.0
     if not math.isfinite(price) or price < 0.0:
         raise RuntimeError("The engine returned an invalid option price.")
@@ -241,7 +260,10 @@ def price_contract(
         request=request,
         price=price,
         elapsed_ms=elapsed_ms,
-        reachable_nodes=count_reachable_nodes(tree.root),
+        reachable_nodes=(
+            (request.steps + 1) * (request.steps + 2) // 2
+            if use_rolling else count_reachable_nodes(tree.root)
+        ),
         allocated_nodes=(
             tree.allocated_node_count
             if isinstance(tree, AllocationPrunedTrinomialTree) else None
