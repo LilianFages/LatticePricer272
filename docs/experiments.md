@@ -127,6 +127,30 @@ Full evidence:
 `results/figures/dividend_grid_prices.png` and
 `results/figures/dividend_exdate_shifts.png`.
 
+## Other self-contained studies
+
+Each file defines one numerical question. The filenames below distinguish
+the underlying lattice, the measured quantity and the experiment's purpose.
+
+| Script (under `experiments/`) | Focus |
+| --- | --- |
+| `binomial_convergence.py` | Binomial call prices against Black–Scholes across N |
+| `binomial_convergence_order.py` | Empirical order of binomial convergence |
+| `binomial_error_gap.py` | Strike-dependent binomial approximation-error gaps |
+| `binomial_precision_target.py` | Required N for prescribed binomial error tolerances |
+| `binomial_runtime_scaling.py` | Binomial valuation runtime as N increases |
+| `pricing_recursion_limits.py` | Recursive versus backward pricing at large depths |
+| `trinomial_convergence.py` | Binomial/trinomial convergence comparison |
+| `branch_pruning_sensitivity.py` | Branch-pruning threshold and valuation impact |
+| `allocation_pruning_benchmark.py` | Allocation-pruning timing and memory benchmark |
+| `allocation_pruning_robustness.py` | Robustness against the branch-pruned reference |
+| `hybrid_vs_trinomial.py` | Hybrid versus trinomial with cash dividends |
+| `dividend_impact.py` | Effect of discrete dividend amounts on vanilla prices |
+| `american_vs_european.py` | Exercise-style premium across interest rates |
+
+Study modules were renamed for clarity without renaming historical output
+CSVs and figures. Paths under `results/` remain stable for the Research Lab.
+
 ## General safeguards
 
 Use `python -m pytest -q` to validate code, not a full rerun of
