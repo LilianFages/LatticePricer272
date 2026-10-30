@@ -583,22 +583,13 @@ def _print_output_paths() -> None:
         print(path.relative_to(PROJECT_ROOT))
 
 
-def main() -> None:
-    """Run the complete pricing error experiment."""
-    reference_results = compute_strike_errors(
-        REFERENCE_STEPS
-    )
-
-    gap_results = run_gap_experiment()
-
-    order, empirical_constant, r_squared = (
-        estimate_order(
-            gap_results
-        )
-    )
-
-    theory_constant = theoretical_constant()
-
+def _print_gap_estimates(
+    order: float,
+    empirical_constant: float,
+    theory_constant: float,
+    r_squared: float,
+) -> None:
+    """Print fitted convergence and asymptotic gap estimates."""
     print()
     print(
         # Evaluate strike-dependent errors using a common Black-Scholes benchmark.
@@ -622,6 +613,16 @@ def main() -> None:
         f"{r_squared:.6f}"
     )
 
+
+
+def _save_experiment_artifacts(
+    reference_results: list[dict[str, float | int]],
+    gap_results: list[dict[str, float | int]],
+    order: float,
+    empirical_constant: float,
+    r_squared: float,
+) -> None:
+    """Persist the same numerical tables, graphics and summary."""
     save_strike_csv(
         reference_results
     )
@@ -643,6 +644,31 @@ def main() -> None:
         order,
         empirical_constant,
         r_squared,
+    )
+
+
+
+def main() -> None:
+    """Run the complete pricing error experiment."""
+    reference_results = compute_strike_errors(
+        REFERENCE_STEPS
+    )
+
+    gap_results = run_gap_experiment()
+
+    order, empirical_constant, r_squared = (
+        estimate_order(
+            gap_results
+        )
+    )
+
+    theory_constant = theoretical_constant()
+
+    _print_gap_estimates(
+        order, empirical_constant, theory_constant, r_squared,
+    )
+    _save_experiment_artifacts(
+        reference_results, gap_results, order, empirical_constant, r_squared,
     )
 
     _print_output_paths()

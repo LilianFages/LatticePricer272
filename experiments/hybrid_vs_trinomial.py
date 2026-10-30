@@ -577,14 +577,8 @@ def _summary_text(last_result: dict[str, float | int]) -> str:
     )
 
 
-def main() -> None:
-    """Run and save the hybrid benchmark."""
-    results = run_experiment()
-
-    save_csv(
-        results
-    )
-
+def _save_comparison_figures(results: list[dict[str, float | int]]) -> None:
+    """Create all three benchmark figures for the same observations."""
     save_price_gap_figure(
         results
     )
@@ -597,11 +591,10 @@ def main() -> None:
         results
     )
 
-    # Keep absolute price gaps distinct from runtime and allocation ratios.
-    save_summary(
-        results
-    )
 
+
+def _print_output_paths() -> None:
+    """Display the paths of all five output artifacts."""
     print()
     print("Results saved to:")
 
@@ -636,6 +629,24 @@ def main() -> None:
         )
     )
 
+
+
+def main() -> None:
+    """Run and save the hybrid benchmark."""
+    results = run_experiment()
+
+    save_csv(
+        results
+    )
+
+    _save_comparison_figures(results)
+
+    # Keep absolute price gaps distinct from runtime and allocation ratios.
+    save_summary(
+        results
+    )
+
+    _print_output_paths()
 
 if __name__ == "__main__":
     main()

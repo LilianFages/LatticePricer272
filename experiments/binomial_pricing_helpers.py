@@ -15,7 +15,7 @@ def black_scholes_call_price(
     strike: float,
     rate: float,
     volatility: float,
-    maturity: float,
+    maturity: float
 ) -> float:
     """Compute the independent analytical European call benchmark."""
     option = CallOption(strike=strike)
@@ -34,7 +34,7 @@ def backward_binomial_call_price(
     rate: float,
     volatility: float,
     maturity: float,
-    nb_steps: int,
+    nb_steps: int
 ) -> float:
     """Compute a European call price using a fresh backward binomial tree."""
     tree = BinomialTree(
