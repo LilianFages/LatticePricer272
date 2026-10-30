@@ -48,6 +48,26 @@ def _event_exercise_candidates(
     return before, after
 
 
+def _exercise_at_cash_jump(
+    request: RiskRequest,
+    spot_before: float,
+    dividend_time: float,
+    amount: float,
+    current_best: float,
+    current_event: str,
+) -> tuple[float, str, float]:
+    """Compare event-side payoffs and preserve the selected event label."""
+    before, after = _event_exercise_candidates(
+        request, spot_before, dividend_time, amount,
+    )
+    if before > current_best:
+        current_best, current_event = before, "pre-dividend"
+    stock_after = spot_before - amount
+    if after > current_best:
+        current_best, current_event = after, "post-dividend"
+    return current_best, current_event, stock_after
+
+
 def deterministic_american_reference(request: RiskRequest) -> tuple[float, str]:
     """Exact American value at sigma=0: exercise at event sides or endpoints.
 
@@ -66,15 +86,10 @@ def deterministic_american_reference(request: RiskRequest) -> tuple[float, str]:
     previous_date = 0.0
     for dividend in sorted(request.dividends, key=lambda event: event.time):
         current_spot *= math.exp(request.rate * (dividend.time - previous_date))
-        # Compare exercise immediately before and after each cash payment.
-        before, after = _event_exercise_candidates(
+        best, best_event, current_spot = _exercise_at_cash_jump(
             request, current_spot, dividend.time, dividend.amount,
+            best, best_event,
         )
-        if before > best:
-            best, best_event = before, "pre-dividend"
-        current_spot -= dividend.amount
-        if after > best:
-            best, best_event = after, "post-dividend"
         previous_date = dividend.time
 
     # Expiry completes the finite set of exercise-date candidates.
