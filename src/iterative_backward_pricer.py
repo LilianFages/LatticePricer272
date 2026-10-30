@@ -93,7 +93,6 @@ class IterativeBackwardPricer:
             hold_value=hold_value,
         )
 
-
     @staticmethod
     def _reachable_levels(root: Node, steps: int) -> list[list[Node]]:
         """Visit shared nodes once per level, without recursive traversal.
@@ -101,11 +100,13 @@ class IterativeBackwardPricer:
         Objects referenced by an earlier level may not be reused at a later
         time; doing so would violate the acyclic time-layered lattice model.
         """
+        # Record each identity once, so recombining successors are deduplicated.
         levels: list[list[Node]] = [[root]]
         earlier: set[int] = {id(root)}
 
         for _ in range(steps):
             following: dict[int, Node] = {}
+            # Traverse the current time slice without recursing into the graph.
             for node in levels[-1]:
                 if node.next_up is None or node.next_down is None:
                     raise RuntimeError("Incomplete lattice.")
@@ -113,6 +114,7 @@ class IterativeBackwardPricer:
                     if child is None:
                         continue
                     child_id = id(child)
+                    # Reuse within one layer is allowed, across layers is not.
                     if child_id in earlier:
                         raise RuntimeError(
                             "A lattice node belongs to more than one time layer."
@@ -121,6 +123,7 @@ class IterativeBackwardPricer:
 
             if not following:
                 raise RuntimeError("Missing next lattice layer.")
+            # A complete next layer is now safe to price in reverse order.
             levels.append(list(following.values()))
             earlier.update(following)
 
