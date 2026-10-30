@@ -20,8 +20,7 @@ from src.dividend import CashDividend
 from src.dividend_timing import dividend_grid_step
 from src.hybrid_tree import HybridTree
 from src.backward_pricer import BackwardPricer
-from src.node import Node
-from src.lattice_graph import count_reachable_nodes as _count_priced_nodes
+from src.node import Node, count_reachable_nodes as _count_priced_nodes
 from src.option import CallOption, PutOption
 from src.recursive_pricer import RecursivePricer
 from src.trinomial_tree import TrinomialTree

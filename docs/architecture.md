@@ -34,8 +34,8 @@ are retained but must not be attributed to the current unified engine.
 
 The core reuses `src/dividend_timing.py` for dividend-to-step mapping,
 `src/transition_moments.py` for local transition moments,
-`src/lattice_graph.py` for reachable-node counting and
-`src/observed_frontier.py` for empirical Pareto dominance.
+`src/node.py` for reachable-node counting and
+`src/accuracy_metrics.py` for binomial gap estimates and observed Pareto dominance.
 
 ## Financial conventions
 

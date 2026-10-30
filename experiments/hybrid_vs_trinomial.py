@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 from src.dividend import CashDividend
 from src.hybrid_tree import HybridTree
 from src.node import Node
-from src.lattice_graph import count_reachable_nodes as _count_priced_nodes
+from src.node import count_reachable_nodes as _count_priced_nodes
 from src.option import CallOption
 from src.recursive_pricer import RecursivePricer
 from src.trinomial_tree import TrinomialTree

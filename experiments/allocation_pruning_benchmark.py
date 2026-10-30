@@ -24,7 +24,7 @@ from src.allocation_pruned_trinomial_tree import AllocationPrunedTrinomialTree
 from src.dividend import CashDividend
 from src.hybrid_tree import HybridTree
 from src.node import Node, TrunkNode
-from src.lattice_graph import count_reachable_nodes as _count_priced_nodes
+from src.node import count_reachable_nodes as _count_priced_nodes
 from src.option import CallOption
 from src.recursive_pricer import RecursivePricer
 from src.trinomial_tree import TrinomialTree

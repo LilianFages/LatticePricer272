@@ -96,3 +96,23 @@ def middle_successors(
             upper, middle = middle, lower
             continue
         return upper, middle, lower
+
+
+def count_reachable_nodes(root: Node) -> int:
+    """Count distinct nodes linked by up/mid/down pricing transitions.
+
+    Vertical lower_neighbor links describe allocated geometry, not pricing
+    reachability, and must not be traversed here.
+    """
+    seen: set[int] = set()
+    pending = [root]
+    while pending:
+        node = pending.pop()
+        key = id(node)
+        if key in seen:
+            continue
+        seen.add(key)
+        for child in (node.next_up, node.next_mid, node.next_down):
+            if child is not None:
+                pending.append(child)
+    return len(seen)

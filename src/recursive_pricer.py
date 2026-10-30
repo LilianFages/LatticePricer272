@@ -147,6 +147,7 @@ class RecursivePricer:
             discount_factor=discount_factor,
             event_dividends=event_dividends,
         )
+        # Apply the cash-event adjustment only after the child is priced.
         return before_dividend_value(
             child, child_value, option, ex_dividend,
         )
