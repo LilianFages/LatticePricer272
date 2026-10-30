@@ -12,7 +12,7 @@ from typing import Literal
 
 from collections.abc import Callable
 
-from src.pricing_errors import PricingInputError
+from src import PricingInputError
 from src.risk.contracts import (
     PricingFunction,
     RiskRequest as PricingRequest,
