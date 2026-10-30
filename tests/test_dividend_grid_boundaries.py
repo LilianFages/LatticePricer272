@@ -34,6 +34,7 @@ def test_grid_boundaries_are_right_closed(k: int) -> None:
     assert dividend_grid_step(195 / 365, 1.0, 73) == 39
 
 
+# Genuine off-grid dates move to the next right-closed cell.
 def test_genuine_off_grid_date_moves_to_next_step() -> None:
     assert dividend_grid_step(0.5, 1.0, 4) == 2
     assert dividend_grid_step(0.6, 1.0, 4) == 3
@@ -59,6 +60,7 @@ def test_invalid_event_times_rejected(time: float) -> None:
         dividend_grid_step(time, 1.0, 100)
 
 
+# Mathematically equal calendar and grid dates share identical moments.
 def test_exact_boundary_moments_match_mathematically_equal_calendar() -> None:
     start = 38 * (1.0 / 73)
     end = 39 * (1.0 / 73)
@@ -76,6 +78,7 @@ def test_exact_boundary_moments_match_mathematically_equal_calendar() -> None:
     assert endpoint[0] == pytest.approx(100 * math.exp(0.03 / 73) - 4.0)
 
 
+# Both conditional moments depend on the true dividend date.
 def test_within_step_moments_use_real_date_not_end_of_step() -> None:
     kwargs = dict(
         spot=100.0, rate=0.03, volatility=0.2,
@@ -99,6 +102,7 @@ def test_within_step_moments_use_real_date_not_end_of_step() -> None:
     assert middle[0] != pytest.approx(endpoint[0], abs=1e-7)
 
 
+# The frontend validator and lattice must locate the same dividend step.
 def test_validation_uses_same_event_step_as_tree() -> None:
     req = PricingRequest(
         model="Hybrid", steps=73,

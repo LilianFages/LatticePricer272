@@ -26,6 +26,7 @@ FAMILIES = (
 DIVIDEND_FAMILIES = FAMILIES[1:]
 
 
+# Build the same financial scenario for each pricing method.
 def make_tree(
     family: str,
     *,
@@ -34,7 +35,7 @@ def make_tree(
     rate: float = 0.02,
     sigma: float = 0.20,
     dividends: tuple[tuple[float, float], ...] = (),
-):
+) -> BinomialTree | HybridTree | TrinomialTree | AllocationPrunedTrinomialTree:
     """Create a fresh graph for each independent pricing method."""
     kwargs = dict(
         spot=spot,
@@ -45,6 +46,7 @@ def make_tree(
     )
     events = [CashDividend(time=t, amount=a) for t, a in dividends]
 
+    # Reject dividends only for the unsupported binomial family.
     if family == "Binomial":
         if events:
             raise ValueError("Binomial does not support cash dividends.")
@@ -62,7 +64,8 @@ def make_tree(
     raise ValueError("Unknown model family.")
 
 
-def compare_methods(family: str, option: Option, **kwargs) -> None:
+# Keep each implementation on a distinct, freshly built lattice.
+def compare_methods(family: str, option: Option, **kwargs: object) -> None:
     """Assert strict price parity on independently constructed trees."""
     recursive_tree = make_tree(family, **kwargs)
     backward_tree = make_tree(family, **kwargs)
@@ -74,6 +77,7 @@ def compare_methods(family: str, option: Option, **kwargs) -> None:
     assert backward_tree.root.option_value == backward
 
 
+# Compare all supported contracts, exercise rights and discretizations.
 @pytest.mark.parametrize("family", FAMILIES)
 @pytest.mark.parametrize("kind", ("Call", "Put"))
 @pytest.mark.parametrize("american", (False, True))
@@ -121,6 +125,7 @@ def test_zero_volatility_parity(family: str) -> None:
     compare_methods(family, PutOption(strike=100.0, is_american=True), n=8, sigma=0.0)
 
 
+# Shared descendants of recombining branches must also be priced.
 def test_shared_recombining_nodes_are_priced() -> None:
     tree = make_tree("Trinomial Full", n=3)
     BackwardPricer().price(tree, CallOption(strike=100.0))
@@ -131,6 +136,7 @@ def test_shared_recombining_nodes_are_priced() -> None:
     assert root.next_mid.option_value is not None
 
 
+# Malformed lattice edges must fail explicitly instead of being skipped.
 def test_incomplete_graph_fails_explicitly(monkeypatch: pytest.MonkeyPatch) -> None:
     tree = make_tree("Binomial", n=2)
 
@@ -155,10 +161,11 @@ def test_time_layer_cycle_fails_explicitly(monkeypatch: pytest.MonkeyPatch) -> N
         BackwardPricer().price(tree, CallOption(strike=100.0))
 
 
+# Ensure backward valuation never silently invokes recursive pricing.
 def test_backward_does_not_call_recursive_pricer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def forbidden(*_args, **_kwargs):
+    def forbidden(*_args: object, **_kwargs: object) -> None:
         raise AssertionError("RecursivePricer unexpectedly called.")
 
     monkeypatch.setattr(RecursivePricer, "price", forbidden)
