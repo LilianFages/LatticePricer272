@@ -52,7 +52,7 @@ SUMMARY_PATH = (
 def price_option(
     rate: float,
     option_type: str,
-    is_american: bool,
+    is_american: bool
 ) -> float:
     """Price one option configuration."""
     tree = BinomialTree(
@@ -150,7 +150,7 @@ def run_experiment() -> list[dict[str, object]]:
 
 
 def save_csv(
-    results: list[dict[str, object]],
+    results: list[dict[str, object]]
 ) -> None:
     """Save raw results to CSV."""
     DATA_DIR.mkdir(
@@ -182,7 +182,7 @@ def save_csv(
 
 
 def save_summary(
-    results: list[dict[str, object]],
+    results: list[dict[str, object]]
 ) -> None:
     """Save a readable summary of the experiment."""
     lines = [

@@ -58,7 +58,7 @@ def create_results_directories() -> None:
 
 
 def run_recursive(
-    nb_steps: int,
+    nb_steps: int
 ) -> tuple[bool, float, float | None]:
     """Run recursive pricing for a given number of steps."""
     tree = BinomialTree(
@@ -105,7 +105,7 @@ def run_recursive(
 
 def add_recursive_result(
     results: list[dict[str, object]],
-    nb_steps: int,
+    nb_steps: int
 ) -> bool:
     """Run and store one recursive experiment."""
     success, elapsed_time, price = (
@@ -139,7 +139,7 @@ def add_recursive_result(
 
 
 def find_recursion_limit(
-    results: list[dict[str, object]],
+    results: list[dict[str, object]]
 ) -> tuple[int, int]:
     """Find the last successful and first failing step count."""
     python_limit = sys.getrecursionlimit()
@@ -195,7 +195,7 @@ def find_recursion_limit(
 
 
 def run_backward(
-    nb_steps: int,
+    nb_steps: int
 ) -> tuple[float, float]:
     """Run backward pricing for a given number of steps."""
     tree = BinomialTree(
@@ -227,7 +227,7 @@ def run_backward(
 
 def add_backward_result(
     results: list[dict[str, object]],
-    nb_steps: int,
+    nb_steps: int
 ) -> None:
     """Run and store the backward comparison."""
     price, elapsed_time = (
@@ -253,7 +253,7 @@ def add_backward_result(
 
 
 def save_csv(
-    results: list[dict[str, object]],
+    results: list[dict[str, object]]
 ) -> None:
     """Save raw experiment results to CSV."""
     with CSV_PATH.open(
@@ -278,7 +278,7 @@ def save_csv(
 
 def save_summary(
     last_success: int,
-    first_failure: int,
+    first_failure: int
 ) -> None:
     """Save the main recursion-limit result."""
     content = (

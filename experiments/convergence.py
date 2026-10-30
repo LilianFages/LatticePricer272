@@ -86,7 +86,7 @@ def black_scholes_price() -> float:
 
 
 def tree_price(
-    nb_steps: int,
+    nb_steps: int
 ) -> float:
     """Return the backward lattice price."""
     tree = BinomialTree(
@@ -153,7 +153,7 @@ def run_experiment() -> list[dict[str, float | int]]:
 
 
 def save_csv(
-    results: list[dict[str, float | int]],
+    results: list[dict[str, float | int]]
 ) -> None:
     """Save convergence data."""
     DATA_DIR.mkdir(
@@ -182,7 +182,7 @@ def save_csv(
 
 
 def save_price_figure(
-    results: list[dict[str, float | int]],
+    results: list[dict[str, float | int]]
 ) -> None:
     """Save lattice and Black-Scholes prices."""
     FIGURES_DIR.mkdir(
@@ -254,7 +254,7 @@ def save_price_figure(
 
 
 def save_error_figure(
-    results: list[dict[str, float | int]],
+    results: list[dict[str, float | int]]
 ) -> None:
     """Save absolute convergence error."""
     steps = [
@@ -305,7 +305,7 @@ def save_error_figure(
 
 
 def save_summary(
-    results: list[dict[str, float | int]],
+    results: list[dict[str, float | int]]
 ) -> None:
     """Save the main convergence results."""
     first_result = results[0]

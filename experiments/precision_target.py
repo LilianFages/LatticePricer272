@@ -52,7 +52,7 @@ SUMMARY_PATH = (
 
 
 def black_scholes_price(
-    strike: float,
+    strike: float
 ) -> float:
     """Return the Black-Scholes call price."""
     option = CallOption(
@@ -70,7 +70,7 @@ def black_scholes_price(
 
 def tree_price(
     strike: float,
-    nb_steps: int,
+    nb_steps: int
 ) -> float:
     """Return the binomial call price."""
     tree = BinomialTree(
@@ -92,7 +92,7 @@ def tree_price(
 
 
 def empirical_gap(
-    nb_steps: int,
+    nb_steps: int
 ) -> float:
     """Return the peak-to-peak pricing error."""
     minimum_error: float | None = None
@@ -219,7 +219,7 @@ def run_experiment() -> list[dict[str, object]]:
 
 
 def save_csv(
-    results: list[dict[str, object]],
+    results: list[dict[str, object]]
 ) -> None:
     """Save raw precision results."""
     DATA_DIR.mkdir(
@@ -249,7 +249,7 @@ def save_csv(
 
 
 def save_summary(
-    results: list[dict[str, object]],
+    results: list[dict[str, object]]
 ) -> None:
     """Save a readable experiment summary."""
     lines = [

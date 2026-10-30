@@ -71,7 +71,7 @@ SUMMARY_PATH = (
 
 
 def build_tree(
-    nb_steps: int,
+    nb_steps: int
 ) -> BinomialTree:
     """Return a fresh binomial tree."""
     return BinomialTree(
@@ -84,7 +84,7 @@ def build_tree(
 
 
 def measure_recursive(
-    nb_steps: int,
+    nb_steps: int
 ) -> float:
     """Measure one recursive pricing run."""
     tree = build_tree(
@@ -114,7 +114,7 @@ def measure_recursive(
 
 
 def measure_backward(
-    nb_steps: int,
+    nb_steps: int
 ) -> float:
     """Measure one backward pricing run."""
     tree = build_tree(
@@ -145,7 +145,7 @@ def measure_backward(
 
 def median_runtime(
     nb_steps: int,
-    method: str,
+    method: str
 ) -> float:
     """Return the median runtime over several runs."""
     times: list[float] = []
@@ -217,7 +217,7 @@ def run_experiment() -> list[dict[str, float | int]]:
 
 def estimate_order(
     results: list[dict[str, float | int]],
-    key: str,
+    key: str
 ) -> tuple[float, float]:
     """Estimate runtime = C * N^q."""
     selected = [
@@ -282,7 +282,7 @@ def estimate_order(
 
 
 def save_csv(
-    results: list[dict[str, float | int]],
+    results: list[dict[str, float | int]]
 ) -> None:
     """Save benchmark data."""
     DATA_DIR.mkdir(
@@ -310,7 +310,7 @@ def save_csv(
 
 
 def save_figure(
-    results: list[dict[str, float | int]],
+    results: list[dict[str, float | int]]
 ) -> None:
     """Save the log-log runtime graph."""
     FIGURES_DIR.mkdir(
@@ -388,7 +388,7 @@ def save_figure(
 
 def save_summary(
     recursive_order: float,
-    backward_order: float,
+    backward_order: float
 ) -> None:
     """Save runtime scaling results."""
     content = (

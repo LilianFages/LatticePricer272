@@ -75,7 +75,7 @@ SUMMARY_PATH = (
 
 
 def black_scholes_price(
-    strike: float,
+    strike: float
 ) -> float:
     """Return the Black-Scholes reference price."""
     option = CallOption(
@@ -93,7 +93,7 @@ def black_scholes_price(
 
 def tree_price(
     nb_steps: int,
-    strike: float,
+    strike: float
 ) -> float:
     """Return the backward lattice price."""
     tree = BinomialTree(
@@ -115,7 +115,7 @@ def tree_price(
 
 
 def compute_max_error(
-    nb_steps: int,
+    nb_steps: int
 ) -> tuple[float, float]:
     """Return the maximum pricing error across strikes."""
     max_error = 0.0
@@ -185,7 +185,7 @@ def run_experiment() -> list[dict[str, float | int]]:
 
 
 def estimate_convergence_order(
-    results: list[dict[str, float | int]],
+    results: list[dict[str, float | int]]
 ) -> tuple[float, float, float]:
     """Estimate E_N = C * N^(-p)."""
     log_steps = [
@@ -281,7 +281,7 @@ def estimate_convergence_order(
 
 
 def save_csv(
-    results: list[dict[str, float | int]],
+    results: list[dict[str, float | int]]
 ) -> None:
     """Save convergence-order data."""
     DATA_DIR.mkdir(
@@ -311,7 +311,7 @@ def save_csv(
 def save_log_log_figure(
     results: list[dict[str, float | int]],
     order: float,
-    constant: float,
+    constant: float
 ) -> None:
     """Save the log-log convergence graph."""
     FIGURES_DIR.mkdir(
@@ -387,7 +387,7 @@ def save_log_log_figure(
 
 
 def save_scaled_error_figure(
-    results: list[dict[str, float | int]],
+    results: list[dict[str, float | int]]
 ) -> None:
     """Save N times the maximum pricing error."""
     steps = [
@@ -443,7 +443,7 @@ def save_scaled_error_figure(
 def save_summary(
     order: float,
     constant: float,
-    r_squared: float,
+    r_squared: float
 ) -> None:
     """Save the estimated convergence order."""
     content = (

@@ -67,7 +67,7 @@ class Aggregate:
 
 
 def _validated_baseline_metrics(
-    data: dict[str, str], strike: float, key: tuple[str, int, float],
+    data: dict[str, str], strike: float, key: tuple[str, int, float]
 ) -> tuple[float, float, float, float, int]:
     """Independently validate Black–Scholes error and positive measured cost."""
     reference = float(data["reference_price"])
@@ -90,7 +90,7 @@ def _validated_baseline_metrics(
 
 
 def _parse_baseline_call_record(
-    data: dict[str, str], seen: set[tuple[str, int, float]],
+    data: dict[str, str], seen: set[tuple[str, int, float]]
 ) -> Result | None:
     """Validate price, reference, grid key and measured cost for one call."""
     if data["option_kind"] != "call":
@@ -179,7 +179,7 @@ def validate_source_metadata(path: Path = BASELINE_SUMMARY) -> None:
 
 
 def _log_multistrike_measurement(
-    idx: int, total: int, strike: float, n: int, model: str, result: Result,
+    idx: int, total: int, strike: float, n: int, model: str, result: Result
 ) -> None:
     """Print the observed numerical error and measured time, or failure."""
     if result.status == "success":
@@ -230,7 +230,7 @@ def measure_new_steps(
 
 def _validated_strike_statistics(
     model: str, n: int, rows: list[Result], strikes: tuple[float, ...],
-    models: tuple[str, ...],
+    models: tuple[str, ...]
 ) -> tuple[list[float], list[float], list[int]]:
     """Reject incomplete strike grids, price errors and invalid timings."""
     if model not in models:
@@ -252,7 +252,7 @@ def _validated_strike_statistics(
 def aggregate_cross_strike(
     records: list[Result],
     strikes: tuple[float, ...] = STRIKES,
-    models: tuple[str, ...] = MODELS,
+    models: tuple[str, ...] = MODELS
 ) -> list[Aggregate]:
     """Aggregate one row per (model, N); reject incomplete strike groups."""
     groups: dict[tuple[str, int], list[Result]] = {}
@@ -374,7 +374,7 @@ def plot_frontier(rows: list[Aggregate], path: Path) -> None:
 
 
 def _aggregate_complete_strike_groups(
-    baseline: list[Result], new_results: list[Result],
+    baseline: list[Result], new_results: list[Result]
 ) -> tuple[list[Aggregate], list[Result]]:
     """Aggregate only configurations priced for all three strikes."""
     combined = baseline + new_results
@@ -527,7 +527,7 @@ def _write_phase2_summary(files: dict[str, Path],
 def save_phase2(
     baseline: list[Result], new_results: list[Result],
     raw: list[TimingObservation], output_dir: Path, repeats: int,
-    added_steps: tuple[int, ...],
+    added_steps: tuple[int, ...]
 ) -> dict[str, Path]:
     """Separate outputs: never overwrite phase-1 or existing lattice analyses."""
     complete, failed = _aggregate_complete_strike_groups(baseline, new_results)
