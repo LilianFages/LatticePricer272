@@ -49,82 +49,83 @@ class IterativeBackwardPricer:
         return value
 
     @staticmethod
-    def _price_node(
-        node: Node, option: Option, discount_factor: float, ex_dividend: object,
-    ) -> None:
-        """Apply the original complete two/three-branch induction to one node."""
-        next_up = node.next_up
-        next_down = node.next_down
-        if next_up is None or next_down is None:
+    def _transition_value(
+        node: Node, option: Option, ex_dividend: object,
+    ) -> float:
+        """Collect discounted-successor inputs without changing edge order."""
+        up, down = node.next_up, node.next_down
+        if up is None or down is None:
             raise RuntimeError("Incomplete lattice.")
         if node.up_probability is None or node.down_probability is None:
             raise RuntimeError("Missing transition probabilities.")
-        if next_up.option_value is None or next_down.option_value is None:
+        if up.option_value is None or down.option_value is None:
             raise RuntimeError("Unpriced successor in backward induction.")
 
-        expected_value = (
+        # Preserve the original up/down evaluation order and event adjustment.
+        expected = (
             node.up_probability
-            * before_dividend_value(
-                next_up, next_up.option_value, option, ex_dividend,
-            )
+            * before_dividend_value(up, up.option_value, option, ex_dividend)
             + node.down_probability
-            * before_dividend_value(
-                next_down, next_down.option_value, option, ex_dividend,
-            )
+            * before_dividend_value(down, down.option_value, option, ex_dividend)
         )
-        if node.next_mid is not None:
+        mid = node.next_mid
+        if mid is not None:
             if node.mid_probability is None:
                 raise RuntimeError("Missing middle transition probability.")
-            if node.next_mid.option_value is None:
+            if mid.option_value is None:
                 raise RuntimeError("Unpriced middle successor.")
-            expected_value += (
+            expected += (
                 node.mid_probability
-                * before_dividend_value(
-                    node.next_mid, node.next_mid.option_value,
-                    option, ex_dividend,
-                )
+                * before_dividend_value(mid, mid.option_value, option, ex_dividend)
             )
-        hold_value = discount_factor * expected_value
+        return expected
+
+    @staticmethod
+    def _price_node(
+        node: Node, option: Option, discount_factor: float, ex_dividend: object,
+    ) -> None:
+        """Discount expected payoff and compare continuation with exercise."""
+        expected = IterativeBackwardPricer._transition_value(
+            node, option, ex_dividend,
+        )
         hold_value = offgrid_exercise_bound(
-            node, hold_value, option, ex_dividend,
+            node, discount_factor * expected, option, ex_dividend,
         )
         node.option_value = option.value_at_node(
-            spot=node.price,
-            hold_value=hold_value,
+            spot=node.price, hold_value=hold_value,
         )
 
     @staticmethod
+    def _next_level(
+        current: list[Node], seen_earlier: set[int],
+    ) -> dict[int, Node]:
+        """Deduplicate a time layer and reject cross-layer node reuse."""
+        following: dict[int, Node] = {}
+        for node in current:
+            if node.next_up is None or node.next_down is None:
+                raise RuntimeError("Incomplete lattice.")
+            for child in (node.next_up, node.next_down, node.next_mid):
+                if child is None:
+                    continue
+                identity = id(child)
+                if identity in seen_earlier:
+                    raise RuntimeError(
+                        "A lattice node belongs to more than one time layer."
+                    )
+                following[identity] = child
+        return following
+
+    @staticmethod
     def _reachable_levels(root: Node, steps: int) -> list[list[Node]]:
-        """Visit shared nodes once per level, without recursive traversal.
-
-        Objects referenced by an earlier level may not be reused at a later
-        time; doing so would violate the acyclic time-layered lattice model.
-        """
-        # Track unique node identities per time layer.
+        """Visit shared nodes exactly once per time layer, without recursion."""
         levels: list[list[Node]] = [[root]]
-        earlier: set[int] = {id(root)}
-
+        seen_earlier: set[int] = {id(root)}
         for _ in range(steps):
-            following: dict[int, Node] = {}
-            # Expand exactly one time layer, preserving recombination.
-            for node in levels[-1]:
-                if node.next_up is None or node.next_down is None:
-                    raise RuntimeError("Incomplete lattice.")
-                for child in (node.next_up, node.next_down, node.next_mid):
-                    if child is None:
-                        continue
-                    child_id = id(child)
-                    # Reuse within a layer is valid; reuse across layers is not.
-                    if child_id in earlier:
-                        raise RuntimeError(
-                            "A lattice node belongs to more than one time layer."
-                        )
-                    following[child_id] = child
-
+            following = IterativeBackwardPricer._next_level(
+                levels[-1], seen_earlier,
+            )
             if not following:
                 raise RuntimeError("Missing next lattice layer.")
-            # Commit the completed layer after all identity checks.
             levels.append(list(following.values()))
-            earlier.update(following)
-
+            seen_earlier.update(following)
         return levels
