@@ -69,6 +69,7 @@ def measure_case(
     *, pricer: Callable = price_contract,
 ) -> dict[str, object]:
     """Price one contract triplet atomically; disclose any failed valuation."""
+    # Reject invalid configurations before constructing the lattice.
     if model not in MODELS:
         raise ValueError(f"Unsupported study model: {model}")
     if type(steps) is not int or not 1 <= steps <= 350:
@@ -76,6 +77,7 @@ def measure_case(
     if not math.isfinite(dividend_time) or not 0 < dividend_time <= MATURITY:
         raise ValueError("Invalid dividend ex-date.")
 
+    # All three payoffs share the exact same dividend event.
     dividend = (DividendInput(time=dividend_time, amount=DIVIDEND_AMOUNT),)
     request = PricingRequest(
         spot=SPOT, strike=STRIKE, rate=RATE, volatility=VOLATILITY,
@@ -92,6 +94,7 @@ def measure_case(
         "european_call": None, "early_exercise_premium": None,
         "parity_residual": None, "failure": "",
     }
+    # Measure put exercise premium and European parity from one market.
     try:
         eur_put = float(pricer(request).price)
         amer_put = float(pricer(replace(request, exercise="American")).price)
@@ -104,6 +107,7 @@ def measure_case(
         data["failure"] = f"{type(exc).__name__}: {exc}"
         return data
 
+    # A successful observation records three finite premiums.
     data.update(
         status="success", european_put=eur_put, american_put=amer_put,
         european_call=eur_call, early_exercise_premium=amer_put - eur_put,
@@ -124,6 +128,7 @@ def run_experiment(
     if not models or len(set(models)) != len(models) or any(m not in MODELS for m in models):
         raise ValueError("Models must be a unique nonempty subset of the study models.")
 
+    # Reuse duplicated baseline requests within the controlled sweep.
     records: list[dict[str, object]] = []
     cache: dict[tuple[str, int, float], dict[str, object]] = {}
 
@@ -140,6 +145,7 @@ def run_experiment(
                        date_shift_days=0, gap_to_finest_sample=None,
                        finest_reference_steps=None, date_shift_put=None)
             fixed_rows.append(row)
+        # Compare each N to the finest successful observation for its model.
         successes = [r for r in fixed_rows if r["status"] == "success"]
         if successes:
             finest = max(successes, key=lambda r: int(r["steps"]))
@@ -150,6 +156,7 @@ def run_experiment(
                 row["finest_reference_steps"] = finest["steps"]
         records.extend(fixed_rows)
 
+        # Vary the ex-date while holding the discretization depth fixed.
         baseline = observe(model, date_steps, DIVIDEND_TIME)
         for days in sorted(shifts):
             t = DIVIDEND_TIME + days / 365.0
@@ -236,6 +243,7 @@ def plot_results(rows: Sequence[dict[str, object]], grid_path: Path,
         ax.grid(alpha=0.2)
         if ax.has_data():
             ax.legend()
+        # Figures are derived only from recorded model outputs.
         fig.tight_layout()
         path.parent.mkdir(parents=True, exist_ok=True)
         fig.savefig(path, dpi=140)
@@ -250,6 +258,7 @@ def write_results(rows: Sequence[dict[str, object]], *, quick: bool,
         raise FileExistsError("Phase 6C output already exists; use --overwrite explicitly.")
     for path in written:
         path.parent.mkdir(parents=True, exist_ok=True)
+    # Persist the fixed schema before any optional plot rendering.
     with csv_path.open("w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=FIELDS)
         writer.writeheader()
@@ -270,6 +279,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     chosen = paths[:2] if args.no_plots else paths
     if not args.overwrite and any(p.exists() for p in chosen):
         parser.error("Study outputs already exist; use --overwrite explicitly.")
+    # Keep quick diagnostics separate from the reference full study.
     steps = QUICK_STEPS if args.quick else FULL_STEPS
     shifts = QUICK_SHIFTS if args.quick else FULL_SHIFTS
     rows = run_experiment(steps=steps, shifts=shifts)

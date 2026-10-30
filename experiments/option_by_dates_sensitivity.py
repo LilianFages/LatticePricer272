@@ -320,9 +320,13 @@ def save_outputs(summary_rows: list[dict[str, Any]],
     for key in SCENARIOS:
         low = next(r for r in summary_rows if r["scenario"] == key and r["nb_steps"] == 50)
         high = next(r for r in summary_rows if r["scenario"] == key and r["nb_steps"] == 200)
+        early_delta = 100 * (
+            float(high["early_exercise_probability"])
+            - float(low["early_exercise_probability"])
+        )
         lines.append(
             f"  {key}: price delta={float(high['initial_option_price']) - float(low['initial_option_price']):+.10f} EUR; "
-            f"early exercise delta={100 * (float(high['early_exercise_probability']) - float(low['early_exercise_probability'])):+.6f} pp"
+            f"early exercise delta={early_delta:+.6f} pp"
         )
     STABILITY_SUMMARY.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
