@@ -229,12 +229,14 @@ def _render_dividend_editor(
 def _apply_ticket_dividends(
     request: PricingRequest, frame: pd.DataFrame, date_mode: str,
     valuation_date: date | None, expiry_date: date | None,
+    algorithm: str,
 ) -> PricingRequest:
     """Attach either the dated or relative cashflows to the validated ticket."""
     if date_mode == "Calendar dates":
         dates = parse_dated_dividends(frame)
         request, calendar = dated_request(
             request, valuation_date, expiry_date, dates,
+            max_steps=terminal_step_limit(algorithm),
         )
         st.session_state["ticket_submitted_calendar"] = calendar
         return request
@@ -303,6 +305,7 @@ def build_ticket_form(reset_nonce: int) -> tuple[bool, PricingRequest | None, st
         # Translate dated dividends into the engine convention without repricing.
         request = _apply_ticket_dividends(
             request, dividend_frame, date_mode, valuation_date, expiry_date,
+            algorithm,
         )
         st.session_state["ticket_submitted_algorithm"] = algorithm
         return True, request, None

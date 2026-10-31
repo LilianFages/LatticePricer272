@@ -273,4 +273,45 @@ def test_explicit_numeric_reference_clears_previous_calendar() -> None:
     save_reference(state, _base(spot=105.))
     assert get_reference_calendar(state) is None
 
+# Calendar ticket validation follows the selected pricing algorithm's cap.
+@pytest.mark.parametrize(("algorithm", "limit"), [
+    ("Recursive", 700), ("Backward", 1000),
+])
+def test_dated_request_uses_terminal_algorithm_limit(
+    algorithm: str, limit: int,
+) -> None:
+    from frontend.pricing_service import terminal_step_limit
+
+    assert terminal_step_limit(algorithm) == limit
+    request, calendar = dated_request(
+        _base(steps=limit), START, date(2027, 9, 1),
+        (DatedCashDividend(date(2027, 3, 1), 2.0),),
+        max_steps=terminal_step_limit(algorithm),
+    )
+    assert request.steps == limit
+    assert len(request.dividends) == 1
+    assert calendar_matches_request(calendar, request)
+
+
+@pytest.mark.parametrize(("algorithm", "over_limit"), [
+    ("Recursive", 701), ("Backward", 1001),
+])
+def test_dated_request_rejects_excessive_terminal_depth(
+    algorithm: str, over_limit: int,
+) -> None:
+    from frontend.pricing_service import terminal_step_limit
+
+    maximum = terminal_step_limit(algorithm)
+    with pytest.raises(CalendarInputError, match=f"between 1 and {maximum}"):
+        dated_request(
+            _base(steps=over_limit), START, date(2027, 9, 1), (),
+            max_steps=maximum,
+        )
+
+
+def test_dated_request_keeps_research_limit_without_override() -> None:
+    with pytest.raises(CalendarInputError, match="between 1 and 350"):
+        dated_request(_base(steps=351), START, date(2027, 9, 1), ())
+
+
 # LOT_5C4_GUARDED_REFACTOR

@@ -16,7 +16,7 @@ from frontend.calendar_contract import (
     CalendarInputError, ContractCalendar, DatedCashDividend,
 )
 from frontend.pricing_service import (
-    DividendInput, PricingInputError, PricingRequest, validate_request,
+    MAX_STEPS, DividendInput, PricingInputError, PricingRequest, validate_request,
 )
 
 
@@ -78,6 +78,8 @@ def dated_request(
     valuation_date: date,
     expiry_date: date,
     dated_dividends: tuple[DatedCashDividend, ...],
+    *,
+    max_steps: int = MAX_STEPS,
 ) -> tuple[PricingRequest, ContractCalendar]:
     """Derive the exact model ticket, leaving the original immutable ticket intact."""
     calendar = ContractCalendar(valuation_date, expiry_date, dated_dividends)
@@ -89,7 +91,7 @@ def dated_request(
                         for item in resolved.dividends),
     )
     try:
-        validate_request(request)
+        validate_request(request, max_steps=max_steps)
     except PricingInputError as exc:
         raise CalendarInputError(str(exc)) from exc
     return request, calendar
