@@ -10,13 +10,13 @@ import math
 from dataclasses import dataclass
 from typing import Any
 
-from src.node import Node
+from src.lattices.node import Node
 from frontend.lattice_allocation import capture_allocated_columns
 from frontend.exercise_policy import (
     dividend_events_for_request, immediate_node_exercise,
 )
-from src.option import CallOption, PutOption
-from src.recursive_pricer import RecursivePricer
+from src.contracts.option import CallOption, PutOption
+from src.pricing.recursive_pricer import RecursivePricer
 from frontend.pricing_service import (
     PricingInputError, PricingRequest, _build_tree, validate_request,
 )

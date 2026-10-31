@@ -203,7 +203,7 @@ def _load_grid_study() -> pd.DataFrame | None:
     """Read the archived dataset only, rejecting missing or incompatible exports."""
     if not DATASET.is_file():
         st.info("No full Phase 6C dataset yet. From the repository root, run "
-                "`python -m experiments.dividend_grid_robustness` after the quick smoke test. "
+                "`python -m experiments.dividends.dividend_grid_robustness` after the quick smoke test. "
                 "This view never runs pricing automatically.")
         return None
     # Use recorded observations only; failed configurations are never imputed.

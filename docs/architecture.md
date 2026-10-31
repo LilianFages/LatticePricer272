@@ -14,6 +14,20 @@ not maintain a separate pricing implementation.
 | `results/` | Versioned experiment CSVs, summaries and figures |
 | `tests/` | Current numerical invariants and application integration tests |
 
+## Subpackage layout
+
+- `src/contracts/`: option payoffs, dividend contracts, event-step policies.
+- `src/lattices/`: nodes, transition moments, probabilities, binomial/trinomial/hybrid trees and allocation pruning.
+- `src/pricing/`: recursive, backward and Black–Scholes valuation.
+- `src/analytics/`: accuracy and Pareto-front primitives.
+- `src/risk/`: pricing-independent risk analytics, hedging and Greeks.
+- `experiments/{convergence,performance,pruning,dividends,comparisons}/`: independently launched, reproducible studies.
+- `tests/{pricing,lattices,dividends,risk,frontend,research}/`: regression suites collected recursively by Pytest.
+
+Package imports use the full qualified name (e.g. `src.lattices.trinomial_tree`). Run from the repository root;
+no source file should mutate `sys.path`. The experiments resolve archived `results/` relative
+to the repository root even after the subpackage move.
+
 ## Supported models
 
 - **Binomial:** vanilla European/American calls and puts, without discrete
@@ -32,10 +46,10 @@ use grows with lattice size. The older binomial-only column-rebuilding
 implementation has been removed; historical timing measurements in `results/`
 are retained but must not be attributed to the current unified engine.
 
-The core reuses `src/dividend_timing.py` for dividend-to-step mapping,
-`src/transition_moments.py` for local transition moments,
-`src/node.py` for reachable-node counting and
-`src/accuracy_metrics.py` for binomial gap estimates and observed Pareto dominance.
+The core reuses `src/contracts/dividend_timing.py` for dividend-to-step mapping,
+`src/lattices/transition_moments.py` for local transition moments,
+`src/lattices/node.py` for reachable-node counting and
+`src/analytics/accuracy_metrics.py` for binomial gap estimates and observed Pareto dominance.
 
 ## Financial conventions
 

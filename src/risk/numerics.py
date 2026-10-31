@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import math
 
-from src.black_scholes_terms import standardized_terms
+from src.pricing.black_scholes_terms import standardized_terms
 
 
 def _check_bump(name: str, size: float) -> None:

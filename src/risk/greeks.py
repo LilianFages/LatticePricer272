@@ -19,7 +19,7 @@ import math
 from dataclasses import dataclass, replace
 from typing import Callable
 
-from src.black_scholes_terms import standardized_terms
+from src.pricing.black_scholes_terms import standardized_terms
 from src import PricingInputError
 from src.risk.contracts import (
     PricingFunction,

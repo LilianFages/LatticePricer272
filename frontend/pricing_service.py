@@ -12,18 +12,18 @@ import time
 from dataclasses import dataclass, replace
 from typing import Callable, Literal
 
-from src.allocation_pruned_trinomial_tree import AllocationPrunedTrinomialTree
+from src.lattices.allocation_pruned_trinomial_tree import AllocationPrunedTrinomialTree
 from src import PricingInputError
-from src.binomial_tree import BinomialTree
-from src.black_scholes import BlackScholesPricer
-from src.dividend import CashDividend
-from src.dividend_timing import dividend_grid_step
-from src.hybrid_tree import HybridTree
-from src.backward_pricer import BackwardPricer
-from src.node import Node, count_reachable_nodes as _count_priced_nodes
-from src.option import CallOption, PutOption
-from src.recursive_pricer import RecursivePricer
-from src.trinomial_tree import TrinomialTree
+from src.lattices.binomial_tree import BinomialTree
+from src.pricing.black_scholes import BlackScholesPricer
+from src.contracts.dividend import CashDividend
+from src.contracts.dividend_timing import dividend_grid_step
+from src.lattices.hybrid_tree import HybridTree
+from src.pricing.backward_pricer import BackwardPricer
+from src.lattices.node import Node, count_reachable_nodes as _count_priced_nodes
+from src.contracts.option import CallOption, PutOption
+from src.pricing.recursive_pricer import RecursivePricer
+from src.lattices.trinomial_tree import TrinomialTree
 
 # Validate market assumptions before constructing a pricing engine.
 ModelName = Literal[

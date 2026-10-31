@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.accuracy_metrics import nondominated_indices
+from src.analytics.accuracy_metrics import nondominated_indices
 
 ROOT = Path(__file__).resolve().parents[1]
 

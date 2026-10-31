@@ -17,6 +17,19 @@ suite checks current financial invariants and application contracts.
 A passing test suite or high CheckStyle grade is not proof of exact
 continuous-time pricing or market calibration.
 
+## Package relocation smoke checks
+
+From the repository root, verify the new fully qualified modules and test discovery
+before running costly offline research. These checks do not overwrite historical `results/` files:
+
+```bash
+python -m compileall -q src frontend experiments tests
+python -m pytest --collect-only -q
+python -m pytest -q
+python -m experiments.performance.pricing_accuracy_cost --help
+python -m experiments.dividends.dividend_grid_robustness --help
+```
+
 ## Manual desktop acceptance
 
 1. Price European calls/puts and American puts in Pricing Terminal.

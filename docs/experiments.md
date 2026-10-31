@@ -6,8 +6,8 @@ overwritten simply to validate a code change or open the Streamlit UI.
 
 ## Accuracy versus computational cost
 
-Scripts: `experiments.pricing_accuracy_cost`,
-`experiments.accuracy_cost_multistrike`.
+Scripts: `experiments.performance.pricing_accuracy_cost`,
+`experiments.performance.accuracy_cost_multistrike`.
 
 No-dividend European options use `S0=100`, `r=2%`, `sigma=20%`,
 `T=1`, `K=80,100,120`. Compare binomial, full trinomial,
@@ -33,9 +33,9 @@ sample-dependent, not continuous theoretical optima. Exact zero
 errors are retained as zero in CSVs but omitted from logarithmic plots.
 
 ```bash
-python -m experiments.pricing_accuracy_cost --quick
-python -m experiments.accuracy_cost_multistrike --baseline-only
-python -m experiments.accuracy_cost_multistrike --quick
+python -m experiments.performance.pricing_accuracy_cost --quick
+python -m experiments.performance.accuracy_cost_multistrike --baseline-only
+python -m experiments.performance.accuracy_cost_multistrike --quick
 ```
 
 Main outputs: `results/data/accuracy_cost_benchmark.csv` and
@@ -44,8 +44,8 @@ CSVs, Pareto/target tables and associated figures.
 
 ## Option value and exercise by date
 
-Scripts: `experiments.option_value_exercise_profiles` and
-`experiments.exercise_profile_step_sensitivity`.
+Scripts: `experiments.dividends.option_value_exercise_profiles` and
+`experiments.dividends.exercise_profile_step_sensitivity`.
 
 Compare an American put with a known cash dividend, an American put
 without dividend and a European put without dividend. For the
@@ -78,8 +78,8 @@ already recorded N=100 baseline. This is a numerical stability
 comparison, **not** proof of convergence.
 
 ```bash
-python -m experiments.option_value_exercise_profiles --steps 100
-python -m experiments.exercise_profile_step_sensitivity
+python -m experiments.dividends.option_value_exercise_profiles --steps 100
+python -m experiments.dividends.exercise_profile_step_sensitivity
 ```
 
 Main outputs: `results/data/option_by_dates_profiles.csv` and
@@ -88,7 +88,7 @@ summary text and exercise-probability figures.
 
 ## Dividend ex-date versus numerical grid
 
-Script: `experiments.dividend_grid_robustness`.
+Script: `experiments.dividends.dividend_grid_robustness`.
 
 Common conditions: `S0=K=100`, `r=2%`, `sigma=20%`, `T=1`,
 cash dividend `D=3`, baseline `t_D=0.5`. Compare Hybrid and
@@ -117,8 +117,8 @@ are imputed. The full design covers **26 configurations** (16 grid
 and 10 date-shift model cases).
 
 ```bash
-python -m experiments.dividend_grid_robustness --quick
-python -m experiments.dividend_grid_robustness
+python -m experiments.dividends.dividend_grid_robustness --quick
+python -m experiments.dividends.dividend_grid_robustness
 ```
 
 Full evidence:
@@ -130,7 +130,7 @@ Full evidence:
 ## Other self-contained studies
 
 Shared no-dividend European-call analytical and backward-binomial valuations
-are implemented in `experiments.binomial_pricing_helpers`. The individual
+are implemented in `experiments.convergence.binomial_pricing_helpers`. The individual
 experiments retain their original parameters, public entry points, and outputs.
 Recursive pricing is deliberately kept separate from backward induction.
 
@@ -140,22 +140,28 @@ the underlying lattice, the measured quantity and the experiment's purpose.
 
 | Script (under `experiments/`) | Focus |
 | --- | --- |
-| `binomial_convergence.py` | Binomial call prices against Black–Scholes across N |
-| `binomial_convergence_order.py` | Empirical order of binomial convergence |
-| `binomial_error_gap.py` | Strike-dependent binomial approximation-error gaps |
-| `binomial_precision_target.py` | Required N for prescribed binomial error tolerances |
-| `binomial_runtime_scaling.py` | Binomial valuation runtime as N increases |
-| `pricing_recursion_limits.py` | Recursive versus backward pricing at large depths |
-| `trinomial_convergence.py` | Binomial/trinomial convergence comparison |
-| `branch_pruning_sensitivity.py` | Branch-pruning threshold and valuation impact |
-| `allocation_pruning_benchmark.py` | Allocation-pruning timing and memory benchmark |
-| `allocation_pruning_robustness.py` | Robustness against the branch-pruned reference |
-| `hybrid_vs_trinomial.py` | Hybrid versus trinomial with cash dividends |
-| `dividend_impact.py` | Effect of discrete dividend amounts on vanilla prices |
-| `american_vs_european.py` | Exercise-style premium across interest rates |
+| `convergence/binomial_convergence.py` | Binomial call prices against Black–Scholes across N |
+| `convergence/binomial_convergence_order.py` | Empirical order of binomial convergence |
+| `convergence/binomial_error_gap.py` | Strike-dependent binomial approximation-error gaps |
+| `convergence/binomial_precision_target.py` | Required N for prescribed binomial error tolerances |
+| `performance/binomial_runtime_scaling.py` | Binomial valuation runtime as N increases |
+| `performance/pricing_recursion_limits.py` | Recursive versus backward pricing at large depths |
+| `convergence/trinomial_convergence.py` | Binomial/trinomial convergence comparison |
+| `pruning/branch_pruning_sensitivity.py` | Branch-pruning threshold and valuation impact |
+| `pruning/allocation_pruning_benchmark.py` | Allocation-pruning timing and memory benchmark |
+| `pruning/allocation_pruning_robustness.py` | Robustness against the branch-pruned reference |
+| `comparisons/hybrid_vs_trinomial.py` | Hybrid versus trinomial with cash dividends |
+| `dividends/dividend_impact.py` | Effect of discrete dividend amounts on vanilla prices |
+| `dividends/american_vs_european.py` | Exercise-style premium across interest rates |
 
 Study modules were renamed for clarity without renaming historical output
 CSVs and figures. Paths under `results/` remain stable for the Research Lab.
+
+## New module locations
+
+The experiments are grouped by financial question rather than stored flat in
+`experiments/`. Use the full `python -m experiments.<subpackage>.<module>`
+syntax. All historical CSV, summary and figure paths remain unchanged.
 
 ## General safeguards
 

@@ -10,7 +10,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from src.dividend_exercise import aligned_event_step
+from src.contracts.dividend_exercise import aligned_event_step
 from src.risk.contracts import RiskRequest
 
 

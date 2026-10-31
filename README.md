@@ -41,6 +41,29 @@ Saved experimental evidence is available through an **optional, read-only archiv
 | `results/figures/` | Versioned visual evidence from offline studies |
 | `docs/` | Current architecture, quantitative research, experiment and validation guides |
 
+### Python subpackages
+
+| Package | Responsibility |
+| --- | --- |
+| `src/contracts/` | Option payoffs, discrete cash dividends and exercise timing |
+| `src/lattices/` | Binomial, trinomial, allocation-pruned and hybrid trees |
+| `src/pricing/` | Recursive/backward pricing and Black–Scholes references |
+| `src/analytics/` | Numerical accuracy and Pareto metrics |
+| `src/risk/` | Greeks, risk sensitivities and hedging |
+| `experiments/convergence/` | Finite-step prices, errors and accuracy thresholds |
+| `experiments/performance/` | Timings, recursion limits and accuracy versus cost |
+| `experiments/pruning/` | Branch/allocation pruning benchmarks |
+| `experiments/dividends/` | Cash-dividend impact, timing and stopping profiles |
+| `experiments/comparisons/` | Comparison of lattice families |
+| `tests/{pricing,lattices,dividends,risk,frontend,research}/` | Domain-focused regression suites |
+
+Run scripts as modules from the repository root, for example:
+
+```bash
+python -m experiments.performance.pricing_accuracy_cost --quick
+python -m experiments.dividends.dividend_grid_robustness --quick
+```
+
 ## Numerical integrity and limitations
 
 - **Analytical references:** Black–Scholes comparisons are meaningful only when the vanilla European/no-cash-dividend assumptions of the relevant implementation apply. Otherwise, a high-resolution numerical value is a *reference gap*, not a known pricing error.

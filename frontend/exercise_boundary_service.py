@@ -24,8 +24,8 @@ from frontend.pricing_service import (
 from frontend.exercise_policy import (
     dividend_events_for_request, immediate_node_exercise,
 )
-from src.option import CallOption, PutOption
-from src.recursive_pricer import RecursivePricer
+from src.contracts.option import CallOption, PutOption
+from src.pricing.recursive_pricer import RecursivePricer
 
 from frontend.workspace_policy import MAX_BOUNDARY_STEPS
 PROB_TOL = 2e-10

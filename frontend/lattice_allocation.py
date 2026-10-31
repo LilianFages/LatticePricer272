@@ -11,10 +11,10 @@ from contextlib import contextmanager
 from collections.abc import Iterator
 from typing import Any
 
-from src.binomial_tree import BinomialTree
-from src.hybrid_tree import HybridTree
-from src.node import Node
-from src.trinomial_tree import TrinomialTree
+from src.lattices.binomial_tree import BinomialTree
+from src.lattices.hybrid_tree import HybridTree
+from src.lattices.node import Node
+from src.lattices.trinomial_tree import TrinomialTree
 
 
 def _column_nodes(top: Node) -> tuple[Node, ...]:
