@@ -317,6 +317,20 @@ def test_reference_engine_does_not_overwrite_comparison_model_selection() -> Non
     assert state["cmp_models"] == ("Binomial",)
     assert state["cmp_reference_seed"].model == req.model
 
+
+
+def test_high_N_terminal_reference_respects_other_workspace_limits() -> None:
+    """High-N references stay exact and require explicit changes on import."""
+    state: dict = {}
+    request = PricingRequest(model="Binomial", steps=1000)
+    save_reference(state, request)
+    assert get_reference(state) is request
+    for target in ("model_comparison", "quant_analytics"):
+        check = assess_transfer(request, target)
+        assert not check.exact
+        assert any("350" in issue and "1000" in issue for issue in check.issues)
+
+
 # LOT_5C3_GUARDED_REFACTOR
 
 

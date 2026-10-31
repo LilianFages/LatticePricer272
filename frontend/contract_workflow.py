@@ -18,7 +18,9 @@ from frontend.workspace_policy import (
     EXPLORER_THRESHOLDS as _EXPLORER_THRESHOLDS,
     MAX_BOUNDARY_STEPS, MAX_VISUAL_STEPS,
 )
-from frontend.pricing_service import PricingRequest, PricingResult, validate_request
+from frontend.pricing_service import (
+    MAX_STEPS, PricingRequest, PricingResult, validate_terminal_request,
+)
 
 
 REFERENCE_KEY = "lattice272_reference_contract"
@@ -51,7 +53,7 @@ def save_reference(
     """Save a validated contract without executing any financial model."""
     if not isinstance(request, PricingRequest):
         raise TypeError("Reference contract must be a PricingRequest.")
-    validate_request(request)
+    validate_terminal_request(request)
     state[REFERENCE_KEY] = request
     state.pop(REFERENCE_CALENDAR_KEY, None)
 
@@ -107,6 +109,12 @@ def clear_reference(state: MutableMapping[str, Any]) -> bool:
 
 def _collect_destination_limits(request: PricingRequest, target: str, issues: list[str]) -> None:
     """Report destination-specific grid, dividend and pruning constraints."""
+    # Saved high-N tickets are never silently clamped in other workspaces.
+    if target in ("model_comparison", "quant_analytics") and request.steps > MAX_STEPS:
+        issues.append(
+            f"This workspace supports at most N={MAX_STEPS}; "
+            f"the reference has N={request.steps}."
+        )
     # Explorer-specific limits deliberately differ from benchmark-grid limits.
     if target == "lattice_explorer":
         if not 2 <= request.steps <= MAX_VISUAL_STEPS:
@@ -184,7 +192,7 @@ def assess_transfer(request: PricingRequest, target: str) -> TransferCheck:
         raise ValueError(f"Unknown contract destination: {target}.")
     if not isinstance(request, PricingRequest):
         raise TypeError("Reference contract must be a PricingRequest.")
-    validate_request(request)
+    validate_terminal_request(request)
 
     issues: list[str] = []
     if target == "research_lab":

@@ -7,7 +7,7 @@ from frontend.pricing_service import (
     PricingFunction,
     PricingRequest,
     price_contract,
-    validate_request,
+    validate_terminal_request,
 )
 from src.risk.desk import (
     EXPECTED_PRICING_ERRORS,
@@ -36,7 +36,7 @@ def compute_desk_risk(request: PricingRequest,
         request,
         bumps,
         pricer=pricer,
-        validate_request=validate_request,
+        validate_request=validate_terminal_request,
         calculate_greeks=calculate_greeks,
     )
 
@@ -58,7 +58,7 @@ def compute_greek_curve(request: PricingRequest,
         span_pct=span_pct,
         bumps=bumps,
         pricer=pricer,
-        validate_request=validate_request,
+        validate_request=validate_terminal_request,
         calculate_greeks=calculate_greeks,
         # Use the existing injectable desk-risk function for each curve point.
         compute_desk_risk=compute_desk_risk,

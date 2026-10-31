@@ -454,4 +454,91 @@ def test_full_is_never_mislabeled_as_pruned_when_off() -> None:
         )
         assert model == "Trinomial · Full" and threshold == 1e-18
 
+
+
+# Terminal limits are separate from research-grid limits and model mathematics.
+@pytest.mark.parametrize(("algorithm", "limit"), [
+    ("Recursive", 700), ("Backward", 1000),
+])
+def test_terminal_step_caps_are_algorithm_specific(algorithm: str, limit: int) -> None:
+    from frontend.pricing_service import terminal_step_limit, validate_terminal_request
+
+    assert terminal_step_limit(algorithm) == limit
+    validate_request(PricingRequest(steps=350))
+    with pytest.raises(PricingInputError, match="between 1 and 350"):
+        validate_request(PricingRequest(steps=351))
+    validate_terminal_request(PricingRequest(steps=1000))
+    with pytest.raises(PricingInputError):
+        validate_terminal_request(PricingRequest(steps=1001))
+
+
+@pytest.mark.parametrize(("algorithm", "limit"), [
+    ("Recursive", 700), ("Backward", 1000),
+])
+def test_terminal_rejects_excessive_N_before_build(
+    monkeypatch: pytest.MonkeyPatch, algorithm: str, limit: int,
+) -> None:
+    def _unexpected_build(request: PricingRequest) -> None:
+        raise AssertionError("Invalid depth must not allocate lattice nodes")
+
+    monkeypatch.setattr("frontend.pricing_service._build_tree", _unexpected_build)
+    with pytest.raises(PricingInputError, match=f"between 1 and {limit}"):
+        price_contract(PricingRequest(steps=limit + 1), algorithm=algorithm)
+
+
+@pytest.mark.parametrize(("algorithm", "limit"), [
+    ("Recursive", 700), ("Backward", 1000),
+])
+def test_terminal_accepts_limit_with_stubbed_engine(
+    monkeypatch: pytest.MonkeyPatch, algorithm: str, limit: int,
+) -> None:
+    import sys
+    from types import SimpleNamespace
+    import frontend.pricing_service as service
+
+    # Test routing and bounds only; never allocate the million-node full tree.
+    tree = SimpleNamespace(root=Node(100.0))
+    monkeypatch.setattr(service, "_build_tree", lambda request: tree)
+    monkeypatch.setattr(service.RecursivePricer, "price",
+                        lambda self, tree, option: 4.25)
+    monkeypatch.setattr(service.BackwardPricer, "price",
+                        lambda self, tree, option: 4.25)
+    old_limit = sys.getrecursionlimit()
+    request = PricingRequest(model="Binomial", exercise="American", steps=limit)
+    result = price_contract(request, algorithm=algorithm)
+    assert result.price == 4.25 and result.request is request
+    assert result.algorithm == algorithm
+    assert sys.getrecursionlimit() == old_limit
+
+
+def test_high_depth_risk_uses_terminal_validation() -> None:
+    """High-N Greeks must not retain the research workspace's 350-step cap."""
+    from types import SimpleNamespace
+
+    request = PricingRequest(steps=1000, model="Binomial")
+    snapshot = compute_desk_risk(
+        request, pricer=lambda _: SimpleNamespace(price=4.25, elapsed_ms=0.0),
+    )
+    assert snapshot.base.price == 4.25
+
+
+def test_high_depth_spot_sensitivity_preserves_backward_algorithm(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from types import SimpleNamespace
+    from frontend.pricing_service import compute_spot_sensitivity
+
+    selected: list[str] = []
+
+    def _fake_price(request: PricingRequest, *, algorithm: str) -> SimpleNamespace:
+        selected.append(algorithm)
+        return SimpleNamespace(price=request.spot / 10)
+
+    monkeypatch.setattr("frontend.pricing_service.price_contract", _fake_price)
+    request = PricingRequest(steps=1000, model="Binomial")
+    points = compute_spot_sensitivity(request, points=3, algorithm="Backward")
+    assert len(points) == 3
+    assert all(point.error is None for point in points)
+    assert selected == ["Backward"] * 3
+
 # LOT_5C4_GUARDED_REFACTOR

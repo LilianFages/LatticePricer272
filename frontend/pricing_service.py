@@ -8,7 +8,10 @@ from __future__ import annotations
 import csv
 import io
 import math
+import sys
 import time
+from contextlib import contextmanager
+from collections.abc import Iterator
 from dataclasses import dataclass, replace
 from typing import Callable, Literal
 
@@ -42,7 +45,12 @@ MODELS: tuple[ModelName, ...] = (
     "Trinomial · Allocation pruning",
     "Hybrid",
 )
-MAX_STEPS = 350  # Interactive latency cap, not a financial/model restriction.
+MAX_STEPS = 350  # Preserve the limits of research and comparison workspaces.
+TERMINAL_STEP_LIMITS: dict[PricingAlgorithm, int] = {
+    "Recursive": 700,
+    "Backward": 1000,
+}
+MAX_TERMINAL_STEPS = max(TERMINAL_STEP_LIMITS.values())
 DEFAULT_THRESHOLD = 1e-18
 
 
@@ -144,7 +152,9 @@ def _validate_dividend_schedule(request: PricingRequest) -> None:
         )
 
 
-def validate_request(request: PricingRequest) -> None:
+def validate_request(
+    request: PricingRequest, *, max_steps: int = MAX_STEPS,
+) -> None:
     """Validate input before passing it to the existing financial engines."""
     scalar_inputs = (
         request.spot, request.strike, request.rate,
@@ -161,8 +171,8 @@ def validate_request(request: PricingRequest) -> None:
     if request.maturity <= 0.0:
         # Use the validated contract and preserve the engine's pruning rules.
         raise PricingInputError("Maturity must be strictly positive.")
-    if type(request.steps) is not int or not (1 <= request.steps <= MAX_STEPS):
-        raise PricingInputError(f"Steps must be an integer between 1 and {MAX_STEPS}.")
+    if type(request.steps) is not int or not (1 <= request.steps <= max_steps):
+        raise PricingInputError(f"Steps must be an integer between 1 and {max_steps}.")
     if request.model not in MODELS:
         # Report numerical failures without substituting synthetic prices.
         raise PricingInputError("Unknown pricing model.")
@@ -227,12 +237,39 @@ def _full_trinomial_reference_nodes(request: PricingRequest) -> int | None:
     return None
 
 
+def terminal_step_limit(algorithm: PricingAlgorithm) -> int:
+    """Return the Pricing Terminal depth limit for the selected algorithm."""
+    try:
+        return TERMINAL_STEP_LIMITS[algorithm]
+    except (KeyError, TypeError) as exc:
+        raise PricingInputError("Unknown pricing algorithm.") from exc
+
+
+def validate_terminal_request(request: PricingRequest) -> None:
+    """Validate a ticket or saved reference within the terminal's widest cap."""
+    validate_request(request, max_steps=MAX_TERMINAL_STEPS)
+
+
+@contextmanager
+def _recursive_pricing_capacity(steps: int) -> Iterator[None]:
+    """Allow deep memoized traversal and restore the interpreter limit afterward."""
+    previous = sys.getrecursionlimit()
+    # A recursive step may pass through node, expectation and child methods.
+    required = max(previous, 4 * steps + 200)
+    changed = required > previous
+    if changed:
+        sys.setrecursionlimit(required)
+    try:
+        yield
+    finally:
+        if changed:
+            sys.setrecursionlimit(previous)
+
+
 def price_contract(request: PricingRequest, *, algorithm: PricingAlgorithm = "Recursive",
 ) -> PricingResult:
     """Price a contract using the explicitly selected numerical algorithm."""
-    if algorithm not in PRICING_ALGORITHMS:
-        raise PricingInputError("Unknown pricing algorithm.")
-    validate_request(request)
+    validate_request(request, max_steps=terminal_step_limit(algorithm))
     start = time.perf_counter()
     tree = _build_tree(request)
     option = (CallOption if request.option_type == "Call" else PutOption)(
@@ -240,8 +277,11 @@ def price_contract(request: PricingRequest, *, algorithm: PricingAlgorithm = "Re
         is_american=request.exercise == "American",
     )
     # Use the validated contract and preserve the engine's pruning rules.
-    pricer = RecursivePricer() if algorithm == "Recursive" else BackwardPricer()
-    price = pricer.price(tree, option)
+    if algorithm == "Recursive":
+        with _recursive_pricing_capacity(request.steps):
+            price = RecursivePricer().price(tree, option)
+    else:
+        price = BackwardPricer().price(tree, option)
     elapsed_ms = (time.perf_counter() - start) * 1000.0
     if not math.isfinite(price) or price < 0.0:
         raise RuntimeError("The engine returned an invalid option price.")
@@ -313,15 +353,16 @@ class SpotSensitivityPoint:
 def compute_spot_sensitivity(
     request: PricingRequest,
     points: int = 9,
-    # Use the validated contract and preserve the engine's pruning rules.
     span: float = 0.20,
+    *,
+    algorithm: PricingAlgorithm = "Recursive",
 ) -> tuple[SpotSensitivityPoint, ...]:
     """Reprice identical contracts across spot levels; no delta approximation.
 
     An individual scenario may be invalid for cash dividends; record its
     failure instead of silently returning zero or changing the payoff.
     """
-    validate_request(request)
+    validate_request(request, max_steps=terminal_step_limit(algorithm))
     if type(points) is not int or not 3 <= points <= 21:
         raise PricingInputError("Spot grid must contain between 3 and 21 points.")
     if not math.isfinite(span) or not 0.0 < span < 0.95:
@@ -332,7 +373,7 @@ def compute_spot_sensitivity(
         spot = request.spot * (1.0 + span * (2 * index / (points - 1) - 1))
         scenario = replace(request, spot=spot)
         try:
-            price = price_contract(scenario).price
+            price = price_contract(scenario, algorithm=algorithm).price
         except (PricingInputError, ValueError, RuntimeError, OverflowError,
                 # Use the validated contract and preserve the engine's pruning rules.
                 ZeroDivisionError) as exc:

@@ -120,7 +120,9 @@ def _sensitivity_panel(result: PricingResult) -> None:
     if st.button("Calculate spot value curve · 9 repricings", key="spot_revaluation_run", width="stretch"):
         try:
             with st.spinner("Repricing nine spot scenarios..."):
-                points = compute_spot_sensitivity(result.request, points=9, span=0.20)
+                points = compute_spot_sensitivity(
+                    result.request, points=9, span=0.20, algorithm=result.algorithm,
+                )
             st.session_state["spot_revaluation"] = (result.request, points)
         except Exception as exc:
             st.session_state.pop("spot_revaluation", None)

@@ -64,6 +64,17 @@ python -m experiments.performance.pricing_accuracy_cost --quick
 python -m experiments.dividends.dividend_grid_robustness --quick
 ```
 
+### Pricing Terminal lattice depth
+
+The Pricing Terminal allows **N ≤ 700** with the recursive pricer and
+**N ≤ 1,000** with iterative backward induction. Selecting an algorithm
+updates the editor's allowed maximum without changing the financial model.
+Other research and model-comparison workspaces retain their independent
+limits (typically N ≤ 350, with smaller visualization limits).
+The same algorithm is used for the premium, Greeks and optional spot
+revaluations. Very deep lattices, especially unpruned trinomial trees,
+can require considerable memory and computation time.
+
 ## Numerical integrity and limitations
 
 - **Analytical references:** Black–Scholes comparisons are meaningful only when the vanilla European/no-cash-dividend assumptions of the relevant implementation apply. Otherwise, a high-resolution numerical value is a *reference gap*, not a known pricing error.

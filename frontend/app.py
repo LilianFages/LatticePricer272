@@ -26,7 +26,7 @@ from frontend.calendar_ticket import dated_request, parse_dated_dividends
 from frontend.model_selection import resolve_model_selection
 from frontend.pricing_service import (
     DEFAULT_THRESHOLD,
-    MAX_STEPS,
+    terminal_step_limit,
     DividendInput,
     PricingInputError,
     PricingRequest,
@@ -60,7 +60,7 @@ def read_dividend_table(frame: pd.DataFrame) -> tuple[DividendInput, ...]:
     return parse_cash_dividends(frame, context="terminal")
 
 
-def _render_ticket_configuration(prefix: str) -> tuple[str, str, bool]:
+def _render_ticket_configuration(prefix: str) -> tuple[str, str, bool, str]:
     """Render date convention and model-family controls outside the pricing form."""
     # Resolve only the submitted form; ordinary reruns do not calculate prices.
     date_col, model_col = st.columns([1.2, 1.0], gap="medium")
@@ -85,7 +85,14 @@ def _render_ticket_configuration(prefix: str) -> tuple[str, str, bool]:
         )
         # Resolve only the submitted form; ordinary reruns do not calculate prices.
         pruning_enabled = pruning_mode == "On"
-    return date_mode, model_family, pruning_enabled
+    # Outside the form so the permitted depth updates when the algorithm changes.
+    algorithm = st.selectbox(
+        "Pricing algorithm", PRICING_ALGORITHMS,
+        index=0, key=f"{prefix}_pricing_algorithm",
+        help="Recursive memoization or iterative backward induction. "
+             "Both use the same financial lattice and transitions.",
+    )
+    return date_mode, model_family, pruning_enabled, algorithm
 
 
 def _render_contract_dates(
@@ -138,23 +145,21 @@ def _render_market_inputs(prefix: str) -> tuple[float, float, float, float]:
 
 
 def _render_pricing_setup(
-    prefix: str, model_family: str, pruning_enabled: bool,
-) -> tuple[str, int, str, float]:
+    prefix: str, model_family: str, pruning_enabled: bool, algorithm: str,
+) -> tuple[int, str, float]:
     """Render the pricing algorithm, lattice depth and pruning configuration."""
     st.markdown(
         '<div class="desk-section">04 · Model & numerical setup</div>',
         unsafe_allow_html=True,
     )
-    engine_col, steps_col = st.columns(2, gap="small")
-    algorithm = engine_col.selectbox(
-        "Pricing algorithm", PRICING_ALGORITHMS,
-        index=0, key=f"{prefix}_pricing_algorithm",
-        help="Recursive memoization or iterative backward induction. "
-             "Both use the same financial lattice and transitions.",
-    )
-    st.caption("One pricing algorithm for the premium and every Greek.")
-    steps = steps_col.number_input(
-        "Time steps (N)", min_value=1, max_value=MAX_STEPS,
+    step_limit = terminal_step_limit(algorithm)
+    steps_key = f"{prefix}_steps"
+    if steps_key in st.session_state and st.session_state[steps_key] > step_limit:
+        st.session_state[steps_key] = step_limit
+    st.caption(f"{algorithm} · up to {step_limit:,} steps (N). "
+               "The selected algorithm also applies to every Greek.")
+    steps = st.number_input(
+        "Time steps (N)", min_value=1, max_value=step_limit,
         value=100, step=25, key=f"{prefix}_steps",
         help="Interactive safety cap; not the engine's mathematical limit.",
     )
@@ -173,7 +178,7 @@ def _render_pricing_setup(
                 key=f"{prefix}_threshold",
                 format_func=lambda value: f"{value:.0e}",
             )
-    return algorithm, steps, pruning_method, pruning_threshold
+    return steps, pruning_method, pruning_threshold
 
 
 def _render_dividend_editor(
@@ -274,14 +279,14 @@ def build_ticket_form(reset_nonce: int) -> tuple[bool, PricingRequest | None, st
     """Return submitted status and either a validated shape or parsing error."""
     # Resolve only the submitted form; ordinary reruns do not calculate prices.
     prefix = f"ticket_{reset_nonce}"
-    date_mode, model_family, pruning_enabled = _render_ticket_configuration(prefix)
+    date_mode, model_family, pruning_enabled, algorithm = _render_ticket_configuration(prefix)
     with st.form(f"pricing_ticket_{reset_nonce}", clear_on_submit=False):
         st.markdown('<div class="desk-section">01 · Contract</div>', unsafe_allow_html=True)
         option_type, exercise = _render_option_contract_fields(prefix)
         valuation_date, expiry_date, maturity = _render_contract_dates(prefix, date_mode)
         spot, strike, vol_pct, rate_pct = _render_market_inputs(prefix)
-        algorithm, steps, pruning_method, pruning_threshold = _render_pricing_setup(
-            prefix, model_family, pruning_enabled,
+        steps, pruning_method, pruning_threshold = _render_pricing_setup(
+            prefix, model_family, pruning_enabled, algorithm,
         )
         dividend_frame = _render_dividend_editor(prefix, date_mode, valuation_date)
         submitted = st.form_submit_button("RUN PRICING  →", type="primary", width="stretch")
