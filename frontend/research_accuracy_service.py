@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import Sequence
 
 from frontend.analytics_service import ConvergenceResult
-from src.observed_frontier import nondominated_indices
+from src.analytics.accuracy_metrics import nondominated_indices
 
 
 @dataclass(frozen=True, slots=True)

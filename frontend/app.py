@@ -26,7 +26,7 @@ from frontend.calendar_ticket import dated_request, parse_dated_dividends
 from frontend.model_selection import resolve_model_selection
 from frontend.pricing_service import (
     DEFAULT_THRESHOLD,
-    MAX_STEPS,
+    terminal_step_limit,
     DividendInput,
     PricingInputError,
     PricingRequest,
@@ -34,6 +34,7 @@ from frontend.pricing_service import (
     PRICING_ALGORITHMS,
     price_contract,
 )
+# The terminal delegates all pricing, Greeks and reference persistence to services.
 from frontend.components import result_panel
 from frontend.trading_risk import compute_desk_risk
 from frontend.contract_workflow import (
@@ -59,8 +60,9 @@ def read_dividend_table(frame: pd.DataFrame) -> tuple[DividendInput, ...]:
     return parse_cash_dividends(frame, context="terminal")
 
 
-def _render_ticket_configuration(prefix: str) -> tuple[str, str, bool]:
+def _render_ticket_configuration(prefix: str) -> tuple[str, str, bool, str]:
     """Render date convention and model-family controls outside the pricing form."""
+    # Resolve only the submitted form; ordinary reruns do not calculate prices.
     date_col, model_col = st.columns([1.2, 1.0], gap="medium")
     with date_col:
         date_mode = st.radio(
@@ -81,8 +83,16 @@ def _render_ticket_configuration(prefix: str) -> tuple[str, str, bool]:
             key=f"{prefix}_pruning_mode",
             help="Off uses the full trinomial; On enables probability pruning.",
         )
+        # Resolve only the submitted form; ordinary reruns do not calculate prices.
         pruning_enabled = pruning_mode == "On"
-    return date_mode, model_family, pruning_enabled
+    # Outside the form so the permitted depth updates when the algorithm changes.
+    algorithm = st.selectbox(
+        "Pricing algorithm", PRICING_ALGORITHMS,
+        index=0, key=f"{prefix}_pricing_algorithm",
+        help="Recursive memoization or iterative backward induction. "
+             "Both use the same financial lattice and transitions.",
+    )
+    return date_mode, model_family, pruning_enabled, algorithm
 
 
 def _render_contract_dates(
@@ -109,6 +119,7 @@ def _render_contract_dates(
         else:
             st.caption("Expiry must be strictly later than valuation date.")
     else:
+        # Legacy inputs remain in year fractions; calendar tickets use ACT/365F.
         maturity = st.number_input(
             "Time to maturity · years", min_value=0.01, max_value=100.0,
             value=1.0, step=0.25, format="%.2f", key=f"{prefix}_maturity",
@@ -134,28 +145,27 @@ def _render_market_inputs(prefix: str) -> tuple[float, float, float, float]:
 
 
 def _render_pricing_setup(
-    prefix: str, model_family: str, pruning_enabled: bool,
-) -> tuple[str, int, str, float]:
+    prefix: str, model_family: str, pruning_enabled: bool, algorithm: str,
+) -> tuple[int, str, float]:
     """Render the pricing algorithm, lattice depth and pruning configuration."""
     st.markdown(
         '<div class="desk-section">04 · Model & numerical setup</div>',
         unsafe_allow_html=True,
     )
-    engine_col, steps_col = st.columns(2, gap="small")
-    algorithm = engine_col.selectbox(
-        "Pricing algorithm", PRICING_ALGORITHMS,
-        index=0, key=f"{prefix}_pricing_algorithm",
-        help="Recursive memoization or iterative backward induction. "
-             "Both use the same financial lattice and transitions.",
-    )
-    st.caption("One pricing algorithm for the premium and every Greek.")
-    steps = steps_col.number_input(
-        "Time steps (N)", min_value=1, max_value=MAX_STEPS,
+    step_limit = terminal_step_limit(algorithm)
+    steps_key = f"{prefix}_steps"
+    if steps_key in st.session_state and st.session_state[steps_key] > step_limit:
+        st.session_state[steps_key] = step_limit
+    st.caption(f"{algorithm} · up to {step_limit:,} steps (N). "
+               "The selected algorithm also applies to every Greek.")
+    steps = st.number_input(
+        "Time steps (N)", min_value=1, max_value=step_limit,
         value=100, step=25, key=f"{prefix}_steps",
         help="Interactive safety cap; not the engine's mathematical limit.",
     )
     pruning_method = "Allocation"
     pruning_threshold = DEFAULT_THRESHOLD
+    # Pruning options apply only to a trinomial family with pruning enabled.
     if model_family == "Trinomial" and pruning_enabled:
         with st.expander("Trinomial pruning · Advanced", expanded=False):
             pruning_method = st.selectbox(
@@ -168,7 +178,7 @@ def _render_pricing_setup(
                 key=f"{prefix}_threshold",
                 format_func=lambda value: f"{value:.0e}",
             )
-    return algorithm, steps, pruning_method, pruning_threshold
+    return steps, pruning_method, pruning_threshold
 
 
 def _render_dividend_editor(
@@ -176,6 +186,11 @@ def _render_dividend_editor(
 ) -> pd.DataFrame:
     """Render the model-compatible cash-dividend table editor."""
     with st.expander("Cash dividends · optional", expanded=False):
+        # Use identical monetary bounds in the dated and relative-time editors.
+        amount_column = st.column_config.NumberColumn(
+            "Cash amount · €", min_value=0.0, max_value=1000000.0,
+            step=0.50, format="%.2f",
+        )
         if date_mode == "Calendar dates":
             st.caption("Ex-dates are calendar dates. Amounts are EUR per share. "
                        "A zero-amount row is ignored.")
@@ -188,13 +203,11 @@ def _render_dividend_editor(
                 key=f"{prefix}_dated_dividend_table",
                 column_config={
                     "ex_date": st.column_config.DateColumn("Ex-dividend date", format="DD/MM/YYYY"),
-                    "amount": st.column_config.NumberColumn(
-                        "Cash amount · €", min_value=0.0,
-                        max_value=1000000.0, step=0.50, format="%.2f",
-                    ),
+                    "amount": amount_column,
                 },
             )
         else:
+            # The relative-time editor is retained for pre-calendar tickets.
             st.caption("Dates expressed in years from pricing. "
                        "A zero-amount row is ignored.")
             dividend_frame = st.data_editor(
@@ -206,59 +219,94 @@ def _render_dividend_editor(
                         "Payment time · years", min_value=0.0,
                         max_value=100.0, step=0.05, format="%.4f",
                     ),
-                    "amount": st.column_config.NumberColumn(
-                        "Cash amount · €", min_value=0.0,
-                        max_value=1000000.0, step=0.50, format="%.2f",
-                    ),
+                    "amount": amount_column,
                 },
             )
         st.caption("Binomial does not support discrete cash dividends.")
     return dividend_frame
 
 
-def build_ticket_form(reset_nonce: int) -> tuple[bool, PricingRequest | None, str | None]:
-    """Return submitted status and either a validated shape or parsing error."""
-    prefix = f"ticket_{reset_nonce}"
-    date_mode, model_family, pruning_enabled = _render_ticket_configuration(prefix)
-    with st.form(f"pricing_ticket_{reset_nonce}", clear_on_submit=False):
-        st.markdown('<div class="desk-section">01 · Contract</div>', unsafe_allow_html=True)
-        a, b = st.columns(2)
-        option_type = a.selectbox("Option", ("Call", "Put"), key=f"{prefix}_option")
-        exercise = b.selectbox("Exercise", ("European", "American"), key=f"{prefix}_exercise")
-        valuation_date, expiry_date, maturity = _render_contract_dates(prefix, date_mode)
-        spot, strike, vol_pct, rate_pct = _render_market_inputs(prefix)
-        algorithm, steps, pruning_method, pruning_threshold = _render_pricing_setup(
-            prefix, model_family, pruning_enabled,
+def _apply_ticket_dividends(
+    request: PricingRequest, frame: pd.DataFrame, date_mode: str,
+    valuation_date: date | None, expiry_date: date | None,
+    algorithm: str,
+) -> PricingRequest:
+    """Attach either the dated or relative cashflows to the validated ticket."""
+    if date_mode == "Calendar dates":
+        dates = parse_dated_dividends(frame)
+        request, calendar = dated_request(
+            request, valuation_date, expiry_date, dates,
+            max_steps=terminal_step_limit(algorithm),
         )
-        dividend_frame = _render_dividend_editor(prefix, date_mode, valuation_date)
-        submitted = st.form_submit_button(
-            "RUN PRICING  →", type="primary", width="stretch",
-        )
+        st.session_state["ticket_submitted_calendar"] = calendar
+        return request
+    return replace(request, dividends=read_dividend_table(frame))
 
-    if not submitted:
-        # Render navigation and global page chrome without changing active widgets.
-        return False, None, None
+
+def _make_ticket_request(
+    model_family: str, pruning_enabled: bool, pruning_method: str,
+    pruning_threshold: float, spot: float, strike: float, rate_pct: float,
+    vol_pct: float, maturity: float | None, steps: int, option_type: str,
+    exercise: str,
+) -> PricingRequest:
+    """Resolve model selection and normalize percent inputs just once on submit."""
+    model, pruning_threshold = resolve_model_selection(
+        model_family, pruning_enabled, pruning_method, pruning_threshold,
+    )
+    request = PricingRequest(
+        spot=float(spot), strike=float(strike), rate=float(rate_pct) / 100.0,
+        volatility=float(vol_pct) / 100.0,
+        maturity=float(maturity) if maturity is not None else 1.0,
+        steps=int(steps), option_type=option_type, exercise=exercise,
+        model=model, pruning_threshold=pruning_threshold,
+    )
+    return request
+
+
+def _render_option_contract_fields(prefix: str) -> tuple[str, str]:
+    """Preserve the two contract selectors and their stable session keys."""
+    a, b = st.columns(2)
+    option_type = a.selectbox("Option", ("Call", "Put"), key=f"{prefix}_option")
+    exercise = b.selectbox("Exercise", ("European", "American"), key=f"{prefix}_exercise")
+    return option_type, exercise
+
+
+def _clear_pending_ticket_submission() -> None:
+    """Discard the previous form's derived calendar and pricing algorithm."""
     st.session_state.pop("ticket_submitted_calendar", None)
     st.session_state.pop("ticket_submitted_algorithm", None)
+
+
+def build_ticket_form(reset_nonce: int) -> tuple[bool, PricingRequest | None, str | None]:
+    """Return submitted status and either a validated shape or parsing error."""
+    # Resolve only the submitted form; ordinary reruns do not calculate prices.
+    prefix = f"ticket_{reset_nonce}"
+    date_mode, model_family, pruning_enabled, algorithm = _render_ticket_configuration(prefix)
+    with st.form(f"pricing_ticket_{reset_nonce}", clear_on_submit=False):
+        st.markdown('<div class="desk-section">01 · Contract</div>', unsafe_allow_html=True)
+        option_type, exercise = _render_option_contract_fields(prefix)
+        valuation_date, expiry_date, maturity = _render_contract_dates(prefix, date_mode)
+        spot, strike, vol_pct, rate_pct = _render_market_inputs(prefix)
+        steps, pruning_method, pruning_threshold = _render_pricing_setup(
+            prefix, model_family, pruning_enabled, algorithm,
+        )
+        dividend_frame = _render_dividend_editor(prefix, date_mode, valuation_date)
+        submitted = st.form_submit_button("RUN PRICING  →", type="primary", width="stretch")
+
+    if not submitted:
+        return False, None, None
+    _clear_pending_ticket_submission()
     try:
-        model, pruning_threshold = resolve_model_selection(
+        # Convert display percentages and model controls only after submission.
+        request = _make_ticket_request(
             model_family, pruning_enabled, pruning_method, pruning_threshold,
+            spot, strike, rate_pct, vol_pct, maturity, steps, option_type, exercise,
         )
-        request = PricingRequest(
-            spot=float(spot), strike=float(strike), rate=float(rate_pct) / 100.0,
-            volatility=float(vol_pct) / 100.0,
-            maturity=float(maturity) if maturity is not None else 1.0,
-            steps=int(steps), option_type=option_type, exercise=exercise,
-            model=model, pruning_threshold=pruning_threshold,
+        # Translate dated dividends into the engine convention without repricing.
+        request = _apply_ticket_dividends(
+            request, dividend_frame, date_mode, valuation_date, expiry_date,
+            algorithm,
         )
-        if date_mode == "Calendar dates":
-            dates = parse_dated_dividends(dividend_frame)
-            request, calendar = dated_request(
-                request, valuation_date, expiry_date, dates,
-            )
-            st.session_state["ticket_submitted_calendar"] = calendar
-        else:
-            request = replace(request, dividends=read_dividend_table(dividend_frame))
         st.session_state["ticket_submitted_algorithm"] = algorithm
         return True, request, None
     except (PricingInputError, CalendarInputError) as exc:
@@ -268,6 +316,7 @@ def build_ticket_form(reset_nonce: int) -> tuple[bool, PricingRequest | None, st
 def reset_ticket() -> None:
     """Create fresh widget identities; preserve session blotter."""
     st.session_state["ticket_reset_nonce"] = st.session_state.get("ticket_reset_nonce", 0) + 1
+    # Resolve only the submitted form; ordinary reruns do not calculate prices.
     st.session_state["last_pricing_result"] = None
     st.session_state.pop("desk_risk_snapshot", None)
     st.session_state.pop("desk_risk_error", None)
@@ -288,6 +337,7 @@ def _initialize_session_state() -> None:
 def _render_reference_sidebar() -> None:
     """Display saved reference contract without touching session state."""
     reference = get_reference(st.session_state)
+    # Preserve current navigation and Streamlit session-state conventions.
     if reference is None:
         st.caption("No reference saved yet.")
     else:
@@ -299,6 +349,7 @@ def _render_reference_sidebar() -> None:
             f"{reference.model} · N={reference.steps} · "
             f"{len(reference.dividends)} cash dividend(s)"
         )
+        # Keep date provenance visible when importing a saved reference contract.
         reference_calendar = get_reference_calendar(st.session_state)
         if reference_calendar is not None:
             st.caption(
@@ -316,6 +367,7 @@ def _render_reference_sidebar() -> None:
 
 
 def _render_sidebar() -> str:
+    # Sidebar selection never evaluates a financial model on its own.
     from frontend.model_diagnostics import WORKSPACES
     with st.sidebar:
         st.markdown("### ◈ LATTICE 272")
@@ -346,6 +398,7 @@ def _render_sidebar() -> str:
 
 def _record_pricing_history(request: PricingRequest, result: PricingResult, selected_algorithm: str) -> None:
     """Store at most twelve successful valuations in the session blotter."""
+    # Keep priced results and optional Greek diagnostics independent.
     history = st.session_state["pricing_history"]
     history.insert(0, {
         "Model": request.model, "Engine": selected_algorithm,
@@ -366,6 +419,7 @@ def _process_pricing_submission(
     st.session_state.pop("desk_risk_error", None)
     st.session_state.pop("desk_greek_curve", None)
     st.session_state.pop("last_pricing_calendar", None)
+    # Keep priced results and optional Greek diagnostics independent.
     st.session_state.pop("spot_revaluation", None)
     if parsing_error is not None:
         # Preserve error messages and empty states for model failures.
@@ -418,6 +472,7 @@ def _render_pricing_results(submitted: bool) -> None:
         if get_reference(st.session_state) == last_result.request:
             st.caption("Active reference · saved from this pricing ticket.")
         else:
+            # Keep priced results and optional Greek diagnostics independent.
             st.caption("Save this ticket to reuse its inputs across workspaces.")
     elif not submitted:
         st.markdown('<div class="desk-section">Valuation output</div>', unsafe_allow_html=True)
@@ -451,6 +506,7 @@ def _render_pricing_terminal() -> None:
         if submitted:
             _process_pricing_submission(request, parsing_error)
 
+        # Keep priced results and optional Greek diagnostics independent.
         _render_pricing_results(submitted)
 
     st.divider()

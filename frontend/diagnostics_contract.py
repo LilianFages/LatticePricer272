@@ -45,7 +45,7 @@ def plan_handoff(
 
 
 def apply_handoff(
-    state: MutableMapping[str, Any], destination: str, request: PricingRequest,
+    state: MutableMapping[str, Any], destination: str, request: PricingRequest
 ) -> None:
     """Prefill only compatible widgets; no numerical calculation or shared-reference edits."""
     _, issues = plan_handoff(request, destination)

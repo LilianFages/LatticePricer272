@@ -7,7 +7,7 @@ from frontend.pricing_service import (
     PricingFunction,
     PricingRequest,
     price_contract,
-    validate_request,
+    validate_terminal_request,
 )
 from src.risk.desk import (
     EXPECTED_PRICING_ERRORS,
@@ -18,6 +18,7 @@ from src.risk.desk import (
     GreekCurvePoint,
     GreekName,
     _bs_second_order,
+    # Keep the injectable risk engine and its pricing callback unchanged.
     compute_desk_risk as _compute_desk_risk,
     compute_greek_curve as _compute_greek_curve,
     greek_table,
@@ -25,23 +26,22 @@ from src.risk.desk import (
 from src.risk.hedging import StockHedge, calculate_stock_hedge
 
 
-def compute_desk_risk(
-    request: PricingRequest,
+def compute_desk_risk(request: PricingRequest,
     bumps: GreekBumps | None = None,
     pricer: PricingFunction = price_contract,
 ) -> DeskRiskSnapshot:
     """Inject existing validators and pricing engine into the shared core."""
+    # Keep the core engine injectable so test doubles and notebook adapters work.
     return _compute_desk_risk(
         request,
         bumps,
         pricer=pricer,
-        validate_request=validate_request,
+        validate_request=validate_terminal_request,
         calculate_greeks=calculate_greeks,
     )
 
 
-def compute_greek_curve(
-    request: PricingRequest,
+def compute_greek_curve(request: PricingRequest,
     name: GreekName,
     *,
     count: int = 5,
@@ -50,6 +50,7 @@ def compute_greek_curve(
     pricer: PricingFunction = price_contract,
 ) -> tuple[GreekCurvePoint, ...]:
     """Retain lazy-curve semantics and monkeypatchable risk callbacks."""
+    # Greeks are evaluated lazily through the existing shared implementation.
     return _compute_greek_curve(
         request,
         name,
@@ -57,7 +58,8 @@ def compute_greek_curve(
         span_pct=span_pct,
         bumps=bumps,
         pricer=pricer,
-        validate_request=validate_request,
+        validate_request=validate_terminal_request,
         calculate_greeks=calculate_greeks,
+        # Use the existing injectable desk-risk function for each curve point.
         compute_desk_risk=compute_desk_risk,
     )

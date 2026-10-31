@@ -9,7 +9,7 @@ from frontend.pricing_service import (
     PricingFunction,
     PricingRequest,
     price_contract,
-    validate_request,
+    validate_terminal_request,
 )
 from src.risk.greeks import (
     BP,
@@ -35,5 +35,5 @@ def calculate_greeks(
         request,
         bumps,
         pricer=pricer,
-        validate_request=validate_request,
+        validate_request=validate_terminal_request,
     )

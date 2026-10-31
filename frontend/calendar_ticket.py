@@ -16,7 +16,7 @@ from frontend.calendar_contract import (
     CalendarInputError, ContractCalendar, DatedCashDividend,
 )
 from frontend.pricing_service import (
-    DividendInput, PricingInputError, PricingRequest, validate_request,
+    MAX_STEPS, DividendInput, PricingInputError, PricingRequest, validate_request,
 )
 
 
@@ -31,6 +31,25 @@ def _as_date(value: object, row_number: int) -> date:
     )
 
 
+def _nonnegative_amount(raw_amount: object, row_number: int) -> float:
+    """Validate a dated cashflow without accepting boolean amounts."""
+    if isinstance(raw_amount, bool):
+        raise CalendarInputError(
+            f"Dividend row {row_number}: amount must be numeric."
+        )
+    try:
+        amount = float(raw_amount)
+    except (ValueError, TypeError, OverflowError) as exc:
+        raise CalendarInputError(
+            f"Dividend row {row_number}: amount must be numeric."
+        ) from exc
+    if not math.isfinite(amount) or amount < 0:
+        raise CalendarInputError(
+            f"Dividend row {row_number}: amount must be finite and nonnegative."
+        )
+    return amount
+
+
 def parse_dated_dividends(frame: pd.DataFrame) -> tuple[DatedCashDividend, ...]:
     """Ignore optional zero rows; never discard a malformed positive cashflow."""
     events: list[DatedCashDividend] = []
@@ -43,20 +62,7 @@ def parse_dated_dividends(frame: pd.DataFrame) -> tuple[DatedCashDividend, ...]:
                     f"Dividend row {row_number}: enter an amount or delete the row."
                 )
             continue
-        if isinstance(amount_raw, bool):
-            raise CalendarInputError(
-                f"Dividend row {row_number}: amount must be numeric."
-            )
-        try:
-            amount = float(amount_raw)
-        except (ValueError, TypeError, OverflowError) as exc:
-            raise CalendarInputError(
-                f"Dividend row {row_number}: amount must be numeric."
-            ) from exc
-        if not math.isfinite(amount) or amount < 0:
-            raise CalendarInputError(
-                f"Dividend row {row_number}: amount must be finite and nonnegative."
-            )
+        amount = _nonnegative_amount(amount_raw, row_number)
         if amount == 0.0:
             continue
         if pd.isna(date_raw):
@@ -72,6 +78,8 @@ def dated_request(
     valuation_date: date,
     expiry_date: date,
     dated_dividends: tuple[DatedCashDividend, ...],
+    *,
+    max_steps: int = MAX_STEPS,
 ) -> tuple[PricingRequest, ContractCalendar]:
     """Derive the exact model ticket, leaving the original immutable ticket intact."""
     calendar = ContractCalendar(valuation_date, expiry_date, dated_dividends)
@@ -83,7 +91,7 @@ def dated_request(
                         for item in resolved.dividends),
     )
     try:
-        validate_request(request)
+        validate_request(request, max_steps=max_steps)
     except PricingInputError as exc:
         raise CalendarInputError(str(exc)) from exc
     return request, calendar

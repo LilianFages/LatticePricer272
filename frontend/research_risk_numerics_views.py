@@ -26,6 +26,7 @@ def _risk_chart(rows: tuple, dimension: str, greek: str,
                           analytical=analytical, deviation=deviation)
     if not points:
         return None
+    # Plot measured Greeks only; failed stencils have already been filtered.
     data = pd.DataFrame([{
         "x": p.coordinate, "y": p.plotted, "measured": p.measured,
         "N": p.steps, "gamma_bump": p.gamma_bump_pct,
@@ -42,6 +43,7 @@ def _risk_chart(rows: tuple, dimension: str, greek: str,
                  alt.Tooltip("gamma_bump:Q", title="Gamma bump (%)", format=".3f"),
                  alt.Tooltip("N:Q", title="Lattice N"),
              ]))
+    # Analytical lines are conditional on a valid Black–Scholes comparator.
     if analytical is None or not math.isfinite(analytical):
         return curve.properties(height=285).interactive()
     ref_value = 0.0 if deviation else analytical
@@ -62,6 +64,7 @@ def _render_risk_overview(stats: StabilitySummary, analytic: dict[str, float] | 
     a, b, c = st.columns(3)
     a.metric("Valid configurations", f"{stats.successful}/{stats.total}")
     b.metric("Delta span across N", _fmt(stats.n_delta_span))
+    # Show observed finite differences without assuming convergence.
     c.metric("Gamma span across N", _fmt(stats.n_gamma_span))
     if analytic:
         a, b = st.columns(2)
@@ -82,6 +85,7 @@ def _render_risk_charts(rows: tuple, analytic: dict[str, float] | None, deviatio
     st.caption("The bump sweep holds N fixed and uses equal Delta/Gamma spot shocks. "
                "The N sweep holds Delta's bump at ±1%; Gamma follows the selected "
                "adaptive or fixed scheme. Orange dashed line = Black–Scholes when valid.")
+    # Show observed finite differences without assuming convergence.
     for dimension, label in DIMENSIONS:
         st.markdown(f'<div class="desk-section">{label}</div>', unsafe_allow_html=True)
         left, right = st.columns(2, gap="large")
@@ -102,6 +106,7 @@ def _render_risk_methodology(rows: tuple, stats: StabilitySummary, export_csv: C
         st.warning(f"Near-zero Gamma at {stats.near_zero_n_gamma} N settings "
                    "despite nonzero analytic Black–Scholes Gamma. "
                    "This may indicate finite-lattice stencil instability.")
+    # Show observed finite differences without assuming convergence.
     failed = [r for r in rows if r.status != "ok" or r.delta is None or r.gamma is None]
     if failed:
         st.warning(f"{len(failed)} configurations did not yield complete finite-difference Greeks.")
@@ -111,6 +116,7 @@ def _render_risk_methodology(rows: tuple, stats: StabilitySummary, export_csv: C
                    "effects are not isolated. A fixed bump supports a cleaner N comparison, "
                    "although finite-difference bias remains. "
                    "Analytic Black–Scholes comparison applies only where valid.")
+        # Export the original measured sweeps, including failed observations.
         table = pd.DataFrame([{
             "Sweep": p.dimension, "Coordinate": p.coordinate, "N": p.steps,
             "Delta": p.delta, "Gamma": p.gamma,
@@ -123,7 +129,7 @@ def _render_risk_methodology(rows: tuple, stats: StabilitySummary, export_csv: C
                            width="stretch")
 
 
-def render_risk_numerics(rows: tuple, request: object, export_csv) -> None:
+def render_risk_numerics(rows: tuple, request: object, export_csv: Callable) -> None:
     """Two coordinated sweeps, not a duplicate of the trading Greek snapshot."""
     try:
         analytic = analytic_bs_greeks(request)
@@ -131,6 +137,7 @@ def render_risk_numerics(rows: tuple, request: object, export_csv) -> None:
         analytic = None
     if not analytic or any(not math.isfinite(analytic[g]) for g in GREEKS):
         analytic = None
+    # These charts summarize cached observations; no pricing is triggered here.
     stats = summarize_stability(rows, analytic)
     deviation = _render_risk_overview(stats, analytic)
     _render_risk_charts(rows, analytic, deviation)

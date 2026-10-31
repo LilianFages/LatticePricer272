@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import math
 
-from src.black_scholes_terms import standardized_terms
+from src.pricing.black_scholes_terms import standardized_terms
 
 
 def _check_bump(name: str, size: float) -> None:
@@ -18,14 +18,13 @@ def _check_bump(name: str, size: float) -> None:
 
 
 def vanna_from_samples(
-    *,
     plus_high: float | None,
     minus_high: float | None,
     plus_low: float | None,
     minus_low: float | None,
     spot_bump: float,
     vol_bump: float,
-    centered: bool,
+    centered: bool
 ) -> float | None:
     """Mixed d²V/dS dσ from crossed spot/volatility bumps, per vol pp.
 
@@ -45,12 +44,11 @@ def vanna_from_samples(
 
 
 def vomma_from_samples(
-    *,
     base: float,
     high: float | None,
     low: float | None,
     vol_bump: float,
-    centered: bool,
+    centered: bool
 ) -> float | None:
     """Second volatility derivative per (1 volatility percentage point)².
 
@@ -68,8 +66,8 @@ def vomma_from_samples(
 
 
 def black_scholes_vanna_vomma(
-    *, spot: float, strike: float, rate: float,
-    volatility: float, maturity: float,
+    spot: float, strike: float, rate: float,
+    volatility: float, maturity: float
 ) -> tuple[float, float]:
     """Analytical European no-dividend BS second-order Greeks, pp-normalized.
 

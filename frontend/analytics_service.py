@@ -9,15 +9,18 @@ import csv
 import io
 import math
 from dataclasses import dataclass, replace
-from typing import Callable, Literal, Sequence
+from typing import Literal, Sequence
 
 from frontend.greeks_service import GreekBumps, analytic_bs_greeks, select_gamma_bump
 from frontend.pricing_service import (
-    MAX_STEPS, MODELS, PricingInputError, PricingRequest, price_contract,
+    MAX_STEPS, MODELS, PricingFunction, PricingInputError, PricingRequest, price_contract,
     validate_request,
 )
 
 ParameterName = Literal["spot", "volatility", "rate", "maturity"]
+# Immutable defaults also make the two independent numerical grids explicit.
+DEFAULT_SPOT_BUMP_GRID: tuple[float, ...] = (0.5, 1.0, 2.0, 3.5)
+DEFAULT_STEPS_GRID: tuple[int, ...] = (40, 80, 100, 150)
 DEFAULT_AMPLITUDE: dict[str, float] = {
     "spot": 0.20,       # ±20% of base spot
     "volatility": 0.05, # ±5 volatility percentage points
@@ -28,6 +31,7 @@ DEFAULT_AMPLITUDE: dict[str, float] = {
 
 @dataclass(frozen=True, slots=True)
 class PricingObservation:
+    # Preserve request validation and distinguish sampled gaps from exact errors.
     model: str
     coordinate: float
     price: float | None
@@ -48,6 +52,7 @@ class ConvergenceResult:
 @dataclass(frozen=True, slots=True)
 class StabilityObservation:
     dimension: str
+    # Preserve request validation and distinguish sampled gaps from exact errors.
     coordinate: float
     steps: int
     spot_bump_pct: float
@@ -57,7 +62,9 @@ class StabilityObservation:
     status: str
 
 
-def _check_models(models: Sequence[str], *, max_count: int = 5) -> tuple[str, ...]:
+def _check_models(
+    models: Sequence[str], *, max_count: int = 5,
+) -> tuple[str, ...]:
     if not models or len(models) > max_count or len(set(models)) != len(models):
         # Reuse the same contract specification for each numerical sweep.
         raise PricingInputError("Choose 1–5 distinct pricing models.")
@@ -66,7 +73,7 @@ def _check_models(models: Sequence[str], *, max_count: int = 5) -> tuple[str, ..
     return tuple(models)
 
 
-def _evaluate(request: PricingRequest, coordinate: float, pricer: Callable) -> PricingObservation:
+def _evaluate(request: PricingRequest, coordinate: float, pricer: PricingFunction) -> PricingObservation:
     try:
         result = pricer(request)
         price = float(result.price)
@@ -90,6 +97,7 @@ def _linear_grid(center: float, amplitude: float, count: int) -> tuple[float, ..
 
 def _validate_shared_contract(request: PricingRequest) -> None:
     """Validate the market independently of a model that may fail individually."""
+    # Preserve request validation and distinguish sampled gaps from exact errors.
     base = replace(request, model="Hybrid") if request.dividends and request.model == "Binomial" else request
     validate_request(base)
 
@@ -100,7 +108,7 @@ def sensitivity_sweep(
     models: Sequence[str],
     count: int = 9,
     amplitude: float | None = None,
-    pricer: Callable = price_contract,
+    pricer: PricingFunction = price_contract,
 ) -> tuple[PricingObservation, ...]:
     """Independent repricings across one parameter; one failure never stops others.
 
@@ -110,6 +118,7 @@ def sensitivity_sweep(
     _validate_shared_contract(request)
     selected = _check_models(models)
     if parameter not in DEFAULT_AMPLITUDE:
+        # Preserve request validation and distinguish sampled gaps from exact errors.
         raise PricingInputError("Unsupported sensitivity parameter.")
     if type(count) is not int or not 3 <= count <= 15 or count % 2 == 0:
         raise PricingInputError("Use 3–15 odd-numbered sweep points.")
@@ -142,13 +151,14 @@ def convergence_study(
     models: Sequence[str],
     steps_grid: Sequence[int],
     numerical_reference_model: str = "Trinomial · Allocation pruning",
-    pricer: Callable = price_contract,
+    pricer: PricingFunction = price_contract,
 ) -> ConvergenceResult:
     """Price and runtime vs N. Error for non-European cases is a *gap*, not truth.
 
     The numerical reference is the selected reference model at the highest
     sampled N. No claim of exactness or asymptotic convergence is made.
     """
+    # Preserve request validation and distinguish sampled gaps from exact errors.
     _validate_shared_contract(request)
     selected = _check_models(models)
     grid = tuple(steps_grid)
@@ -181,7 +191,7 @@ def convergence_study(
 
 # Preserve measured Greek stability and finite-difference conventions.
 def _spot_pair(
-    request: PricingRequest, bump_pct: float, pricer: Callable,
+    request: PricingRequest, bump_pct: float, pricer: PricingFunction,
 ) -> tuple[float | None, float | None, str | None]:
     h = request.spot*bump_pct/100
     a = _evaluate(replace(request, spot=request.spot-h), -h, pricer)
@@ -193,7 +203,7 @@ def _spot_pair(
 
 def _stability_at(
     request: PricingRequest, *, dimension: str, coordinate: float,
-    delta_pct: float, gamma_pct: float | None, pricer: Callable,
+    delta_pct: float, gamma_pct: float | None, pricer: PricingFunction,
 ) -> StabilityObservation:
     base = _evaluate(request, request.spot, pricer)
     if gamma_pct is None:
@@ -220,16 +230,17 @@ def _stability_at(
 
 def greeks_stability(
     request: PricingRequest,
-    delta_bumps_pct: Sequence[float] = (0.5, 1.0, 2.0, 3.5),
-    steps_grid: Sequence[int] = (40, 80, 100, 150),
+    delta_bumps_pct: Sequence[float] = DEFAULT_SPOT_BUMP_GRID,
+    steps_grid: Sequence[int] = DEFAULT_STEPS_GRID,
     gamma_bump_pct: float | None = None,
-    pricer: Callable = price_contract,
+    pricer: PricingFunction = price_contract,
 ) -> tuple[StabilityObservation, ...]:
     """Compare Delta/Gamma versus spot-bump width and N independently.
 
     Bump sweep uses equal widths for Delta and Gamma so both can be compared.
     N sweep uses Delta ±1% and grid-aware Gamma unless explicitly overridden.
     """
+    # Both sweeps use the same request validation and report failed prices.
     validate_request(request)
     widths = tuple(float(x) for x in delta_bumps_pct)
     ns = tuple(steps_grid)
@@ -240,13 +251,14 @@ def greeks_stability(
     if not 2 <= len(ns) <= 6 or any(type(x) is not int or not 1 <= x <= MAX_STEPS for x in ns):
         raise PricingInputError("Provide 2–6 legal N values.")
     if len(set(ns)) != len(ns) or list(ns) != sorted(ns):
+        # Preserve request validation and distinguish sampled gaps from exact errors.
         raise PricingInputError("N grid must be increasing and unique.")
     if gamma_bump_pct is not None and (
         not math.isfinite(gamma_bump_pct) or not 0 < gamma_bump_pct <= 20
     ):
         raise PricingInputError("Gamma bump must belong to (0, 20]%.")
+    # Width sweeps hold N constant; depth sweeps vary N with a fixed Delta stencil.
     rows = [_stability_at(request, dimension="spot bump", coordinate=bump,
-                          # Reuse the same contract specification for each numerical sweep.
                           delta_pct=bump, gamma_pct=bump, pricer=pricer)
             for bump in widths]
     rows.extend(_stability_at(replace(request, steps=n), dimension="steps",
@@ -256,15 +268,17 @@ def greeks_stability(
     return tuple(rows)
 
 
-def observations_csv(rows: Sequence[PricingObservation], *, reference: float | None = None,
-                     label: str = "") -> str:
+def observations_csv(
+    rows: Sequence[PricingObservation], *, reference: float | None = None,
+    label: str = "",
+) -> str:
     buf = io.StringIO()
     out = csv.writer(buf)
     out.writerow(["model", "coordinate", "price", "runtime_ms", "status",
                   "black_scholes", "reference_price", "reference_label", "abs_gap"])
+    # Keep failed measurements as empty numeric fields, never replace with zero.
     for point in rows:
         out.writerow([point.model, point.coordinate, "" if point.price is None else point.price,
-                      # Keep convergence errors separate from runtime observations.
                       "" if point.runtime_ms is None else point.runtime_ms, point.status,
                       "" if point.black_scholes is None else point.black_scholes,
                       "" if reference is None else reference, label,

@@ -33,13 +33,47 @@ Saved experimental evidence is available through an **optional, read-only archiv
 
 | Directory | Purpose |
 | --- | --- |
-| `src/` | Pricing trees, transition probabilities, option objects, backward algorithms and numerical risk primitives |
+| `src/` | Three lattice families, one recursive pricer, one backward pricer and shared risk primitives |
 | `frontend/` | Streamlit views, validated request/result adapters, analytical services and presentation |
 | `experiments/` | Offline research protocols and command-line experimental studies |
 | `tests/` | Pricing, dividend-boundary, numerical, frontend and provenance regression tests |
 | `results/data/` | Versioned CSV measurements and experiment outputs |
 | `results/figures/` | Versioned visual evidence from offline studies |
-| `docs/` | Experiment protocols, model assumptions, historical release notes and research design |
+| `docs/` | Current architecture, quantitative research, experiment and validation guides |
+
+### Python subpackages
+
+| Package | Responsibility |
+| --- | --- |
+| `src/contracts/` | Option payoffs, discrete cash dividends and exercise timing |
+| `src/lattices/` | Binomial, trinomial, allocation-pruned and hybrid trees |
+| `src/pricing/` | Recursive/backward pricing and Black–Scholes references |
+| `src/analytics/` | Numerical accuracy and Pareto metrics |
+| `src/risk/` | Greeks, risk sensitivities and hedging |
+| `experiments/convergence/` | Finite-step prices, errors and accuracy thresholds |
+| `experiments/performance/` | Timings, recursion limits and accuracy versus cost |
+| `experiments/pruning/` | Branch/allocation pruning benchmarks |
+| `experiments/dividends/` | Cash-dividend impact, timing and stopping profiles |
+| `experiments/comparisons/` | Comparison of lattice families |
+| `tests/{pricing,lattices,dividends,risk,frontend,research}/` | Domain-focused regression suites |
+
+Run scripts as modules from the repository root, for example:
+
+```bash
+python -m experiments.performance.pricing_accuracy_cost --quick
+python -m experiments.dividends.dividend_grid_robustness --quick
+```
+
+### Pricing Terminal lattice depth
+
+The Pricing Terminal allows **N ≤ 700** with the recursive pricer and
+**N ≤ 1,000** with iterative backward induction. Selecting an algorithm
+updates the editor's allowed maximum without changing the financial model.
+Other research and model-comparison workspaces retain their independent
+limits (typically N ≤ 350, with smaller visualization limits).
+The same algorithm is used for the premium, Greeks and optional spot
+revaluations. Very deep lattices, especially unpruned trinomial trees,
+can require considerable memory and computation time.
 
 ## Numerical integrity and limitations
 
@@ -49,39 +83,20 @@ Saved experimental evidence is available through an **optional, read-only archiv
 - **Performance:** recorded timings depend on hardware, Python version, run order and system load. Single-run live timings are not statistically equivalent to repeated offline benchmarks.
 - **Pruning:** allocation savings and price differences must be measured on comparable successful cases. Failed reference calculations are never interpreted as a zero gap.
 
-## Reproducible offline experiments
+## Documentation
 
-Each entry point has its own input grid and output protocol. Two examples:
+- [Architecture](docs/architecture.md): code structure and numerical conventions.
+- [Research](docs/research.md): current Streamlit workspaces and financial interpretation.
+- [Experiments](docs/experiments.md): quantitative designs and recorded evidence.
+- [Validation](docs/validation.md): maintained tests and manual acceptance checks.
 
-```bash
-python -m experiments.accuracy_vs_cost --quick
-python -m experiments.option_value_exercise_by_dates --steps 100
-```
-
-These commands can generate files; review their corresponding protocols and output paths first. Do **not** indiscriminately rerun full historical benchmarks or overwrite versioned results when you only want to explore the dashboard.
-
-For the current Quant Research organization, see [`docs/Quant_Research_Phase6.md`](docs/Quant_Research_Phase6.md). Existing detailed protocols include `docs/Accuracy_vs_Cost_protocol.md`, `docs/Accuracy_vs_Cost_Phase2_protocol.md` and `docs/Temporal_Experiments_Protocol.md`. Older frontend notes are preserved in [docs/archive/](docs/archive/README.md) as historical release documentation; they do not describe the current navigation.
-
-## Final release verification (Phase 6D)
-
-After the normal test suite, run the **read-only** scientific and dependency
-check against committed experiment evidence:
+## Final verification
 
 ```bash
 python -m pytest -q
-python -m scripts.release_audit
+python -m compileall -q src frontend experiments tests
+python -m streamlit run frontend/app.py
 ```
 
-The release audit checks the 26 recorded Phase 6C configurations (complete
-experimental grid, European call-put parity, American early-exercise premium,
-finite-N reference gaps and contractual ex-date price shifts), their exported
-summary and PNGs, and static first-party imports. It never reprices options,
-rewrites CSVs or updates figures. This complements rather than replaces full
-`pytest` and desktop Streamlit acceptance tests.
-
-For the authoritative current documentation, see
-[`docs/README.md`](docs/README.md),
-[`docs/Release_Protocol.md`](docs/Release_Protocol.md) and
-[`docs/Architecture_Snapshot.md`](docs/Architecture_Snapshot.md).
-The current **Exercise & dividends** section also offers the recorded
-[dividend-grid robustness study](docs/Dividend_Grid_Robustness_Protocol.md).
+Research datasets and figures remain versioned under `results/`.
+Do not rerun full historical benchmarks just to validate a code patch.

@@ -12,12 +12,12 @@ from types import SimpleNamespace
 from typing import Any
 
 from frontend.pricing_service import PricingRequest
-from src.dividend import CashDividend
-from src.dividend_exercise import (
+from src.contracts.dividend import CashDividend
+from src.contracts.dividend_exercise import (
     DividendStepEvent, before_dividend_value, dividend_exercise_steps,
     offgrid_exercise_bound,
 )
-from src.option import CallOption, PutOption
+from src.contracts.option import CallOption, PutOption
 
 
 def dividend_events_for_request(request: PricingRequest) -> dict[int, DividendStepEvent]:

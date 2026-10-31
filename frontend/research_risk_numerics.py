@@ -20,6 +20,7 @@ GAMMA_N_MODES = (
 
 def n_sweep_gamma_bump(mode: str) -> float | None:
     """Translate the user's explicit stencil choice; None uses the grid."""
+    # Keep failed Greek stencils separate from valid numerical observations.
     if mode == GAMMA_N_MODES[0]:
         return None
     values = dict(zip(GAMMA_N_MODES[1:], (1.0, 2.0, 3.5, 5.0)))
@@ -42,6 +43,7 @@ class RiskMeasure:
 
 @dataclass(frozen=True, slots=True)
 class StabilitySummary:
+    # Keep failed Greek stencils separate from valid numerical observations.
     successful: int
     total: int
     n_delta_span: float | None
@@ -51,9 +53,7 @@ class StabilitySummary:
     near_zero_n_gamma: int
 
 
-def observations(
-    rows: Sequence[StabilityObservation],
-    *, dimension: str, greek: str,
+def observations(rows: Sequence[StabilityObservation], *, dimension: str, greek: str,
     analytical: float | None = None, deviation: bool = False,
 ) -> tuple[RiskMeasure, ...]:
     """Retain only successful finite observations and never invent zeroes.
@@ -64,6 +64,7 @@ def observations(
         raise ValueError("Unsupported risk dimension or Greek.")
     if deviation and (analytical is None or not math.isfinite(analytical)):
         raise ValueError("A finite analytical benchmark is required for deviations.")
+    # Filter failed/nonfinite measurements without manufacturing zero Greeks.
     field = greek.lower()
     result: list[RiskMeasure] = []
     for point in rows:
@@ -90,23 +91,25 @@ def _span(values: Sequence[RiskMeasure]) -> float | None:
 
 
 def _max_gap(values: Sequence[RiskMeasure], ref: float | None) -> float | None:
+    # Keep failed Greek stencils separate from valid numerical observations.
     if ref is None or not math.isfinite(ref) or not values:
         return None
     return max(abs(x.measured-ref) for x in values)
 
 
-def summarize_stability(
-    rows: Sequence[StabilityObservation], analytical: dict[str, float] | None,
+def summarize_stability(rows: Sequence[StabilityObservation], analytical: dict[str, float] | None,
 ) -> StabilitySummary:
     """Observed spans, not confidence intervals or convergence guarantees."""
     valid = sum(point.status == "ok" and point.delta is not None
                 and point.gamma is not None
                 and math.isfinite(point.delta) and math.isfinite(point.gamma)
                 for point in rows)
+    # Restrict N-sweep comparisons to completed finite-difference results.
     delta = observations(rows, dimension="steps", greek="Delta")
     gamma = observations(rows, dimension="steps", greek="Gamma")
     ref_d = analytical.get("Delta") if analytical else None
     ref_g = analytical.get("Gamma") if analytical else None
+    # Only a valid, materially nonzero Black–Scholes Gamma defines this warning.
     near_zero = sum(
         abs(x.measured) < .05*abs(ref_g)
         for x in gamma

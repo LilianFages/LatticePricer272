@@ -8,6 +8,8 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
+from frontend.research_accuracy_service import AccuracyCostPoint
+
 from frontend.analytics_service import (
     ConvergenceResult, PricingObservation, StabilityObservation,
     convergence_study, greeks_stability, observations_csv,
@@ -38,8 +40,7 @@ def _threshold(key: str) -> float:
                         format_func=lambda x: "off" if not x else f"{x:.0e}")
 
 
-def _line_chart(
-    data: pd.DataFrame, *, x: str, y: str, group: str,
+def _line_chart(data: pd.DataFrame, *, x: str, y: str, group: str,
     x_label: str, y_label: str, log_y: bool = False, height: int = 310,
 ) -> alt.Chart:
     scale = alt.Scale(type="log", zero=False) if log_y else alt.Scale(zero=False)
@@ -204,6 +205,14 @@ def _pareto_path_frame(rows: pd.DataFrame) -> pd.DataFrame:
             .drop_duplicates(subset=["Runtime (ms)", "Absolute gap (€)"]))
 
 
+def _accuracy_cost_tooltips() -> list:
+    """Use identical tooltip fields for candidate points and Pareto highlights."""
+    return ["Model:N", "N:Q", alt.Tooltip("Premium (€):Q", format=".6f"),
+            alt.Tooltip("Runtime (ms):Q", format=".3f"),
+            alt.Tooltip("Absolute gap (€):Q", format=".6f"),
+            "Pareto candidate:N"]
+
+
 def _accuracy_cost_chart(rows: pd.DataFrame, *, pareto_only: bool,
                          gap_label: str) -> alt.LayerChart:
     """Plot all observed points plus the *global* nondominated envelope.
@@ -212,15 +221,13 @@ def _accuracy_cost_chart(rows: pd.DataFrame, *, pareto_only: bool,
     not evidence of an attainable intermediate configuration.
     """
     displayed = rows.loc[rows["Pareto candidate"]] if pareto_only else rows
+    # The envelope is global across models, not per-series interpolation.
     frontier = _pareto_path_frame(rows)
     x = alt.X("Runtime (ms):Q", title="Single-run valuation time (ms)",
               scale=alt.Scale(zero=True))
     y = alt.Y("Absolute gap (€):Q", title=gap_label,
               scale=alt.Scale(zero=True))
-    tips = ["Model:N", "N:Q", alt.Tooltip("Premium (€):Q", format=".6f"),
-            alt.Tooltip("Runtime (ms):Q", format=".3f"),
-            alt.Tooltip("Absolute gap (€):Q", format=".6f"),
-            "Pareto candidate:N"]
+    tips = _accuracy_cost_tooltips()
     envelope = (alt.Chart(frontier)
                 .mark_line(color="#F5C46D", strokeDash=[6, 4], strokeWidth=2.7)
                 .encode(x=x, y=y, order=alt.Order("Runtime (ms):Q",
@@ -235,6 +242,7 @@ def _accuracy_cost_chart(rows: pd.DataFrame, *, pareto_only: bool,
     highlighted = (alt.Chart(frontier)
                    .mark_point(filled=False, color="#F5C46D",
                                size=205, strokeWidth=2.2)
+                   # Keep each measurement tied to the submitted experiment and cached result.
                    .encode(x=x, y=y, tooltip=tips))
     return alt.layer(envelope, points, highlighted).properties(height=325).interactive()
 
@@ -259,8 +267,20 @@ def _render_accuracy_target_result(points: tuple, target: float) -> None:
                    f"Full model name: {winner.model}.")
 
 
+def _observed_accuracy_cost_frame(
+    points: tuple[AccuracyCostPoint, ...],
+) -> pd.DataFrame:
+    """Keep the observed price/runtime/Pareto schema stable for charts and CSV."""
+    return pd.DataFrame([{
+        "Model": p.model, "N": p.steps, "Premium (€)": p.premium,
+        "Runtime (ms)": p.runtime_ms, "Absolute gap (€)": p.absolute_gap,
+        "Pareto candidate": p.pareto,
+    } for p in points])
+
+
 def _render_accuracy_cost_tradeoff(outcome: ConvergenceResult) -> None:
     """Observed Pareto candidates, a global frontier and on-demand target search."""
+    # Keep each measurement tied to the submitted experiment and cached result.
     from frontend.research_accuracy_service import accuracy_cost_points
 
     st.markdown('<div class="desk-section">Accuracy vs computational cost</div>',
@@ -275,11 +295,7 @@ def _render_accuracy_cost_tradeoff(outcome: ConvergenceResult) -> None:
     if not analytic:
         st.caption("Numerical-reference gaps are not true pricing errors. "
                    "The selected finite-N comparator can itself be inaccurate.")
-    rows = pd.DataFrame([{
-        "Model": p.model, "N": p.steps, "Premium (€)": p.premium,
-        "Runtime (ms)": p.runtime_ms, "Absolute gap (€)": p.absolute_gap,
-        "Pareto candidate": p.pareto,
-    } for p in points])
+    rows = _observed_accuracy_cost_frame(points)
     a, b = st.columns([1.1, 1.0])
     pareto_only = a.checkbox("Show observed Pareto candidates only", value=False,
                               key="qa_conv_pareto_only")
@@ -287,6 +303,7 @@ def _render_accuracy_cost_tradeoff(outcome: ConvergenceResult) -> None:
                          (0.0005, 0.001, 0.005, 0.01, 0.05, 0.1),
                          index=3, key="qa_conv_gap_target",
                          format_func=lambda x: f"{x:g} €")
+    # The displayed frontier joins only observed configurations, not intermediate prices.
     st.altair_chart(_accuracy_cost_chart(rows, pareto_only=pareto_only,
                                         gap_label=gap_label), width="stretch")
     st.caption("Gold dashed line = observed global Pareto frontier across all selected "
@@ -294,6 +311,7 @@ def _render_accuracy_cost_tradeoff(outcome: ConvergenceResult) -> None:
                "Connecting segments are a visual guide, not an attainable continuous "
                "set of model configurations.")
     _render_accuracy_target_result(points, float(target))
+    # Performance rankings are descriptive single-run observations, not forecasts.
     st.caption("Pareto candidates are nondominated among the sampled settings "
                "for runtime and absolute price gap. Each runtime is a single "
                "measurement; rankings may change with CPU load. This is not a "
@@ -345,6 +363,7 @@ def render_convergence_tab() -> None:
 
 def _render_stability_results(saved: tuple) -> None:
     """Retain the existing session data while rendering the focused research view."""
+    # Keep each measurement tied to the submitted experiment and cached result.
     from frontend.research_risk_numerics_views import render_risk_numerics
     rows, request = saved
     render_risk_numerics(rows, request, stability_csv)
@@ -365,6 +384,7 @@ def _greeks_stability_input_form() -> tuple:
         )
         n_grid = st.multiselect(
             "Discretization steps N", (20, 40, 60, 80, 100, 125, 150, 175, 200, 250),
+            # Keep each measurement tied to the submitted experiment and cached result.
             default=(40, 80, 100, 150), key="qa_stab_grid",
         )
         gamma_mode = st.selectbox(
@@ -382,12 +402,33 @@ def _greeks_stability_input_form() -> tuple:
     return fields, model, bump_grid, n_grid, threshold, gamma_mode, submitted
 
 
-def render_greeks_stability_tab() -> None:
-    """One deliberate repricing campaign; view interactions never reprice."""
+def _run_submitted_greek_study(
+    fields: dict, model: str, bump_grid: tuple, n_grid: tuple,
+    threshold: float, gamma_mode: str,
+) -> None:
+    """Price one explicitly submitted experiment, retaining the existing cache."""
+    # Keep each measurement tied to the submitted experiment and cached result.
     from frontend.research_risk_numerics import n_sweep_gamma_bump
 
+    st.session_state.pop("qa_stab_result", None)
+    try:
+        request = _get_request(fields, model, 100, threshold)
+        gamma_bump = n_sweep_gamma_bump(gamma_mode)
+        with st.spinner("Repricing risk stencils across bumps and N..."):
+            rows = greeks_stability(
+                request, tuple(sorted(bump_grid)), tuple(sorted(n_grid)),
+                gamma_bump_pct=gamma_bump,
+            )
+        st.session_state["qa_stab_result"] = (rows, request)
+    except (PricingInputError, ValueError, RuntimeError, OverflowError) as exc:
+        st.error(f"Risk numerics unavailable: {exc}")
+
+
+def render_greeks_stability_tab() -> None:
+    """One deliberate repricing campaign; view interactions never reprice."""
     left, right = st.columns([1.0, 1.85], gap="large")
     with left:
+        # Keep each measurement tied to the submitted experiment and cached result.
         fields, model, bump_grid, n_grid, threshold, gamma_mode, submitted = (
             _greeks_stability_input_form()
         )
@@ -395,18 +436,8 @@ def render_greeks_stability_tab() -> None:
         st.markdown('<div class="desk-section">Risk numerics · Delta/Gamma stability</div>',
                     unsafe_allow_html=True)
         if submitted:
-            st.session_state.pop("qa_stab_result", None)
-            try:
-                request = _get_request(fields, model, 100, threshold)
-                gamma_bump = n_sweep_gamma_bump(gamma_mode)
-                with st.spinner("Repricing risk stencils across bumps and N..."):
-                    rows = greeks_stability(
-                        request, tuple(sorted(bump_grid)), tuple(sorted(n_grid)),
-                        gamma_bump_pct=gamma_bump,
-                    )
-                st.session_state["qa_stab_result"] = (rows, request)
-            except (PricingInputError, ValueError, RuntimeError, OverflowError) as exc:
-                st.error(f"Risk numerics unavailable: {exc}")
+            _run_submitted_greek_study(fields, model, bump_grid, n_grid,
+                                       threshold, gamma_mode)
         saved = st.session_state.get("qa_stab_result")
         if saved is None:
             st.info("Select spot-bump widths and N, then run the study. "

@@ -20,6 +20,7 @@ from frontend.trading_risk import (
 
 def _compute_greek_curve_on_demand(result: PricingResult, snapshot: DeskRiskSnapshot, chosen: str) -> None:
     """Compute the requested five-spot curve only on explicit user action."""
+    # Read the successful Greek snapshot without triggering a new valuation.
     if st.button("Calculate selected Greek curve · 5 spots", key="desk_plot_greek",
                  width="stretch"):
         st.session_state.pop("desk_greek_curve", None)
@@ -41,6 +42,7 @@ def _compute_greek_curve_on_demand(result: PricingResult, snapshot: DeskRiskSnap
 
 def _render_greek_curve_chart(points: tuple, chosen: str) -> None:
     """Render measured points without replacing failed scenarios by zero."""
+    # Read the successful Greek snapshot without triggering a new valuation.
     successful = [{"Spot (€)": point.spot, "Greek value": point.value}
                   for point in points if point.value is not None]
     if len(successful) >= 2:
@@ -65,6 +67,7 @@ def _render_greek_curve_chart(points: tuple, chosen: str) -> None:
 
 def _render_greek_curve_warnings(points: tuple) -> None:
     """Describe failed pricing scenarios and bump discretization."""
+    # Read the successful Greek snapshot without triggering a new valuation.
     failed = [point for point in points if point.error is not None]
     if failed:
         st.warning(
@@ -107,6 +110,7 @@ def _render_delta_hedge_trade(hedge: StockHedge) -> None:
     )
     st.metric("Delta-neutral trade · whole shares", label)
     a, b = st.columns(2)
+    # Read the successful Greek snapshot without triggering a new valuation.
     a.metric("Exact trade · signed shares", f"{hedge.exact_trade:+,.4f}")
     b.metric(
         "Residual delta after rounded trade",
@@ -126,6 +130,7 @@ def _show_delta_hedge(snapshot: DeskRiskSnapshot) -> None:
             "Position sizing is optional and affects only the stock-hedge instruction, "
             "not the option premium or the Greeks. Positive trade = BUY; negative = SELL."
         )
+        # Position, contract count and existing shares are user-entered sizing only.
         a, b = st.columns(2)
         side = a.selectbox("Option position", ("Long", "Short"),
                            key="desk_hedge_side")
@@ -141,6 +146,7 @@ def _show_delta_hedge(snapshot: DeskRiskSnapshot) -> None:
         existing = b.number_input("Existing stock shares · signed", value=0.0,
                                   step=1.0, key="desk_hedge_shares",
                                   help="Long stock positive; short stock negative.")
+        # Hedge quantities depend on the chosen position, not on model repricing.
         delta = snapshot.value("Delta")
         if delta is None:
             st.warning("Delta unavailable: stock hedge cannot be calculated.")
@@ -161,6 +167,7 @@ def render_desk_risk(result: PricingResult) -> None:
                 unsafe_allow_html=True)
     cached = st.session_state.get("desk_risk_snapshot")
     if not (isinstance(cached, tuple) and len(cached) == 2
+            # Read the successful Greek snapshot without triggering a new valuation.
             and cached[0] == result.request
             and isinstance(cached[1], DeskRiskSnapshot)):
         risk_error = st.session_state.get("desk_risk_error")
@@ -172,6 +179,7 @@ def render_desk_risk(result: PricingResult) -> None:
             st.caption("The Greek risk snapshot is calculated when RUN PRICING succeeds.")
         return
     snapshot = cached[1]
+    # Display the previously calculated snapshot rather than repricing on rerun.
     frame = pd.DataFrame(greek_table(snapshot))
     st.dataframe(frame, hide_index=True, width="stretch",
                  column_config={
@@ -185,6 +193,7 @@ def render_desk_risk(result: PricingResult) -> None:
         "Black–Scholes columns are available only for eligible European "
         "options without cash dividends."
     )
+    # Preserve numerical warnings from both basic and second-order Greeks.
     problems = (*snapshot.base.issues, *snapshot.extra_issues)
     if problems:
         with st.expander(f"Numerical warnings · {len(problems)}", expanded=False):

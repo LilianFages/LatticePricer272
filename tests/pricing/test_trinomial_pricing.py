@@ -1,0 +1,596 @@
+"""Trinomial pricing, node propagation and cash-dividend valuation.
+
+Consolidated without dropping individual regression cases.
+"""
+
+from __future__ import annotations
+
+import math
+from src.pricing.black_scholes import BlackScholesPricer
+from src.contracts.option import CallOption, PutOption
+from src.pricing.recursive_pricer import RecursivePricer
+from src.lattices.trinomial_tree import TrinomialTree
+import pytest
+from src.contracts.dividend import CashDividend
+from src.lattices.node import Node
+from src.lattices.transition_moments import TransitionMoments
+
+
+def _test_tree(**parameters: object) -> TrinomialTree:
+    """Build an independent tree for each trinomial regression scenario."""
+    return TrinomialTree(**parameters)
+
+
+def _price_recursive(
+    tree: TrinomialTree, option: CallOption | PutOption
+) -> float:
+    """Use the same recursive pricing entry point for all comparisons."""
+    return RecursivePricer().price(tree, option)
+
+
+# test_trinomial_pricing.py (tests preserved)
+# A one-step trinomial price must equal its direct discounted expectation.
+def test_recursive_one_step_trinomial_call() -> None:
+    tree = _test_tree(
+        spot=100.0,
+        rate=0.02,
+        volatility=0.20,
+        maturity=1.0,
+        nb_steps=1,
+    )
+    option = CallOption(
+        strike=100.0
+    )
+
+    price = _price_recursive(
+        tree,
+        option,
+    )
+
+    # The one-step call price equals the discounted expected terminal payoff.
+    up_node = tree.root.next_up
+    mid_node = tree.root.next_mid
+    down_node = tree.root.next_down
+
+    assert up_node is not None
+    assert mid_node is not None
+    assert down_node is not None
+
+    assert tree.root.up_probability is not None
+    assert tree.root.mid_probability is not None
+    assert tree.root.down_probability is not None
+
+    expected_price = math.exp(
+        -tree.rate * tree.dt
+    ) * (
+        tree.root.up_probability
+        * option.payoff(up_node.price)
+        + tree.root.mid_probability
+        * option.payoff(mid_node.price)
+        + tree.root.down_probability
+        * option.payoff(down_node.price)
+    )
+
+    # Verify the expected numerical or workflow invariant on this case.
+    assert math.isclose(
+        price,
+        expected_price,
+        rel_tol=1e-12,
+    )
+
+
+# European trinomial prices must satisfy put-call parity.
+def test_recursive_trinomial_put_call_parity() -> None:
+    spot = 100.0
+    strike = 105.0
+    rate = 0.03
+    maturity = 2.0
+
+    call_tree = _test_tree(
+        spot=spot,
+        rate=rate,
+        volatility=0.25,
+        maturity=maturity,
+        nb_steps=10,
+    )
+    # Trinomial European prices must satisfy discounted put-call parity.
+    put_tree = _test_tree(
+        spot=spot,
+        rate=rate,
+        volatility=0.25,
+        maturity=maturity,
+        nb_steps=10,
+    )
+
+    call_price = _price_recursive(
+        call_tree,
+        CallOption(strike=strike),
+    )
+    put_price = _price_recursive(
+        put_tree,
+        PutOption(strike=strike),
+    )
+
+    # Trinomial European prices must satisfy discounted put-call parity.
+    expected_difference = (
+        spot
+        - strike
+        * math.exp(-rate * maturity)
+    )
+
+    assert math.isclose(
+        call_price - put_price,
+        expected_difference,
+        rel_tol=1e-10,
+        abs_tol=1e-10,
+    )
+
+
+# A sufficiently refined trinomial tree must approach Black-Scholes.
+def test_recursive_trinomial_converges_to_black_scholes() -> None:
+    spot = 100.0
+    strike = 100.0
+    rate = 0.05
+    volatility = 0.20
+    maturity = 1.0
+
+    option = CallOption(
+        strike=strike
+    )
+
+    tree_price = _price_recursive(
+        _test_tree(
+            spot=spot,
+            rate=rate,
+            volatility=volatility,
+            maturity=maturity,
+            nb_steps=50,
+        ),
+        option,
+    )
+
+    # Increase the lattice resolution when assessing Black-Scholes convergence.
+    black_scholes_price = BlackScholesPricer().price(
+        option=option,
+        spot=spot,
+        rate=rate,
+        volatility=volatility,
+        maturity=maturity,
+    )
+
+    assert math.isclose(
+        tree_price,
+        black_scholes_price,
+        abs_tol=0.05,
+    )
+
+
+# test_trinomial_dividend.py (tests preserved)
+# A dividend must directly reduce the forward-adjusted trunk.
+def test_dividend_changes_trunk_forward() -> None:
+    dividend = CashDividend(
+        time=0.5,
+        amount=3.0,
+    )
+
+    tree = _test_tree(
+        spot=100.0,
+        rate=0.02,
+        volatility=0.20,
+        maturity=1.0,
+        nb_steps=2,
+        dividends=[
+            dividend
+        ],
+    )
+
+    # Subtract the cash payment from the forward trunk on its ex-date step.
+    tree.build()
+
+    first_trunk = tree.root.next_mid
+
+    assert first_trunk is not None
+
+    expected_first_trunk = (
+        100.0
+        * math.exp(0.02 * 0.5)
+        - 3.0
+    )
+
+    assert math.isclose(
+        first_trunk.price,
+        expected_first_trunk,
+        rel_tol=1e-12,
+    )
+
+    second_trunk = first_trunk.next_mid
+
+    # Verify the expected numerical or workflow invariant on this case.
+    assert second_trunk is not None
+
+    expected_second_trunk = (
+        expected_first_trunk
+        * math.exp(0.02 * 0.5)
+    )
+
+    assert math.isclose(
+        second_trunk.price,
+        expected_second_trunk,
+        rel_tol=1e-12,
+    )
+
+
+# A dividend transition must still reproduce its target moments.
+def test_dividend_transition_matches_target_moments() -> None:
+    dividend = CashDividend(
+        time=0.5,
+        amount=3.0,
+    )
+
+    tree = _test_tree(
+        spot=100.0,
+        rate=0.02,
+        volatility=0.20,
+        maturity=1.0,
+        nb_steps=1,
+        dividends=[
+            dividend
+        ],
+    )
+
+    # A dividend node's three successors must reproduce both target moments.
+    tree.build()
+
+    up_node = tree.root.next_up
+    mid_node = tree.root.next_mid
+    down_node = tree.root.next_down
+
+    assert up_node is not None
+    assert mid_node is not None
+    assert down_node is not None
+
+    assert tree.root.up_probability is not None
+    assert tree.root.mid_probability is not None
+    assert tree.root.down_probability is not None
+
+    # A dividend node's three successors must reproduce both target moments.
+    expected_value, variance = TransitionMoments.compute(
+        spot=100.0,
+        rate=0.02,
+        volatility=0.20,
+        step_start=0.0,
+        step_end=1.0,
+        dividend=dividend,
+    )
+
+    reconstructed_mean = (
+        tree.root.up_probability * up_node.price
+        + tree.root.mid_probability * mid_node.price
+        + tree.root.down_probability * down_node.price
+    )
+
+    # A dividend node's three successors must reproduce both target moments.
+    second_moment = (
+        tree.root.up_probability * up_node.price ** 2
+        + tree.root.mid_probability * mid_node.price ** 2
+        + tree.root.down_probability * down_node.price ** 2
+    )
+
+    reconstructed_variance = (
+        second_moment
+        - expected_value ** 2
+    )
+
+    assert math.isclose(
+        reconstructed_mean,
+        expected_value,
+        rel_tol=1e-12,
+    )
+
+    assert math.isclose(
+        reconstructed_variance,
+        variance,
+        rel_tol=1e-12,
+        abs_tol=1e-12,
+    )
+
+
+# Cash dividends make trinomial probabilities node-dependent.
+def test_dividend_probabilities_are_local() -> None:
+    dividend = CashDividend(
+        time=1.0,
+        amount=3.0,
+    )
+
+    tree = _test_tree(
+        spot=100.0,
+        rate=0.02,
+        volatility=0.20,
+        maturity=1.0,
+        nb_steps=2,
+        dividends=[
+            dividend
+        ],
+    )
+
+    # Cash dividends introduce node-dependent transition probabilities.
+    tree.build()
+
+    upper_node = tree.root.next_up
+    middle_node = tree.root.next_mid
+    lower_node = tree.root.next_down
+
+    assert upper_node is not None
+    assert middle_node is not None
+    assert lower_node is not None
+
+    nodes = [
+        upper_node,
+        middle_node,
+        lower_node,
+    ]
+
+    for node in nodes:
+        # Cash dividends introduce node-dependent transition probabilities.
+        assert node.up_probability is not None
+        assert node.mid_probability is not None
+        assert node.down_probability is not None
+
+        probability_sum = (
+            node.up_probability
+            + node.mid_probability
+            + node.down_probability
+        )
+
+        assert math.isclose(
+            probability_sum,
+            1.0,
+            rel_tol=1e-12,
+            abs_tol=1e-12,
+        )
+
+    assert not math.isclose(
+        upper_node.up_probability,
+        lower_node.up_probability,
+        rel_tol=1e-12,
+    )
+
+
+# At zero rates, a cash dividend lowers the European call value.
+def test_dividend_reduces_call_price_at_zero_rate() -> None:
+    option = CallOption(
+        strike=100.0
+    )
+
+    no_dividend_price = _price_recursive(
+        _test_tree(
+            spot=100.0,
+            rate=0.0,
+            volatility=0.20,
+            maturity=1.0,
+            nb_steps=20,
+        ),
+        option,
+    )
+
+    # At zero rates, cash dividends reduce European calls.
+    dividend_price = _price_recursive(
+        _test_tree(
+            spot=100.0,
+            rate=0.0,
+            volatility=0.20,
+            maturity=1.0,
+            nb_steps=20,
+            dividends=[
+                CashDividend(
+                    time=0.5,
+                    amount=3.0,
+                )
+            ],
+        ),
+        option,
+    )
+
+    assert dividend_price < no_dividend_price
+
+
+# At zero rates, a cash dividend raises the European put value.
+def test_dividend_increases_put_price_at_zero_rate() -> None:
+    option = PutOption(
+        strike=100.0
+    )
+
+    no_dividend_price = _price_recursive(
+        _test_tree(
+            spot=100.0,
+            rate=0.0,
+            volatility=0.20,
+            maturity=1.0,
+            nb_steps=20,
+        ),
+        option,
+    )
+
+    # At zero rates, cash dividends increase European puts.
+    dividend_price = _price_recursive(
+        _test_tree(
+            spot=100.0,
+            rate=0.0,
+            volatility=0.20,
+            maturity=1.0,
+            nb_steps=20,
+            dividends=[
+                CashDividend(
+                    time=0.5,
+                    amount=3.0,
+                )
+            ],
+        ),
+        option,
+    )
+
+    assert dividend_price > no_dividend_price
+
+
+# A cash dividend may require the lattice to expand beyond 2N + 1 nodes.
+def test_dividend_can_expand_trinomial_column() -> None:
+    tree = _test_tree(
+        spot=100.0,
+        rate=0.0,
+        volatility=0.20,
+        maturity=1.0,
+        nb_steps=20,
+        dividends=[
+            CashDividend(
+                time=0.5,
+                amount=7.0,
+            )
+        ],
+    )
+
+    tree.build()
+
+    # The adaptive grid can extend beyond the dividend-free 2N+1 bound.
+    terminal_top: Node = tree.root
+
+    for _ in range(
+        tree.nb_steps
+    ):
+        assert terminal_top.next_up is not None
+        terminal_top = terminal_top.next_up
+
+    node_count = 0
+    current_node: Node | None = terminal_top
+
+    while current_node is not None:
+        node_count += 1
+
+        current_node = (
+            current_node.lower_neighbor
+        )
+
+    # Without dividend the terminal column would contain 2N + 1 nodes.
+    assert node_count > 2 * tree.nb_steps + 1
+
+
+# Several discrete dividends must successively reduce the trunk.
+def test_multiple_dividends_change_trunk() -> None:
+    tree = _test_tree(
+        spot=100.0,
+        rate=0.0,
+        volatility=0.20,
+        maturity=1.0,
+        nb_steps=4,
+        dividends=[
+            CashDividend(
+                time=0.25,
+                amount=2.0,
+            ),
+            CashDividend(
+                time=0.75,
+                amount=3.0,
+            ),
+        ],
+    )
+
+    # The trunk forward reflects every discrete cash dividend in sequence.
+    tree.build()
+
+    first_trunk = tree.root.next_mid
+    assert first_trunk is not None
+
+    assert math.isclose(
+        first_trunk.price,
+        98.0,
+        rel_tol=1e-12,
+    )
+
+    second_trunk = first_trunk.next_mid
+    assert second_trunk is not None
+
+    assert math.isclose(
+        second_trunk.price,
+        98.0,
+        rel_tol=1e-12,
+    )
+
+    # Verify that the pricing workflow keeps its input contract intact.
+    third_trunk = second_trunk.next_mid
+    assert third_trunk is not None
+
+    assert math.isclose(
+        third_trunk.price,
+        95.0,
+        rel_tol=1e-12,
+    )
+
+
+# Several cash dividends must lower a European call at zero rate.
+def test_multiple_dividends_reduce_call_price() -> None:
+    option = CallOption(
+        strike=100.0
+    )
+
+    no_dividend_price = _price_recursive(
+        _test_tree(
+            spot=100.0,
+            rate=0.0,
+            volatility=0.20,
+            maturity=1.0,
+            nb_steps=40,
+        ),
+        option,
+    )
+
+    # Several positive cash dividends must reduce a European call at zero rates.
+    dividend_price = _price_recursive(
+        _test_tree(
+            spot=100.0,
+            rate=0.0,
+            volatility=0.20,
+            maturity=1.0,
+            nb_steps=40,
+            dividends=[
+                CashDividend(
+                    time=0.25,
+                    amount=2.0,
+                ),
+                CashDividend(
+                    time=0.75,
+                    amount=3.0,
+                ),
+            ],
+        ),
+        option,
+    )
+
+    # Verify the expected numerical or workflow invariant on this case.
+    assert dividend_price < no_dividend_price
+
+
+# Two dividends inside the same lattice step are currently rejected.
+def test_two_dividends_in_same_step_raise_error() -> None:
+    tree = _test_tree(
+        spot=100.0,
+        rate=0.0,
+        volatility=0.20,
+        maturity=1.0,
+        nb_steps=2,
+        dividends=[
+            CashDividend(
+                time=0.20,
+                amount=1.0,
+            ),
+            CashDividend(
+                time=0.40,
+                amount=1.0,
+            ),
+        ],
+    )
+
+    # Reject invalid cases explicitly rather than silently substituting values.
+    with pytest.raises(
+        ValueError,
+        match="Only one dividend per time step is supported",
+    ):
+        tree.build()

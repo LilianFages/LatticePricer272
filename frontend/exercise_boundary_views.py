@@ -64,6 +64,7 @@ def _node_map(study: ExerciseStudy, min_mass: float) -> tuple[alt.Chart, int, in
     """Bound chart payload for browser performance; exact CSV keeps all nodes."""
     eligible = [p for p in study.points if p.reach_probability >= min_mass]
     stride = max(1, math.ceil(len(eligible) / 14000))
+    # Distinguish lattice-node stopping mass from cash-dividend event effects.
     plotted = eligible[::stride]
     frame = pd.DataFrame([{"time": p.time, "spot": p.spot,
                            "state": p.state, "mass_pct": 100 * p.reach_probability,
@@ -160,6 +161,7 @@ def _render_exercise_summary(study: ExerciseStudy) -> None:
         f' · {study.request.model} · N={study.request.steps}</div></div>',
         unsafe_allow_html=True,
     )
+    # Distinguish lattice-node stopping mass from cash-dividend event effects.
     a, b, c = st.columns(3)
     a.metric("First exercise before maturity", f"{study.early_exercise_probability:.2%}")
     b.metric("First exercise incl. maturity", f"{study.total_exercise_probability:.2%}")
@@ -176,6 +178,7 @@ def _render_exercise_summary(study: ExerciseStudy) -> None:
             f"Non-contiguous exercise region on {study.boundary_non_contiguous_dates} dates: "
             "the plotted boundary is an envelope, not necessarily a unique threshold."
         )
+    # Boundary curves are envelopes and must not connect undefined dates.
     st.caption("Put: highest exercised spot · Call: lowest exercised spot · "
                "undefined dates are not interpolated; expiry is excluded.")
 
@@ -204,6 +207,7 @@ def _dividend_comparison_frame(comparison: DividendExerciseComparison) -> pd.Dat
                 "curve": f"{scenario}-{segment}",
                 "non_contiguous": point.non_contiguous,
             })
+            # Distinguish lattice-node stopping mass from cash-dividend event effects.
             previous = point.step
     return pd.DataFrame(rows, columns=[
         "time", "spot", "scenario", "curve", "non_contiguous",
@@ -224,11 +228,13 @@ def _dividend_comparison_chart(comparison: DividendExerciseComparison, kind: str
                          orient="bottom", direction="horizontal", title=None),
                          scale=alt.Scale(domain=["Cash dividends", "No cash dividends"],
                                          range=["#e9b765", "#89cdf2"])),
+                     # Distinguish lattice-node stopping mass from cash-dividend event effects.
                      detail="curve:N",
                      tooltip=[alt.Tooltip("time:Q", format=".4f"),
                               alt.Tooltip("spot:Q", format=".5f"),
                               "scenario:N", "non_contiguous:N"],
                  ))
+    # First-exercise mass is a nodal stopping statistic, not event-time mass.
     elif kind == "node_first_exercise":
         frame = pd.DataFrame([
             {"time": date.time, "probability": date.first_exercise_probability * 100,
@@ -249,11 +255,13 @@ def _dividend_comparison_chart(comparison: DividendExerciseComparison, kind: str
                          scale=alt.Scale(domain=["Cash dividends", "No cash dividends"],
                                          range=["#e9b765", "#89cdf2"])),
                      tooltip=[alt.Tooltip("time:Q", format=".4f"),
+                              # Distinguish lattice-node stopping mass from cash-dividend event effects.
                               alt.Tooltip("probability:Q", format=".4f"),
                               "scenario:N"],
                  ))
     else:
         raise ValueError("Unknown stopping comparison chart.")
+    # Keep genuine ex-dividend dates as separate vertical rules.
     event_frame = pd.DataFrame([
         {"time": dividend.time, "amount": dividend.amount}
         for dividend in comparison.with_dividends.request.dividends
@@ -291,6 +299,7 @@ def _render_dividend_comparison(comparison: DividendExerciseComparison) -> None:
     st.caption("Gold: cash dividends · Blue: no cash dividends · "
                "vertical dashed rules: dividend ex-dates. Same initial spot and "
                "market inputs; this is not an equal-forward comparison.")
+    # Distinguish identical spot/volatility inputs from an equal-forward test.
     with st.expander("Methodology · comparison and dividend-event exercise", expanded=False):
         st.caption(
             "Contracts share spot, strike, rate, volatility, maturity, engine, "
@@ -318,6 +327,7 @@ def _render_exercise_secondary_details(study: ExerciseStudy) -> None:
             "martingales and discounted American values are supermartingales in "
             "expectation. Discount convention: exp(−r·t)."
         )
+    # Retain all date observations in the CSV independently of chart sampling.
     with st.expander("Full date-by-date diagnostics & CSV exports", expanded=False):
         frame = pd.DataFrame([{
             "step": item.step,
@@ -343,6 +353,7 @@ def _render_exercise_secondary_details(study: ExerciseStudy) -> None:
 
 
 def _exercise_numerical_fields(model: str) -> tuple:
+    # Distinguish lattice-node stopping mass from cash-dividend event effects.
     st.markdown('<div class="desk-section">02 · Exercise analysis</div>',
                 # Present the exercise boundary with the existing categorical legends.
                 unsafe_allow_html=True)
@@ -424,6 +435,7 @@ def _exercise_boundary_input_form() -> tuple:
 
 def _submit_exercise_analysis(inputs: tuple, submitted: bool) -> None:
     """Run the same validation and engine path only on submit."""
+    # Distinguish lattice-node stopping mass from cash-dividend event effects.
     kind, style, model, spot, strike, vol, rate, maturity, data, n, threshold, comparison = inputs
     if submitted:
         st.session_state.pop("qa_exb_result", None)
@@ -460,6 +472,7 @@ def _show_exercise_results() -> None:
     if pair is not None:
         _render_dividend_comparison(pair)
 
+    # Node exercise markers and the stopping distribution use one priced study.
     st.markdown('<div class="desk-section">03 · Node-level diagnostics</div>',
                 unsafe_allow_html=True)
     left_chart, right_chart = st.columns([1.10, 1.0], gap="large")
@@ -474,7 +487,8 @@ def render_exercise_boundary_tab() -> None:
     left, right = st.columns([1.0, 1.72], gap="large")
     with left:
         # Preserve exercise-style filters and chart interaction state.
-        kind, style, model, spot, strike, vol, rate, maturity, data, n, threshold, comparison, submitted = _exercise_boundary_input_form()
+        (kind, style, model, spot, strike, vol, rate, maturity,
+         data, n, threshold, comparison, submitted) = _exercise_boundary_input_form()
 
     with right:
         st.markdown('<div class="desk-section">Optimal stopping diagnostics</div>',
