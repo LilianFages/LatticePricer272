@@ -303,6 +303,7 @@ def _render_accuracy_cost_tradeoff(outcome: ConvergenceResult) -> None:
                          (0.0005, 0.001, 0.005, 0.01, 0.05, 0.1),
                          index=3, key="qa_conv_gap_target",
                          format_func=lambda x: f"{x:g} €")
+    # The displayed frontier joins only observed configurations, not intermediate prices.
     st.altair_chart(_accuracy_cost_chart(rows, pareto_only=pareto_only,
                                         gap_label=gap_label), width="stretch")
     st.caption("Gold dashed line = observed global Pareto frontier across all selected "
@@ -310,6 +311,7 @@ def _render_accuracy_cost_tradeoff(outcome: ConvergenceResult) -> None:
                "Connecting segments are a visual guide, not an attainable continuous "
                "set of model configurations.")
     _render_accuracy_target_result(points, float(target))
+    # Performance rankings are descriptive single-run observations, not forecasts.
     st.caption("Pareto candidates are nondominated among the sampled settings "
                "for runtime and absolute price gap. Each runtime is a single "
                "measurement; rankings may change with CPU load. This is not a "

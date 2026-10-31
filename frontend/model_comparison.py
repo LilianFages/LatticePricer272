@@ -24,6 +24,7 @@ from frontend.comparison_service import (
     display_rows,
 )
 from frontend.diagnostics_contract import import_saved_reference
+# Threshold presets belong to the comparison workspace, not to the pricers.
 from frontend.workspace_policy import COMPARISON_THRESHOLDS
 from frontend.dividend_input import parse_dividends
 from frontend.pricing_service import (
@@ -399,6 +400,7 @@ def render_comparison_page(*, embedded: bool = False) -> None:
         st.session_state["last_comparison_report"] = None
 
     if not embedded:
+        # Standalone chrome is suppressed when embedded in Model Diagnostics.
         _render_comparison_heading()
 
     left, right = st.columns([1.0, 1.35], gap="large")

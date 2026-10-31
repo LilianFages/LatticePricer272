@@ -26,6 +26,7 @@ from frontend.pricing_service import (
 )
 
 
+# Node colors also distinguish early exercise and simplified allocations.
 COLORS = {
     "Continuation": "#8bcdf0",
     "Early exercise": "#edb970",
@@ -375,6 +376,7 @@ def _render_lattice_explanations(
         )
 
 
+# The renderer reuses a priced snapshot; display focus never changes valuation.
 def _render_snapshot(
     snapshot: LatticeSnapshot,
     prefix: str,
@@ -388,6 +390,7 @@ def _render_snapshot(
     max_links: int | None = None,
     spot_band: tuple[float, float] | None = None,
 ) -> None:
+    # Aggregate diagnostics describe the complete graph, before chart sampling.
     a, b, c, d = st.columns(4)
     a.metric("Model premium", f"{snapshot.model_price:.6f} €")
     b.metric("Connected nodes", f"{snapshot.displayed_nodes:,}")
@@ -544,6 +547,7 @@ def _explorer_graph_fields(right: object) -> tuple:
                 seed if isinstance(seed, PricingRequest) else None)
             use_dividend = st.checkbox("Include cash dividend", value=div_present,
                                        key=_explorer_control_key("use_dividend"))
+            # Cash-dividend timing and amount are independent of graph sampling.
             aa, bb = st.columns(2)
             div_time = aa.number_input("Ex-date · years", min_value=0.01,
                                         value=div_default_time, step=0.05,
@@ -748,16 +752,15 @@ def _build_explorer_model_snapshots(
 
 def _render_explorer_heading() -> None:
     """Preserve the standalone explorer header and its existing visual hierarchy."""
-    if not embedded:
-        st.markdown('<div class="desk-kicker">Lattice explorer / 03</div>',
-                    unsafe_allow_html=True)
-        st.markdown('<div class="desk-title">Interactive Lattice · Geometry & Exercise</div>',
-                    unsafe_allow_html=True)
-        st.markdown(
-            '<div class="desk-subtitle">Inspect real priced nodes, transition links and '
-            'optimal early exercise · side-by-side architectures</div>',
-            unsafe_allow_html=True,
-        )
+    st.markdown('<div class="desk-kicker">Lattice explorer / 03</div>',
+                unsafe_allow_html=True)
+    st.markdown('<div class="desk-title">Interactive Lattice · Geometry & Exercise</div>',
+                unsafe_allow_html=True)
+    st.markdown(
+        '<div class="desk-subtitle">Inspect real priced nodes, transition links and '
+        'optimal early exercise · side-by-side architectures</div>',
+        unsafe_allow_html=True,
+    )
 
 
 def _store_explorer_snapshots(base: PricingRequest, first: str, second: str) -> None:

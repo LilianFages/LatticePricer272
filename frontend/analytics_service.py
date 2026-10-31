@@ -59,7 +59,9 @@ class StabilityObservation:
     status: str
 
 
-def _check_models(models: Sequence[str], *, max_count: int = 5) -> tuple[str, ...]:
+def _check_models(
+    models: Sequence[str], *, max_count: int = 5,
+) -> tuple[str, ...]:
     if not models or len(models) > max_count or len(set(models)) != len(models):
         # Reuse the same contract specification for each numerical sweep.
         raise PricingInputError("Choose 1–5 distinct pricing models.")
@@ -196,7 +198,8 @@ def _spot_pair(
     return a.price, b.price, None
 
 
-def _stability_at(request: PricingRequest, *, dimension: str, coordinate: float,
+def _stability_at(
+    request: PricingRequest, *, dimension: str, coordinate: float,
     delta_pct: float, gamma_pct: float | None, pricer: PricingFunction,
 ) -> StabilityObservation:
     base = _evaluate(request, request.spot, pricer)
@@ -222,8 +225,8 @@ def _stability_at(request: PricingRequest, *, dimension: str, coordinate: float,
                                 else "; ".join(x for x in (issue_d,issue_g) if x))
 
 
-def greeks_stability(request: PricingRequest,
-    # Preserve request validation and distinguish sampled gaps from exact errors.
+def greeks_stability(
+    request: PricingRequest,
     delta_bumps_pct: Sequence[float] = (0.5, 1.0, 2.0, 3.5),
     steps_grid: Sequence[int] = (40, 80, 100, 150),
     gamma_bump_pct: float | None = None,
@@ -234,6 +237,7 @@ def greeks_stability(request: PricingRequest,
     Bump sweep uses equal widths for Delta and Gamma so both can be compared.
     N sweep uses Delta ±1% and grid-aware Gamma unless explicitly overridden.
     """
+    # Both sweeps use the same request validation and report failed prices.
     validate_request(request)
     widths = tuple(float(x) for x in delta_bumps_pct)
     ns = tuple(steps_grid)
@@ -250,8 +254,8 @@ def greeks_stability(request: PricingRequest,
         not math.isfinite(gamma_bump_pct) or not 0 < gamma_bump_pct <= 20
     ):
         raise PricingInputError("Gamma bump must belong to (0, 20]%.")
+    # Width sweeps hold N constant; depth sweeps vary N with a fixed Delta stencil.
     rows = [_stability_at(request, dimension="spot bump", coordinate=bump,
-                          # Reuse the same contract specification for each numerical sweep.
                           delta_pct=bump, gamma_pct=bump, pricer=pricer)
             for bump in widths]
     rows.extend(_stability_at(replace(request, steps=n), dimension="steps",
@@ -269,9 +273,9 @@ def observations_csv(
     out = csv.writer(buf)
     out.writerow(["model", "coordinate", "price", "runtime_ms", "status",
                   "black_scholes", "reference_price", "reference_label", "abs_gap"])
+    # Keep failed measurements as empty numeric fields, never replace with zero.
     for point in rows:
         out.writerow([point.model, point.coordinate, "" if point.price is None else point.price,
-                      # Keep convergence errors separate from runtime observations.
                       "" if point.runtime_ms is None else point.runtime_ms, point.status,
                       "" if point.black_scholes is None else point.black_scholes,
                       "" if reference is None else reference, label,

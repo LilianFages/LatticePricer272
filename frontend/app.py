@@ -34,6 +34,7 @@ from frontend.pricing_service import (
     PRICING_ALGORITHMS,
     price_contract,
 )
+# The terminal delegates all pricing, Greeks and reference persistence to services.
 from frontend.components import result_panel
 from frontend.trading_risk import compute_desk_risk
 from frontend.contract_workflow import (
@@ -111,6 +112,7 @@ def _render_contract_dates(
         else:
             st.caption("Expiry must be strictly later than valuation date.")
     else:
+        # Legacy inputs remain in year fractions; calendar tickets use ACT/365F.
         maturity = st.number_input(
             "Time to maturity · years", min_value=0.01, max_value=100.0,
             value=1.0, step=0.25, format="%.2f", key=f"{prefix}_maturity",
@@ -158,6 +160,7 @@ def _render_pricing_setup(
     )
     pruning_method = "Allocation"
     pruning_threshold = DEFAULT_THRESHOLD
+    # Pruning options apply only to a trinomial family with pruning enabled.
     if model_family == "Trinomial" and pruning_enabled:
         with st.expander("Trinomial pruning · Advanced", expanded=False):
             pruning_method = st.selectbox(
@@ -178,6 +181,11 @@ def _render_dividend_editor(
 ) -> pd.DataFrame:
     """Render the model-compatible cash-dividend table editor."""
     with st.expander("Cash dividends · optional", expanded=False):
+        # Use identical monetary bounds in the dated and relative-time editors.
+        amount_column = st.column_config.NumberColumn(
+            "Cash amount · €", min_value=0.0, max_value=1000000.0,
+            step=0.50, format="%.2f",
+        )
         if date_mode == "Calendar dates":
             st.caption("Ex-dates are calendar dates. Amounts are EUR per share. "
                        "A zero-amount row is ignored.")
@@ -190,13 +198,11 @@ def _render_dividend_editor(
                 key=f"{prefix}_dated_dividend_table",
                 column_config={
                     "ex_date": st.column_config.DateColumn("Ex-dividend date", format="DD/MM/YYYY"),
-                    "amount": st.column_config.NumberColumn(
-                        "Cash amount · €", min_value=0.0,
-                        max_value=1000000.0, step=0.50, format="%.2f",
-                    ),
+                    "amount": amount_column,
                 },
             )
         else:
+            # The relative-time editor is retained for pre-calendar tickets.
             st.caption("Dates expressed in years from pricing. "
                        "A zero-amount row is ignored.")
             dividend_frame = st.data_editor(
@@ -208,10 +214,7 @@ def _render_dividend_editor(
                         "Payment time · years", min_value=0.0,
                         max_value=100.0, step=0.05, format="%.4f",
                     ),
-                    "amount": st.column_config.NumberColumn(
-                        "Cash amount · €", min_value=0.0,
-                        max_value=1000000.0, step=0.50, format="%.2f",
-                    ),
+                    "amount": amount_column,
                 },
             )
         st.caption("Binomial does not support discrete cash dividends.")
@@ -253,6 +256,14 @@ def _make_ticket_request(
     return request
 
 
+def _render_option_contract_fields(prefix: str) -> tuple[str, str]:
+    """Preserve the two contract selectors and their stable session keys."""
+    a, b = st.columns(2)
+    option_type = a.selectbox("Option", ("Call", "Put"), key=f"{prefix}_option")
+    exercise = b.selectbox("Exercise", ("European", "American"), key=f"{prefix}_exercise")
+    return option_type, exercise
+
+
 def build_ticket_form(reset_nonce: int) -> tuple[bool, PricingRequest | None, str | None]:
     """Return submitted status and either a validated shape or parsing error."""
     # Resolve only the submitted form; ordinary reruns do not calculate prices.
@@ -260,21 +271,16 @@ def build_ticket_form(reset_nonce: int) -> tuple[bool, PricingRequest | None, st
     date_mode, model_family, pruning_enabled = _render_ticket_configuration(prefix)
     with st.form(f"pricing_ticket_{reset_nonce}", clear_on_submit=False):
         st.markdown('<div class="desk-section">01 · Contract</div>', unsafe_allow_html=True)
-        a, b = st.columns(2)
-        option_type = a.selectbox("Option", ("Call", "Put"), key=f"{prefix}_option")
-        exercise = b.selectbox("Exercise", ("European", "American"), key=f"{prefix}_exercise")
+        option_type, exercise = _render_option_contract_fields(prefix)
         valuation_date, expiry_date, maturity = _render_contract_dates(prefix, date_mode)
         spot, strike, vol_pct, rate_pct = _render_market_inputs(prefix)
         algorithm, steps, pruning_method, pruning_threshold = _render_pricing_setup(
             prefix, model_family, pruning_enabled,
         )
         dividend_frame = _render_dividend_editor(prefix, date_mode, valuation_date)
-        submitted = st.form_submit_button(
-            "RUN PRICING  →", type="primary", width="stretch",
-        )
+        submitted = st.form_submit_button("RUN PRICING  →", type="primary", width="stretch")
 
     if not submitted:
-        # Render navigation and global page chrome without changing active widgets.
         return False, None, None
     st.session_state.pop("ticket_submitted_calendar", None)
     st.session_state.pop("ticket_submitted_algorithm", None)
@@ -345,6 +351,7 @@ def _render_reference_sidebar() -> None:
 
 
 def _render_sidebar() -> str:
+    # Sidebar selection never evaluates a financial model on its own.
     from frontend.model_diagnostics import WORKSPACES
     with st.sidebar:
         st.markdown("### ◈ LATTICE 272")
