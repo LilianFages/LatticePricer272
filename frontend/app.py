@@ -216,6 +216,21 @@ def _render_dividend_editor(
     return dividend_frame
 
 
+def _apply_ticket_dividends(
+    request: PricingRequest, frame: pd.DataFrame, date_mode: str,
+    valuation_date: date | None, expiry_date: date | None,
+) -> PricingRequest:
+    """Attach either the dated or relative cashflows to the validated ticket."""
+    if date_mode == "Calendar dates":
+        dates = parse_dated_dividends(frame)
+        request, calendar = dated_request(
+            request, valuation_date, expiry_date, dates,
+        )
+        st.session_state["ticket_submitted_calendar"] = calendar
+        return request
+    return replace(request, dividends=read_dividend_table(frame))
+
+
 def build_ticket_form(reset_nonce: int) -> tuple[bool, PricingRequest | None, str | None]:
     """Return submitted status and either a validated shape or parsing error."""
     prefix = f"ticket_{reset_nonce}"
@@ -251,14 +266,9 @@ def build_ticket_form(reset_nonce: int) -> tuple[bool, PricingRequest | None, st
             steps=int(steps), option_type=option_type, exercise=exercise,
             model=model, pruning_threshold=pruning_threshold,
         )
-        if date_mode == "Calendar dates":
-            dates = parse_dated_dividends(dividend_frame)
-            request, calendar = dated_request(
-                request, valuation_date, expiry_date, dates,
-            )
-            st.session_state["ticket_submitted_calendar"] = calendar
-        else:
-            request = replace(request, dividends=read_dividend_table(dividend_frame))
+        request = _apply_ticket_dividends(
+            request, dividend_frame, date_mode, valuation_date, expiry_date,
+        )
         st.session_state["ticket_submitted_algorithm"] = algorithm
         return True, request, None
     except (PricingInputError, CalendarInputError) as exc:

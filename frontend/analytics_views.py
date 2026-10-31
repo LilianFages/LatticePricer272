@@ -8,6 +8,8 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
+from frontend.research_accuracy_service import AccuracyCostPoint
+
 from frontend.analytics_service import (
     ConvergenceResult, PricingObservation, StabilityObservation,
     convergence_study, greeks_stability, observations_csv,
@@ -204,6 +206,14 @@ def _pareto_path_frame(rows: pd.DataFrame) -> pd.DataFrame:
             .drop_duplicates(subset=["Runtime (ms)", "Absolute gap (€)"]))
 
 
+def _accuracy_cost_tooltips() -> list:
+    """Use identical tooltip fields for candidate points and Pareto highlights."""
+    return ["Model:N", "N:Q", alt.Tooltip("Premium (€):Q", format=".6f"),
+            alt.Tooltip("Runtime (ms):Q", format=".3f"),
+            alt.Tooltip("Absolute gap (€):Q", format=".6f"),
+            "Pareto candidate:N"]
+
+
 def _accuracy_cost_chart(rows: pd.DataFrame, *, pareto_only: bool,
                          gap_label: str) -> alt.LayerChart:
     """Plot all observed points plus the *global* nondominated envelope.
@@ -212,15 +222,13 @@ def _accuracy_cost_chart(rows: pd.DataFrame, *, pareto_only: bool,
     not evidence of an attainable intermediate configuration.
     """
     displayed = rows.loc[rows["Pareto candidate"]] if pareto_only else rows
+    # The envelope is global across models, not per-series interpolation.
     frontier = _pareto_path_frame(rows)
     x = alt.X("Runtime (ms):Q", title="Single-run valuation time (ms)",
               scale=alt.Scale(zero=True))
     y = alt.Y("Absolute gap (€):Q", title=gap_label,
               scale=alt.Scale(zero=True))
-    tips = ["Model:N", "N:Q", alt.Tooltip("Premium (€):Q", format=".6f"),
-            alt.Tooltip("Runtime (ms):Q", format=".3f"),
-            alt.Tooltip("Absolute gap (€):Q", format=".6f"),
-            "Pareto candidate:N"]
+    tips = _accuracy_cost_tooltips()
     envelope = (alt.Chart(frontier)
                 .mark_line(color="#F5C46D", strokeDash=[6, 4], strokeWidth=2.7)
                 .encode(x=x, y=y, order=alt.Order("Runtime (ms):Q",
@@ -259,6 +267,17 @@ def _render_accuracy_target_result(points: tuple, target: float) -> None:
                    f"Full model name: {winner.model}.")
 
 
+def _observed_accuracy_cost_frame(
+    points: tuple[AccuracyCostPoint, ...],
+) -> pd.DataFrame:
+    """Keep the observed price/runtime/Pareto schema stable for charts and CSV."""
+    return pd.DataFrame([{
+        "Model": p.model, "N": p.steps, "Premium (€)": p.premium,
+        "Runtime (ms)": p.runtime_ms, "Absolute gap (€)": p.absolute_gap,
+        "Pareto candidate": p.pareto,
+    } for p in points])
+
+
 def _render_accuracy_cost_tradeoff(outcome: ConvergenceResult) -> None:
     """Observed Pareto candidates, a global frontier and on-demand target search."""
     from frontend.research_accuracy_service import accuracy_cost_points
@@ -275,11 +294,7 @@ def _render_accuracy_cost_tradeoff(outcome: ConvergenceResult) -> None:
     if not analytic:
         st.caption("Numerical-reference gaps are not true pricing errors. "
                    "The selected finite-N comparator can itself be inaccurate.")
-    rows = pd.DataFrame([{
-        "Model": p.model, "N": p.steps, "Premium (€)": p.premium,
-        "Runtime (ms)": p.runtime_ms, "Absolute gap (€)": p.absolute_gap,
-        "Pareto candidate": p.pareto,
-    } for p in points])
+    rows = _observed_accuracy_cost_frame(points)
     a, b = st.columns([1.1, 1.0])
     pareto_only = a.checkbox("Show observed Pareto candidates only", value=False,
                               key="qa_conv_pareto_only")

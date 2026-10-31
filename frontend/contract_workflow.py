@@ -105,6 +105,7 @@ def clear_reference(state: MutableMapping[str, Any]) -> bool:
 
 def _collect_destination_limits(request: PricingRequest, target: str, issues: list[str]) -> None:
     """Report destination-specific grid, dividend and pruning constraints."""
+    # Explorer-specific limits deliberately differ from benchmark-grid limits.
     if target == "lattice_explorer":
         if not 2 <= request.steps <= MAX_VISUAL_STEPS:
             issues.append(
@@ -185,6 +186,7 @@ def assess_transfer(request: PricingRequest, target: str) -> TransferCheck:
             "Research Lab reads archived experiments, not live pricing contracts.",
         ))
 
+    # Destination controls and shared market bounds are independently enforced.
     _collect_destination_limits(request, target, issues)
 
     # These bounds are shared by the contract fields in the target UI forms.

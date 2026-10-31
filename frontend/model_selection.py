@@ -48,6 +48,11 @@ def resolve_model_selection(
         # The Full engine forces pruning_threshold=0 internally. Keep the
         # request-level default unchanged for exact cross-workspace transfer.
         return "Trinomial · Full", DEFAULT_THRESHOLD
+    return _pruned_trinomial_selection(method, threshold)
+
+
+def _pruned_trinomial_selection(method: str, threshold: float) -> tuple[ModelName, float]:
+    """Keep branch and allocation pruning as distinct engine configurations."""
     if threshold not in PRUNING_THRESHOLDS:
         raise PricingInputError("Choose a supported positive pruning threshold.")
     model = (

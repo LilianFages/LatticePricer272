@@ -9,11 +9,11 @@ import csv
 import io
 import math
 from dataclasses import dataclass, replace
-from typing import Callable, Literal, Sequence
+from typing import Literal, Sequence
 
 from frontend.greeks_service import GreekBumps, analytic_bs_greeks, select_gamma_bump
 from frontend.pricing_service import (
-    MAX_STEPS, MODELS, PricingInputError, PricingRequest, price_contract,
+    MAX_STEPS, MODELS, PricingFunction, PricingInputError, PricingRequest, price_contract,
     validate_request,
 )
 
@@ -66,7 +66,7 @@ def _check_models(models: Sequence[str], *, max_count: int = 5) -> tuple[str, ..
     return tuple(models)
 
 
-def _evaluate(request: PricingRequest, coordinate: float, pricer: Callable) -> PricingObservation:
+def _evaluate(request: PricingRequest, coordinate: float, pricer: PricingFunction) -> PricingObservation:
     try:
         result = pricer(request)
         price = float(result.price)
@@ -100,7 +100,7 @@ def sensitivity_sweep(
     models: Sequence[str],
     count: int = 9,
     amplitude: float | None = None,
-    pricer: Callable = price_contract,
+    pricer: PricingFunction = price_contract,
 ) -> tuple[PricingObservation, ...]:
     """Independent repricings across one parameter; one failure never stops others.
 
@@ -142,7 +142,7 @@ def convergence_study(
     models: Sequence[str],
     steps_grid: Sequence[int],
     numerical_reference_model: str = "Trinomial · Allocation pruning",
-    pricer: Callable = price_contract,
+    pricer: PricingFunction = price_contract,
 ) -> ConvergenceResult:
     """Price and runtime vs N. Error for non-European cases is a *gap*, not truth.
 
@@ -181,7 +181,7 @@ def convergence_study(
 
 # Preserve measured Greek stability and finite-difference conventions.
 def _spot_pair(
-    request: PricingRequest, bump_pct: float, pricer: Callable,
+    request: PricingRequest, bump_pct: float, pricer: PricingFunction,
 ) -> tuple[float | None, float | None, str | None]:
     h = request.spot*bump_pct/100
     a = _evaluate(replace(request, spot=request.spot-h), -h, pricer)
@@ -193,7 +193,7 @@ def _spot_pair(
 
 def _stability_at(
     request: PricingRequest, *, dimension: str, coordinate: float,
-    delta_pct: float, gamma_pct: float | None, pricer: Callable,
+    delta_pct: float, gamma_pct: float | None, pricer: PricingFunction,
 ) -> StabilityObservation:
     base = _evaluate(request, request.spot, pricer)
     if gamma_pct is None:
@@ -223,7 +223,7 @@ def greeks_stability(
     delta_bumps_pct: Sequence[float] = (0.5, 1.0, 2.0, 3.5),
     steps_grid: Sequence[int] = (40, 80, 100, 150),
     gamma_bump_pct: float | None = None,
-    pricer: Callable = price_contract,
+    pricer: PricingFunction = price_contract,
 ) -> tuple[StabilityObservation, ...]:
     """Compare Delta/Gamma versus spot-bump width and N independently.
 

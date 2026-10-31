@@ -195,6 +195,35 @@ def _allocation_nodes_chart(valid: pd.DataFrame) -> alt.LayerChart:
     return alt.layer(*layers).properties(height=EFFICIENCY_CHART_HEIGHT).interactive()
 
 
+def _measured_speedup_line(data: pd.DataFrame, x: alt.X, y: alt.Y) -> alt.Chart:
+    """Plot only observed branch/allocation speeds on the established axes."""
+    pruned = (
+        alt.Chart(data).mark_line(
+            point=alt.OverlayMarkDef(size=66), strokeWidth=2.3,
+        ).encode(
+            x=x, y=y,
+            color=alt.Color(
+                "Model:N",
+                scale=alt.Scale(
+                    domain=[BRANCH, ALLOCATION],
+                    range=["#287FE2", "#88CDF2"],
+                ),
+                legend=alt.Legend(
+                    orient="bottom", direction="vertical", columns=1,
+                    title=None, labelLimit=300, labelFontSize=11, symbolSize=100,
+                ),
+            ),
+            tooltip=[
+                "Model:N", "N:Q",
+                alt.Tooltip("Speed-up (×):Q", format=".3f"),
+                alt.Tooltip("Full latency (ms):Q", format=".3f"),
+                alt.Tooltip("Median latency (ms):Q", format=".3f"),
+            ],
+        )
+    )
+    return pruned
+
+
 # The horizontal 1× reference denotes equal measured latency, not theoretical complexity.
 def _speedup_baseline_chart(data: pd.DataFrame) -> alt.LayerChart:
     """Real measured speed-up series with a clearly marked full-tree 1x level."""
@@ -220,30 +249,8 @@ def _speedup_baseline_chart(data: pd.DataFrame) -> alt.LayerChart:
             x=x, y=alt.Y("Full baseline:Q"), text="Label:N",
         )
     )
-    pruned = (
-        alt.Chart(data).mark_line(
-            point=alt.OverlayMarkDef(size=66), strokeWidth=2.3,
-        ).encode(
-            x=x, y=y,
-            color=alt.Color(
-                "Model:N",
-                scale=alt.Scale(
-                    domain=[BRANCH, ALLOCATION],
-                    range=["#287FE2", "#88CDF2"],
-                ),
-                legend=alt.Legend(
-                    orient="bottom", direction="vertical", columns=1,
-                    title=None, labelLimit=300, labelFontSize=11, symbolSize=100,
-                ),
-            ),
-            tooltip=[
-                "Model:N", "N:Q",
-                alt.Tooltip("Speed-up (×):Q", format=".3f"),
-                alt.Tooltip("Full latency (ms):Q", format=".3f"),
-                alt.Tooltip("Median latency (ms):Q", format=".3f"),
-            ],
-        )
-    )
+    # Keep the 1× rule distinct from observed pruned-model trajectories.
+    pruned = _measured_speedup_line(data, x, y)
     return alt.layer(baseline, pruned, baseline_label).properties(
         height=EFFICIENCY_CHART_HEIGHT,
     ).interactive()

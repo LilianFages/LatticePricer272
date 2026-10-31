@@ -31,6 +31,7 @@ def compute_desk_risk(
     pricer: PricingFunction = price_contract,
 ) -> DeskRiskSnapshot:
     """Inject existing validators and pricing engine into the shared core."""
+    # Keep the core engine injectable so test doubles and notebook adapters work.
     return _compute_desk_risk(
         request,
         bumps,
@@ -50,6 +51,7 @@ def compute_greek_curve(
     pricer: PricingFunction = price_contract,
 ) -> tuple[GreekCurvePoint, ...]:
     """Retain lazy-curve semantics and monkeypatchable risk callbacks."""
+    # Greeks are evaluated lazily through the existing shared implementation.
     return _compute_greek_curve(
         request,
         name,

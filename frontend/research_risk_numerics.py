@@ -52,8 +52,7 @@ class StabilitySummary:
 
 
 def observations(
-    rows: Sequence[StabilityObservation],
-    *, dimension: str, greek: str,
+    rows: Sequence[StabilityObservation], *, dimension: str, greek: str,
     analytical: float | None = None, deviation: bool = False,
 ) -> tuple[RiskMeasure, ...]:
     """Retain only successful finite observations and never invent zeroes.
@@ -64,6 +63,7 @@ def observations(
         raise ValueError("Unsupported risk dimension or Greek.")
     if deviation and (analytical is None or not math.isfinite(analytical)):
         raise ValueError("A finite analytical benchmark is required for deviations.")
+    # Filter failed/nonfinite measurements without manufacturing zero Greeks.
     field = greek.lower()
     result: list[RiskMeasure] = []
     for point in rows:
@@ -107,6 +107,7 @@ def summarize_stability(
     gamma = observations(rows, dimension="steps", greek="Gamma")
     ref_d = analytical.get("Delta") if analytical else None
     ref_g = analytical.get("Gamma") if analytical else None
+    # Only a valid, materially nonzero Black–Scholes Gamma defines this warning.
     near_zero = sum(
         abs(x.measured) < .05*abs(ref_g)
         for x in gamma

@@ -16,7 +16,7 @@ InputContext = Literal["terminal", "analysis"]
 
 
 def _validated_dividend_amount(
-    raw_amount: object, raw_time: object, row_number: int, context: InputContext,
+    raw_amount: object, raw_time: object, row_number: int, context: InputContext
 ) -> float | None:
     """Validate a cash amount; fully blank rows return None."""
     if pd.isna(raw_amount):
@@ -37,7 +37,7 @@ def _validated_dividend_amount(
 
 
 def _validated_dividend_time(
-    raw_time: object, row_number: int, context: InputContext,
+    raw_time: object, row_number: int, context: InputContext
 ) -> float:
     """Validate payment-time entry, retaining workspace error wording."""
     if pd.isna(raw_time):
@@ -64,6 +64,7 @@ def parse_cash_dividends(
     if context not in ("terminal", "analysis"):
         raise ValueError("Unsupported dividend input context.")
 
+    # Preserve every positive cashflow; only zero and entirely blank rows are optional.
     dividends: list[DividendInput] = []
     for row_number, record in enumerate(frame.to_dict("records"), 1):
         raw_amount = record.get("amount")

@@ -79,16 +79,7 @@ class ContractCalendar:
                     "Two cash dividends cannot share the same ex-date."
                 )
             seen_dates.add(dividend.ex_date)
-            try:
-                amount = float(dividend.amount)
-            except (TypeError, ValueError, OverflowError) as exc:
-                raise CalendarInputError(
-                    "Cash dividend amount must be a finite positive number."
-                ) from exc
-            if isinstance(dividend.amount, bool) or not math.isfinite(amount) or amount <= 0:
-                raise CalendarInputError(
-                    "Cash dividend amount must be a finite positive number."
-                )
+            amount = _positive_cash_amount(dividend.amount)
             days = (dividend.ex_date - self.valuation_date).days
             dividends.append(RelativeCashDividend(days / DAYS_PER_YEAR, amount))
 
@@ -115,6 +106,21 @@ class ContractCalendar:
             maturity=maturity_days / DAYS_PER_YEAR,
             dividends=dividends,
         )
+
+
+def _positive_cash_amount(raw_amount: object) -> float:
+    """Reject booleans and nonpositive or nonfinite dividend cashflows."""
+    try:
+        amount = float(raw_amount)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise CalendarInputError(
+            "Cash dividend amount must be a finite positive number."
+        ) from exc
+    if isinstance(raw_amount, bool) or not math.isfinite(amount) or amount <= 0:
+        raise CalendarInputError(
+            "Cash dividend amount must be a finite positive number."
+        )
+    return amount
 
 
 def _require_date(value: object, name: str) -> None:

@@ -141,6 +141,7 @@ def _show_delta_hedge(snapshot: DeskRiskSnapshot) -> None:
         existing = b.number_input("Existing stock shares · signed", value=0.0,
                                   step=1.0, key="desk_hedge_shares",
                                   help="Long stock positive; short stock negative.")
+        # Hedge quantities depend on the chosen position, not on model repricing.
         delta = snapshot.value("Delta")
         if delta is None:
             st.warning("Delta unavailable: stock hedge cannot be calculated.")
@@ -185,6 +186,7 @@ def render_desk_risk(result: PricingResult) -> None:
         "Black–Scholes columns are available only for eligible European "
         "options without cash dividends."
     )
+    # Preserve numerical warnings from both basic and second-order Greeks.
     problems = (*snapshot.base.issues, *snapshot.extra_issues)
     if problems:
         with st.expander(f"Numerical warnings · {len(problems)}", expanded=False):

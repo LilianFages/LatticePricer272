@@ -61,6 +61,7 @@ def _render_numerical_reliability() -> None:
         key="quant_research_numerical_view", width="stretch",
     ) or RELIABILITY_VIEWS[0]
 
+    # Each investigation is rendered on demand, without automatic repricing.
     if investigation == "Pricing convergence":
         from frontend.analytics_views import render_convergence_tab
         st.caption(

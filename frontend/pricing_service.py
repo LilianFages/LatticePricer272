@@ -178,7 +178,9 @@ def validate_request(request: PricingRequest) -> None:
     _validate_dividend_schedule(request)
 
 
-def _build_tree(request: PricingRequest):
+def _build_tree(
+    request: PricingRequest,
+) -> BinomialTree | HybridTree | TrinomialTree | AllocationPrunedTrinomialTree:
     core = dict(
         spot=request.spot, rate=request.rate,
         volatility=request.volatility, maturity=request.maturity,
@@ -207,6 +209,17 @@ def _build_tree(request: PricingRequest):
 def count_reachable_nodes(root: Node) -> int:
     """Count unique nodes through pricing transitions, excluding allocations."""
     return _count_priced_nodes(root)
+
+def _full_trinomial_reference_nodes(request: PricingRequest) -> int | None:
+    """Report theoretical full-tree size only for comparable nondividend cases."""
+    if (
+        request.model == "Trinomial · Allocation pruning"
+        and not request.dividends
+        and request.volatility > 0.0
+    ):
+        return (request.steps + 1) ** 2
+    return None
+
 
 def price_contract(
     request: PricingRequest,
@@ -250,14 +263,7 @@ def price_contract(
         ),
         black_scholes=reference,
         algorithm=algorithm,
-        full_trinomial_reference_nodes=(
-            (request.steps + 1) ** 2
-            if (
-                request.model == "Trinomial · Allocation pruning"
-                and not request.dividends
-                and request.volatility > 0.0
-            ) else None
-        ),
+        full_trinomial_reference_nodes=_full_trinomial_reference_nodes(request),
     )
 
 

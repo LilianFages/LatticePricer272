@@ -47,6 +47,15 @@ def validate_study_frame(frame: pd.DataFrame) -> pd.DataFrame:
     # malformed grid coordinates cannot be treated as recorded observations.
     if (verified["steps"].isna().any() or verified["date_shift_days"].isna().any()):
         raise ValueError("Phase 6C export has invalid grid coordinates.")
+    _validate_grid_coordinates(verified, numeric)
+    _validate_option_premiums(verified, good)
+    return verified
+
+
+def _validate_grid_coordinates(
+    verified: pd.DataFrame, numeric: tuple[str, ...]
+) -> None:
+    """Require finite, integral grid indices and valid ex-dividend dates."""
     steps = verified["steps"]
     shifts = verified["date_shift_days"]
     if (not steps.map(math.isfinite).all() or not shifts.map(math.isfinite).all()
@@ -63,6 +72,10 @@ def validate_study_frame(frame: pd.DataFrame) -> pd.DataFrame:
             raise ValueError(f"Phase 6C export contains non-finite {field}.")
     if verified.duplicated(subset=["panel", "model", "steps", "date_shift_days"]).any():
         raise ValueError("Duplicate Phase 6C configuration in recorded evidence.")
+
+
+def _validate_option_premiums(verified: pd.DataFrame, good: pd.Series) -> None:
+    """Preserve parity and early-exercise consistency for successful rows."""
     if (verified.loc[good, ["european_put", "american_put", "european_call"]]
             .lt(-1e-10).any().any()):
         raise ValueError("Negative successful option premium in Phase 6C evidence.")
@@ -71,7 +84,112 @@ def validate_study_frame(frame: pd.DataFrame) -> pd.DataFrame:
                    - verified.loc[good, "early_exercise_premium"])
     if premium_gap.abs().gt(1e-8).any():
         raise ValueError("Inconsistent Phase 6C early-exercise premium.")
-    return verified
+
+
+def _fixed_date_chart(grid: pd.DataFrame) -> alt.Chart:
+    """Preserve the recorded-series encodings and financial chart semantics."""
+    chart = (alt.Chart(grid).mark_line(point=True)
+             .encode(x=alt.X("steps:Q", title="Lattice steps N"),
+                     y=alt.Y("european_put:Q", title="European put (€)",
+                             scale=alt.Scale(zero=False)),
+                     color=alt.Color(
+                         "model:N", title=None,
+                         scale=alt.Scale(
+                             domain=["Hybrid", "Trinomial · Allocation pruning"],
+                             range=["#79BCE8", "#E0AE74"],
+                         ),
+                         legend=alt.Legend(
+                             orient="bottom", direction="horizontal",
+                             columns=2, labelLimit=330,
+                         ),
+                     ),
+                     tooltip=["model:N", "steps:Q", "dividend_time:Q",
+                              alt.Tooltip("european_put:Q", format=".7f"),
+                              alt.Tooltip("gap_to_finest_sample:Q", format="+.7f")]))
+    return chart.properties(height=325)
+
+
+def _ex_date_shift_chart(dates: pd.DataFrame) -> alt.Chart:
+    """Preserve the recorded-series encodings and financial chart semantics."""
+    chart = (alt.Chart(dates).mark_line(point=True)
+             .encode(x=alt.X("date_shift_days:Q", title="Ex-date shift (days)"),
+                     y=alt.Y("date_shift_put:Q", title="European put change (€)",
+                             scale=alt.Scale(zero=False)),
+                     color=alt.Color(
+                         "model:N", title=None,
+                         scale=alt.Scale(
+                             domain=["Hybrid", "Trinomial · Allocation pruning"],
+                             range=["#79BCE8", "#E0AE74"],
+                         ),
+                         legend=alt.Legend(
+                             orient="bottom", direction="horizontal",
+                             columns=2, labelLimit=330,
+                         ),
+                     ),
+                     tooltip=["model:N", "date_shift_days:Q", "steps:Q",
+                              alt.Tooltip("date_shift_put:Q", format="+.7f")]))
+    return chart.properties(height=325)
+
+
+def _render_fixed_date_panel(good: pd.DataFrame) -> None:
+    """Compare numerical grids for the same cash-dividend contract."""
+    st.markdown("**A · Fixed ex-date, different N**")
+    st.caption("Same spot, strike, rate, volatility, maturity and cash ex-date. "
+               "Connecting the measured points is a visual guide, not a smooth "
+               "interpolated convergence curve.")
+    grid = good.loc[good["panel"].eq("grid")]
+    if not grid.empty:
+        st.altair_chart(_fixed_date_chart(grid), width="stretch")
+        st.caption("Gap to finest sampled N uses the largest *successful* N for "
+                   "each model; this is not a proven reference or true error.")
+    else:
+        st.warning("No successful fixed-ex-date grid observations.")
+
+
+def _render_ex_date_shift_panel(good: pd.DataFrame) -> None:
+    """Compare genuinely shifted ex-dates at a fixed lattice size."""
+    st.markdown("**B · Fixed N, actual ex-date moved**")
+    st.caption("Moving the ex-date changes the contract and its discounted "
+               "dividend. The resulting price shift cannot be interpreted as "
+               "discretization error.")
+    dates = good.loc[good["panel"].eq("date") & good["date_shift_put"].notna()]
+    if not dates.empty:
+        st.altair_chart(_ex_date_shift_chart(dates), width="stretch")
+    else:
+        st.warning("No comparable ex-date-shift observations.")
+
+
+def _render_financial_consistency(good: pd.DataFrame) -> None:
+    """Display observed put-call parity and American exercise consistency."""
+    with st.expander("Financial consistency · Parity and early exercise", expanded=False):
+        st.caption("Put–call parity is checked only for European options with "
+                   "deterministic cash dividends. The American put premium "
+                   "should be nonnegative; departures are reported rather than hidden.")
+        if not good.empty:
+            summary = good.groupby("model", as_index=False).agg(
+                maximum_absolute_parity_residual=("parity_residual", lambda x: x.abs().max()),
+                minimum_american_premium=("early_exercise_premium", "min"),
+                observations=("status", "size"),
+            )
+            st.dataframe(summary, hide_index=True, width="stretch")
+
+
+def _render_failed_cases(failures: pd.DataFrame) -> None:
+    """Expose every failed experiment instead of dropping its row."""
+    if not failures.empty:
+        with st.expander(f"Failed configurations · {len(failures)}", expanded=False):
+            st.dataframe(failures[["model", "panel", "steps", "date_shift_days", "failure"]],
+                         hide_index=True, width="stretch")
+
+
+def _render_recorded_export(frame: pd.DataFrame) -> None:
+    """Offer the unchanged validated frame and its UTF-8 BOM CSV export."""
+    with st.expander("All measured observations and CSV", expanded=False):
+        st.dataframe(frame, hide_index=True, width="stretch")
+        st.download_button("Export grid robustness · CSV",
+                           frame.to_csv(index=False).encode("utf-8-sig"),
+                           file_name="lattice272_dividend_grid_robustness.csv",
+                           mime="text/csv", width="stretch")
 
 
 def render_grid_robustness() -> None:
@@ -104,81 +222,9 @@ def render_grid_robustness() -> None:
     b.metric("Successful price triplets", len(good))
     c.metric("Unpriced triplets", len(failures))
 
-    st.markdown("**A · Fixed ex-date, different N**")
-    st.caption("Same spot, strike, rate, volatility, maturity and cash ex-date. "
-               "Connecting the measured points is a visual guide, not a smooth "
-               "interpolated convergence curve.")
-    grid = good.loc[good["panel"].eq("grid")]
-    if not grid.empty:
-        chart = (alt.Chart(grid).mark_line(point=True)
-                 .encode(x=alt.X("steps:Q", title="Lattice steps N"),
-                         y=alt.Y("european_put:Q", title="European put (€)",
-                                 scale=alt.Scale(zero=False)),
-                         color=alt.Color(
-                             "model:N", title=None,
-                             scale=alt.Scale(
-                                 domain=["Hybrid", "Trinomial · Allocation pruning"],
-                                 range=["#79BCE8", "#E0AE74"],
-                             ),
-                             legend=alt.Legend(
-                                 orient="bottom", direction="horizontal",
-                                 columns=2, labelLimit=330,
-                             ),
-                         ),
-                         tooltip=["model:N", "steps:Q", "dividend_time:Q",
-                                  alt.Tooltip("european_put:Q", format=".7f"),
-                                  alt.Tooltip("gap_to_finest_sample:Q", format="+.7f")]))
-        st.altair_chart(chart.properties(height=325), width="stretch")
-        st.caption("Gap to finest sampled N uses the largest *successful* N for "
-                   "each model; this is not a proven reference or true error.")
-    else:
-        st.warning("No successful fixed-ex-date grid observations.")
-
-    st.markdown("**B · Fixed N, actual ex-date moved**")
-    st.caption("Moving the ex-date changes the contract and its discounted "
-               "dividend. The resulting price shift cannot be interpreted as "
-               "discretization error.")
-    dates = good.loc[good["panel"].eq("date") & good["date_shift_put"].notna()]
-    if not dates.empty:
-        chart = (alt.Chart(dates).mark_line(point=True)
-                 .encode(x=alt.X("date_shift_days:Q", title="Ex-date shift (days)"),
-                         y=alt.Y("date_shift_put:Q", title="European put change (€)",
-                                 scale=alt.Scale(zero=False)),
-                         color=alt.Color(
-                             "model:N", title=None,
-                             scale=alt.Scale(
-                                 domain=["Hybrid", "Trinomial · Allocation pruning"],
-                                 range=["#79BCE8", "#E0AE74"],
-                             ),
-                             legend=alt.Legend(
-                                 orient="bottom", direction="horizontal",
-                                 columns=2, labelLimit=330,
-                             ),
-                         ),
-                         tooltip=["model:N", "date_shift_days:Q", "steps:Q",
-                                  alt.Tooltip("date_shift_put:Q", format="+.7f")]))
-        st.altair_chart(chart.properties(height=325), width="stretch")
-    else:
-        st.warning("No comparable ex-date-shift observations.")
-
-    with st.expander("Financial consistency · Parity and early exercise", expanded=False):
-        st.caption("Put–call parity is checked only for European options with "
-                   "deterministic cash dividends. The American put premium "
-                   "should be nonnegative; departures are reported rather than hidden.")
-        if not good.empty:
-            summary = good.groupby("model", as_index=False).agg(
-                maximum_absolute_parity_residual=("parity_residual", lambda x: x.abs().max()),
-                minimum_american_premium=("early_exercise_premium", "min"),
-                observations=("status", "size"),
-            )
-            st.dataframe(summary, hide_index=True, width="stretch")
-    if not failures.empty:
-        with st.expander(f"Failed configurations · {len(failures)}", expanded=False):
-            st.dataframe(failures[["model", "panel", "steps", "date_shift_days", "failure"]],
-                         hide_index=True, width="stretch")
-    with st.expander("All measured observations and CSV", expanded=False):
-        st.dataframe(frame, hide_index=True, width="stretch")
-        st.download_button("Export grid robustness · CSV",
-                           frame.to_csv(index=False).encode("utf-8-sig"),
-                           file_name="lattice272_dividend_grid_robustness.csv",
-                           mime="text/csv", width="stretch")
+    # Display only recorded and validated observations; do not launch pricing.
+    _render_fixed_date_panel(good)
+    _render_ex_date_shift_panel(good)
+    _render_financial_consistency(good)
+    _render_failed_cases(failures)
+    _render_recorded_export(frame)

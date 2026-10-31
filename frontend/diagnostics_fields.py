@@ -66,6 +66,7 @@ def render_market_fields(
         value=float(default_for("strike", 100.0)), step=1.0,
         format="%.2f", key=key_for(strike_key),
     )
+    # Rates and volatilities are displayed in percent, not decimal units.
     a, b = st.columns(2)
     vol_pct = a.number_input(
         "Volatility · %", min_value=0.0, max_value=500.0,
@@ -77,6 +78,7 @@ def render_market_fields(
         value=float(default_for("rate", 0.02)) * 100.0,
         step=0.25, format="%.2f", key=key_for(rate_key),
     )
+    # The target view retains its original maturity cap and widget key.
     maturity = st.number_input(
         "Maturity · years", min_value=0.01, max_value=maturity_max,
         value=float(default_for("maturity", 1.0)), step=0.25,

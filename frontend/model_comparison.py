@@ -370,11 +370,8 @@ def _render_comparison_output_column(
             )
 
 
-def render_comparison_page(*, embedded: bool = False) -> None:
-    """Render cross-model analysis, optionally inside Model Diagnostics."""
-    if "last_comparison_report" not in st.session_state:
-        st.session_state["last_comparison_report"] = None
-
+def _render_comparison_heading() -> None:
+    """Keep the standalone comparison title identical to the original page."""
     if not embedded:
         st.markdown('<div class="desk-kicker">Model comparison / 02</div>',
                     unsafe_allow_html=True)
@@ -386,8 +383,18 @@ def render_comparison_page(*, embedded: bool = False) -> None:
             unsafe_allow_html=True,
         )
 
+
+def render_comparison_page(*, embedded: bool = False) -> None:
+    """Render cross-model analysis, optionally inside Model Diagnostics."""
+    if "last_comparison_report" not in st.session_state:
+        st.session_state["last_comparison_report"] = None
+
+    if not embedded:
+        _render_comparison_heading()
+
     left, right = st.columns([1.0, 1.35], gap="large")
     with left:
+        # Import is explicit and does not trigger a new pricing calculation.
         _render_comparison_import()
         submitted, request, models, repetitions, reference, error = comparison_form()
     _render_comparison_output_column(right, submitted, request, models, repetitions, reference, error)

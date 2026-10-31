@@ -111,6 +111,7 @@ def _render_risk_methodology(rows: tuple, stats: StabilitySummary, export_csv: C
                    "effects are not isolated. A fixed bump supports a cleaner N comparison, "
                    "although finite-difference bias remains. "
                    "Analytic Black–Scholes comparison applies only where valid.")
+        # Export the original measured sweeps, including failed observations.
         table = pd.DataFrame([{
             "Sweep": p.dimension, "Coordinate": p.coordinate, "N": p.steps,
             "Delta": p.delta, "Gamma": p.gamma,
@@ -123,7 +124,7 @@ def _render_risk_methodology(rows: tuple, stats: StabilitySummary, export_csv: C
                            width="stretch")
 
 
-def render_risk_numerics(rows: tuple, request: object, export_csv) -> None:
+def render_risk_numerics(rows: tuple, request: object, export_csv: Callable) -> None:
     """Two coordinated sweeps, not a duplicate of the trading Greek snapshot."""
     try:
         analytic = analytic_bs_greeks(request)
@@ -131,6 +132,7 @@ def render_risk_numerics(rows: tuple, request: object, export_csv) -> None:
         analytic = None
     if not analytic or any(not math.isfinite(analytic[g]) for g in GREEKS):
         analytic = None
+    # These charts summarize cached observations; no pricing is triggered here.
     stats = summarize_stability(rows, analytic)
     deviation = _render_risk_overview(stats, analytic)
     _render_risk_charts(rows, analytic, deviation)

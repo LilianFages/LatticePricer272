@@ -16,7 +16,7 @@ from typing import Callable, Sequence
 
 from frontend.lattice_allocation import capture_allocated_columns
 from frontend.pricing_service import (
-    PricingInputError, PricingRequest, PricingResult, _build_tree,
+    PricingFunction, PricingInputError, PricingRequest, PricingResult, _build_tree,
     price_contract, validate_request,
 )
 
@@ -67,7 +67,7 @@ def count_allocated_nodes(request: PricingRequest) -> int:
 
 
 def peak_python_memory_mib(
-    request: PricingRequest, *, pricer: Callable = price_contract,
+    request: PricingRequest, *, pricer: PricingFunction = price_contract,
 ) -> tuple[float, float]:
     """Price once under tracemalloc, independently of latency measurements."""
     if tracemalloc.is_tracing():
@@ -97,11 +97,12 @@ def _run_one(
     request: PricingRequest,
     repetitions: int,
     measure_memory: bool,
-    pricer: Callable,
-    allocation_counter: Callable,
-    memory_probe: Callable,
+    pricer: PricingFunction,
+    allocation_counter: Callable[[PricingRequest], int],
+    memory_probe: Callable[[PricingRequest], tuple[float, float]],
 ) -> EfficiencyPoint:
     try:
+        # Timing runs are independent of the optional tracemalloc valuation.
         timed_results: list[PricingResult] = [pricer(request) for _ in range(repetitions)]
         prices = [float(result.price) for result in timed_results]
         if any(not math.isclose(price, prices[0], rel_tol=1e-10, abs_tol=1e-10)
@@ -110,6 +111,7 @@ def _run_one(
         elapsed = [float(result.elapsed_ms) for result in timed_results]
         if not all(math.isfinite(x) and x >= 0 for x in elapsed):
             raise RuntimeError("Non-finite measured latency.")
+        # Count actual allocations, not merely reachable priced nodes.
         allocated = allocation_counter(request)
         peak: float | None = None
         if measure_memory:
@@ -132,6 +134,7 @@ def _run_one(
 
 def _relative_to_full(points: Sequence[EfficiencyPoint]) -> tuple[EfficiencyPoint, ...]:
     """Attach gaps/savings only to a successful FULL model at identical N."""
+    # A reference price must use the same N and a successful full engine.
     originals = {point.steps: point for point in points
                  if point.model == FULL and point.status == "ok"}
     decorated: list[EfficiencyPoint] = []
@@ -154,9 +157,9 @@ def efficiency_study(
     repetitions: int = 3,
     measure_memory: bool = False,
     *,
-    pricer: Callable = price_contract,
-    allocation_counter: Callable = count_allocated_nodes,
-    memory_probe: Callable = peak_python_memory_mib,
+    pricer: PricingFunction = price_contract,
+    allocation_counter: Callable[[PricingRequest], int] = count_allocated_nodes,
+    memory_probe: Callable[[PricingRequest], tuple[float, float]] = peak_python_memory_mib,
 ) -> EfficiencyReport:
     """Reprice three trinomial architectures with fixed contract and pruning.
 

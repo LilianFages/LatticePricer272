@@ -110,6 +110,7 @@ def _successors(node: Node) -> list[tuple[str, Node, float]]:
             grouped[key] = [target, 0.0, []]
         grouped[key][1] += float(probability)
         grouped[key][2].append(name)
+    # Recombined successors share one identity and their probability weights add.
     out: list[tuple[str, Node, float]] = []
     for target, p, names in grouped.values():
         out.append(("/".join(names), target, p))
@@ -163,6 +164,7 @@ def _trace_reachable_layers(tree: object, request: PricingRequest) -> tuple:
     layers: list[list[Node]] = []
     masses: list[dict[int, float]] = []
     forward_edges: list[tuple[int, Node, Node, float, str]] = []
+    # Advance the true probability frontier without creating inferred paths.
     for step in range(request.steps + 1):
         layer = sorted(frontier.values(), key=lambda node: (-node.price, id(node)))
         if not layer:

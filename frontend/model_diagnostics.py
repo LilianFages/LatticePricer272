@@ -89,6 +89,7 @@ def _render_shared_ticket_handoff(mode: str) -> None:
             f"S={request.spot:g} € · K={request.strike:g} € · N={request.steps} · "
             f"{len(request.dividends)} dividend(s). No pricing runs until submission."
         )
+        # Propose changes explicitly; the original saved contract remains unchanged.
         proposed_steps = _handoff_visual_steps(request, mode)
 
         available = THRESHOLDS[mode]
@@ -121,6 +122,7 @@ def render_model_diagnostics_page() -> None:
         'then inspect the underlying lattice geometry and exercise decisions.</div>',
         unsafe_allow_html=True,
     )
+    # Existing investigation keys and cached outputs survive navigation.
     mode = st.segmented_control(
         "Investigation", DIAGNOSTIC_MODES,
         selection_mode="single", default="Compare models",

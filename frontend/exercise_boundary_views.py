@@ -460,6 +460,7 @@ def _show_exercise_results() -> None:
     if pair is not None:
         _render_dividend_comparison(pair)
 
+    # Node exercise markers and the stopping distribution use one priced study.
     st.markdown('<div class="desk-section">03 · Node-level diagnostics</div>',
                 unsafe_allow_html=True)
     left_chart, right_chart = st.columns([1.10, 1.0], gap="large")
@@ -474,7 +475,8 @@ def render_exercise_boundary_tab() -> None:
     left, right = st.columns([1.0, 1.72], gap="large")
     with left:
         # Preserve exercise-style filters and chart interaction state.
-        kind, style, model, spot, strike, vol, rate, maturity, data, n, threshold, comparison, submitted = _exercise_boundary_input_form()
+        (kind, style, model, spot, strike, vol, rate, maturity,
+         data, n, threshold, comparison, submitted) = _exercise_boundary_input_form()
 
     with right:
         st.markdown('<div class="desk-section">Optimal stopping diagnostics</div>',
