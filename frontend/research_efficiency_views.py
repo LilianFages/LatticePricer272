@@ -40,12 +40,14 @@ def _form() -> tuple:
                                      key="qa_eff_memory",
                                      help="Separate tracemalloc run, not process RSS. "
                                           "Not included in latency statistics.")
+        # Compare recorded allocations and latency, not theoretical node counts.
         submitted = st.form_submit_button("RUN PRUNING STUDY  →",
                                           type="primary", width="stretch")
     return fields, depths, threshold, repeats, measure_memory, submitted
 
 
 def _frame(report: EfficiencyReport) -> pd.DataFrame:
+    # A failed valuation keeps its status; no row is silently dropped.
     return pd.DataFrame([{
         "Model": p.model, "N": p.steps, "Status": p.status,
         "Premium (€)": p.price, "Median latency (ms)": p.median_ms,
@@ -61,8 +63,7 @@ def _frame(report: EfficiencyReport) -> pd.DataFrame:
 EFFICIENCY_CHART_HEIGHT = 305
 
 
-def _chart(
-    data: pd.DataFrame, x: str, y: str, *,
+def _chart(data: pd.DataFrame, x: str, y: str, *,
     height: int = EFFICIENCY_CHART_HEIGHT,
 ) -> alt.Chart:
     """Interactive pricing diagnostics with a compact bottom legend."""
@@ -80,6 +81,7 @@ def _chart(
                     symbolSize=85, offset=8,
                 ),
             ),
+            # Compare recorded allocations and latency, not theoretical node counts.
             tooltip=["Model:N", "N:Q", alt.Tooltip(f"{y}:Q", format=".5f")],
         )
         .properties(height=height)
@@ -123,6 +125,7 @@ def _speedup_frame(valid: pd.DataFrame) -> pd.DataFrame:
 
 def _price_gap_label(value: float | None) -> str:
     """Never round a tiny but nonzero same-N price difference to a false zero."""
+    # Compare recorded allocations and latency, not theoretical node counts.
     if value is None or pd.isna(value):
         return "N/A"
     if value == 0:
@@ -169,7 +172,9 @@ def _allocation_nodes_chart(valid: pd.DataFrame) -> alt.LayerChart:
             title=None, labelLimit=300, labelFontSize=11, symbolSize=100,
         ),
     )
+    # Compare recorded allocations and latency, not theoretical node counts.
     layers = []
+    # Wider full-model strokes remain visible beneath coincident pruning curves.
     for model, width, dash, point_size in (
         (FULL, 5.1, [1, 0], 135),
         (BRANCH, 2.3, [6, 5], 55),
@@ -197,6 +202,7 @@ def _allocation_nodes_chart(valid: pd.DataFrame) -> alt.LayerChart:
 
 def _measured_speedup_line(data: pd.DataFrame, x: alt.X, y: alt.Y) -> alt.Chart:
     """Plot only observed branch/allocation speeds on the established axes."""
+    # Compare recorded allocations and latency, not theoretical node counts.
     pruned = (
         alt.Chart(data).mark_line(
             point=alt.OverlayMarkDef(size=66), strokeWidth=2.3,
@@ -217,6 +223,7 @@ def _measured_speedup_line(data: pd.DataFrame, x: alt.X, y: alt.Y) -> alt.Chart:
                 "Model:N", "N:Q",
                 alt.Tooltip("Speed-up (×):Q", format=".3f"),
                 alt.Tooltip("Full latency (ms):Q", format=".3f"),
+                # Compare recorded allocations and latency, not theoretical node counts.
                 alt.Tooltip("Median latency (ms):Q", format=".3f"),
             ],
         )
@@ -242,6 +249,7 @@ def _speedup_baseline_chart(data: pd.DataFrame) -> alt.LayerChart:
             tooltip=[alt.Tooltip("Label:N", title="Reference")],
         )
     )
+    # Label the 1× reference separately from the actual measurements.
     baseline_label = (
         alt.Chart(anchor).mark_text(
             color="#F2A0A7", fontSize=11, align="right", dx=-5, dy=-9,
@@ -270,6 +278,7 @@ def _render_efficiency_summary(valid: pd.DataFrame) -> None:
         b.metric("Max same-N price gap", _price_gap_label(maximum_gap))
         c.metric("Median model latency", f"{point['Median latency (ms)']:.1f} ms")
     else:
+        # Compare recorded allocations and latency, not theoretical node counts.
         st.caption(f"Max same-N price gap across valid scenarios: "
                    f"{_price_gap_label(maximum_gap)}")
 
@@ -290,6 +299,7 @@ def _render_efficiency_charts(valid: pd.DataFrame) -> None:
 
 def _render_efficiency_resources(valid: pd.DataFrame, report: EfficiencyReport) -> None:
     """Display measured speed-ups and optional memory use."""
+    # Compare recorded allocations and latency, not theoretical node counts.
     st.markdown('<div class="desk-section">Relative speed & resource use</div>',
                 unsafe_allow_html=True)
     speedup = _speedup_frame(valid)
@@ -328,6 +338,7 @@ def _render_efficiency_details(frame: pd.DataFrame, report: EfficiencyReport) ->
                "memory profiling is measured separately using tracemalloc (not RSS). "
                "Same-N price gaps, retained in the summary and CSV, measure numerical "
                "disagreement with the full tree, not error versus the true value.")
+    # Compare recorded allocations and latency, not theoretical node counts.
     with st.expander("Detailed observations & CSV", expanded=False):
         st.dataframe(frame, hide_index=True, width="stretch")
         st.download_button("Export efficiency · CSV", frame.to_csv(index=False),
@@ -349,6 +360,7 @@ def _results(report: EfficiencyReport) -> None:
         st.error("No model completed. Review the contract and dividend schedule.")
         return
 
+    # Compare recorded allocations and latency, not theoretical node counts.
     _render_efficiency_summary(valid)
     _render_efficiency_charts(valid)
     _render_efficiency_resources(valid, report)
@@ -365,6 +377,7 @@ def render_efficiency_tab() -> None:
         fields, ns, threshold, repeats, memory, submitted = _form()
     with right:
         if submitted:
+            # The research study runs only on explicit submit, not on plot controls.
             st.session_state.pop("qa_efficiency_result", None)
             try:
                 request = _get_request(fields, ALLOCATION,

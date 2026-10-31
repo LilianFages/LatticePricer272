@@ -54,8 +54,7 @@ def _plot_domain(
 
 
 
-def _lattice_chart_data(
-    snapshot: LatticeSnapshot, *, include_links: bool = True,
+def _lattice_chart_data(snapshot: LatticeSnapshot, *, include_links: bool = True,
     step_window: tuple[int, int] | None = None,
     max_links: int | None = None,
 ) -> tuple:
@@ -123,6 +122,7 @@ def _lattice_edge_marks(
     regular_edges = alt.Chart(frame[frame["simplified"] == False]).mark_line(  # noqa: E712
         stroke="#61758c", opacity=0.34, strokeWidth=1.15
     ).encode(x=x, y=y, detail="edge_id:N")
+    # Display only genuine priced nodes and edges without altering the lattice.
     simplified_edges = alt.Chart(frame[frame["simplified"] == True]).mark_line(  # noqa: E712
         stroke=COLORS["Simplified"], opacity=0.85, strokeWidth=2.2,
         strokeDash=[5, 3],
@@ -131,8 +131,7 @@ def _lattice_edge_marks(
 
 
 
-def _lattice_point_marks(
-    snapshot: LatticeSnapshot, nodes: pd.DataFrame, x: alt.X, y: alt.Y,
+def _lattice_point_marks(snapshot: LatticeSnapshot, nodes: pd.DataFrame, x: alt.X, y: alt.Y,
     *, step_window: tuple[int, int] | None = None, overview: bool = False,
 ) -> tuple:
     """Keep unreached allocation and option state visual marks."""
@@ -205,6 +204,7 @@ def _chart(
     """Sparse global chart or complete local priced nodes; never reprice."""
     if overview and show_links:
         raise ValueError("Full links require the detailed time-window view.")
+    # Display only genuine priced nodes and edges without altering the lattice.
     nodes, links = _lattice_chart_data(
         snapshot, include_links=show_links, step_window=step_window,
         max_links=max_links,
@@ -246,6 +246,7 @@ def _chart(
 
 def _inspect_connected_node(snapshot: LatticeSnapshot, prefix: str) -> None:
     """Inspect selected priced node state and transition probabilities."""
+    # Display only genuine priced nodes and edges without altering the lattice.
     st.caption("Inspect the engine-priced object and its transition probabilities.")
     a, b = st.columns([1, 2])
     step = a.selectbox(
@@ -322,6 +323,7 @@ def focus_lattice_snapshot(
     visible. No interpolation, independent edge sampling or price adjustments.
     The original snapshot is immutable and remains available to Node inspector.
     """
+    # Display only genuine priced nodes and edges without altering the lattice.
     start, end = step_window
     low, high = spot_band
     if start < 0 or end < start or end > snapshot.request.steps:
@@ -352,6 +354,7 @@ def _render_lattice_explanations(
                    f"spot interval [{spot_band[0]:.2f}, {spot_band[1]:.2f}] €. "
                    "No sampled or invented paths. Node inspector retains "
                    "access to the complete tree.")
+    # Display only genuine priced nodes and edges without altering the lattice.
     if overview:
         st.caption("Fast overview: sampled time layers and representative "
                    "priced nodes, retaining the extreme spots and exercise "
@@ -420,6 +423,7 @@ def _render_snapshot(
                        max_links=max_links),
                 width="stretch", key=f"{prefix}_chart",
             )
+    # Display only genuine priced nodes and edges without altering the lattice.
     _render_lattice_explanations(
         snapshot, all_allocated, show_links, overview, spot_band,
     )
@@ -440,6 +444,7 @@ def _pruning_comparison(
         return
     ref_count = reference.measured_allocations
     opt_count = optimized.measured_allocations
+    # Display only genuine priced nodes and edges without altering the lattice.
     if not ref_count:
         return
     diff = ref_count - opt_count
@@ -469,6 +474,7 @@ def explorer_dividend_defaults(
     seed: PricingRequest | None,
 ) -> tuple[bool, float, float]:
     """Match the existing single-dividend editor without discarding cashflows."""
+    # Display only genuine priced nodes and edges without altering the lattice.
     if seed is None or not seed.dividends:
         return False, 0.5, 3.0
     if len(seed.dividends) != 1:
@@ -490,6 +496,7 @@ def _explorer_default(field: str, fallback: Any) -> Any:
 
 def _render_explorer_import() -> None:
     """Explicit ticket prefill; lattice builds remain button-triggered."""
+    # Display only genuine priced nodes and edges without altering the lattice.
     render_reference_import("Explore lattice")
 
 
@@ -513,6 +520,7 @@ def _explorer_market_fields(left: object) -> tuple:
 
 def _explorer_graph_fields(right: object) -> tuple:
     """Collect display settings and optional dividend inputs."""
+    # Display only genuine priced nodes and edges without altering the lattice.
     with right:
         # Keep geometric coordinate mapping separate from financial valuations.
         st.markdown('<div class="desk-section">02 · Visual comparison</div>', unsafe_allow_html=True)
@@ -604,6 +612,7 @@ def _explorer_local_window(snapshots: list[LatticeSnapshot]) -> tuple:
         help="Only real nodes and links inside this spot interval are drawn.",
     )
     spot_band = (
+        # Display only genuine priced nodes and edges without altering the lattice.
         max(0.0, focus_spot * (1 - width_pct / 100)),
         focus_spot * (1 + width_pct / 100),
     )
@@ -624,6 +633,7 @@ def _explorer_detail_controls(snapshots: list[LatticeSnapshot]) -> tuple:
     """Configure fast overview or exact local window; preserve widget order."""
     large_tree = any(snap.request.steps >= 20 for snap in snapshots)
     step_window = None
+    # Display only genuine priced nodes and edges without altering the lattice.
     spot_band = None
     overview = False
     show_links = True
@@ -668,6 +678,7 @@ def _explorer_plot_panels(
     """Display actual stored lattice snapshots on one comparable domain."""
     max_links = None  # Display every genuine edge inside the local corridor.
     domain = _explorer_shared_domain(
+        # Display only genuine priced nodes and edges without altering the lattice.
         snapshots, show_all, step_window, spot_band,
     )
     # Both panels share one price axis, including when the user focuses a model.
@@ -704,6 +715,7 @@ def _explorer_plot_panels(
 
 def _render_explorer_geometry(stored: list) -> None:
     """Draw shared-domain lattice plots without rebuilding models."""
+    # Display only genuine priced nodes and edges without altering the lattice.
     snapshots = [snap for _, snap, _ in stored if snap is not None]
     st.markdown('<div class="desk-section">03 · Priced lattice geometry</div>', unsafe_allow_html=True)
     st.caption(
@@ -724,6 +736,7 @@ def _build_explorer_model_snapshots(
 ) -> list[tuple[str, LatticeSnapshot | None, str | None]]:
     """Construct both independent lattices and preserve failure reporting."""
     results: list[tuple[str, LatticeSnapshot | None, str | None]] = []
+    # Display only genuine priced nodes and edges without altering the lattice.
     for model in (first, second):
         try:
             # Render lattice navigation without mutating the underlying tree.
@@ -745,6 +758,16 @@ def _render_explorer_heading() -> None:
             'optimal early exercise · side-by-side architectures</div>',
             unsafe_allow_html=True,
         )
+
+
+def _store_explorer_snapshots(base: PricingRequest, first: str, second: str) -> None:
+    """Store both model results without overwriting the last valid reference."""
+    # Display only genuine priced nodes and edges without altering the lattice.
+    results = _build_explorer_model_snapshots(base, first, second)
+    st.session_state["lattice_explorer_result"] = results
+    if any(snapshot is not None for _, snapshot, _ in results):
+        st.session_state["diagnostics_last_contract"] = base
+        st.session_state["diagnostics_last_source"] = "Explore lattice"
 
 
 def render_lattice_explorer_page(*, embedded: bool = False) -> None:
@@ -770,11 +793,7 @@ def render_lattice_explorer_page(*, embedded: bool = False) -> None:
             option_type=kind, exercise=exercise, pruning_threshold=threshold,
             dividends=divs,
         )
-        results = _build_explorer_model_snapshots(base, first, second)
-        st.session_state["lattice_explorer_result"] = results
-        if any(snapshot is not None for _, snapshot, _ in results):
-            st.session_state["diagnostics_last_contract"] = base
-            st.session_state["diagnostics_last_source"] = "Explore lattice"
+        _store_explorer_snapshots(base, first, second)
 
     stored = st.session_state.get("lattice_explorer_result")
     if not stored:

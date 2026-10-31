@@ -28,6 +28,7 @@ DEFAULT_AMPLITUDE: dict[str, float] = {
 
 @dataclass(frozen=True, slots=True)
 class PricingObservation:
+    # Preserve request validation and distinguish sampled gaps from exact errors.
     model: str
     coordinate: float
     price: float | None
@@ -48,6 +49,7 @@ class ConvergenceResult:
 @dataclass(frozen=True, slots=True)
 class StabilityObservation:
     dimension: str
+    # Preserve request validation and distinguish sampled gaps from exact errors.
     coordinate: float
     steps: int
     spot_bump_pct: float
@@ -90,6 +92,7 @@ def _linear_grid(center: float, amplitude: float, count: int) -> tuple[float, ..
 
 def _validate_shared_contract(request: PricingRequest) -> None:
     """Validate the market independently of a model that may fail individually."""
+    # Preserve request validation and distinguish sampled gaps from exact errors.
     base = replace(request, model="Hybrid") if request.dividends and request.model == "Binomial" else request
     validate_request(base)
 
@@ -110,6 +113,7 @@ def sensitivity_sweep(
     _validate_shared_contract(request)
     selected = _check_models(models)
     if parameter not in DEFAULT_AMPLITUDE:
+        # Preserve request validation and distinguish sampled gaps from exact errors.
         raise PricingInputError("Unsupported sensitivity parameter.")
     if type(count) is not int or not 3 <= count <= 15 or count % 2 == 0:
         raise PricingInputError("Use 3–15 odd-numbered sweep points.")
@@ -149,6 +153,7 @@ def convergence_study(
     The numerical reference is the selected reference model at the highest
     sampled N. No claim of exactness or asymptotic convergence is made.
     """
+    # Preserve request validation and distinguish sampled gaps from exact errors.
     _validate_shared_contract(request)
     selected = _check_models(models)
     grid = tuple(steps_grid)
@@ -191,8 +196,7 @@ def _spot_pair(
     return a.price, b.price, None
 
 
-def _stability_at(
-    request: PricingRequest, *, dimension: str, coordinate: float,
+def _stability_at(request: PricingRequest, *, dimension: str, coordinate: float,
     delta_pct: float, gamma_pct: float | None, pricer: PricingFunction,
 ) -> StabilityObservation:
     base = _evaluate(request, request.spot, pricer)
@@ -218,8 +222,8 @@ def _stability_at(
                                 else "; ".join(x for x in (issue_d,issue_g) if x))
 
 
-def greeks_stability(
-    request: PricingRequest,
+def greeks_stability(request: PricingRequest,
+    # Preserve request validation and distinguish sampled gaps from exact errors.
     delta_bumps_pct: Sequence[float] = (0.5, 1.0, 2.0, 3.5),
     steps_grid: Sequence[int] = (40, 80, 100, 150),
     gamma_bump_pct: float | None = None,
@@ -240,6 +244,7 @@ def greeks_stability(
     if not 2 <= len(ns) <= 6 or any(type(x) is not int or not 1 <= x <= MAX_STEPS for x in ns):
         raise PricingInputError("Provide 2–6 legal N values.")
     if len(set(ns)) != len(ns) or list(ns) != sorted(ns):
+        # Preserve request validation and distinguish sampled gaps from exact errors.
         raise PricingInputError("N grid must be increasing and unique.")
     if gamma_bump_pct is not None and (
         not math.isfinite(gamma_bump_pct) or not 0 < gamma_bump_pct <= 20
@@ -256,8 +261,10 @@ def greeks_stability(
     return tuple(rows)
 
 
-def observations_csv(rows: Sequence[PricingObservation], *, reference: float | None = None,
-                     label: str = "") -> str:
+def observations_csv(
+    rows: Sequence[PricingObservation], *, reference: float | None = None,
+    label: str = "",
+) -> str:
     buf = io.StringIO()
     out = csv.writer(buf)
     out.writerow(["model", "coordinate", "price", "runtime_ms", "status",

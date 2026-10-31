@@ -61,6 +61,7 @@ def comparison_dividend_rows(seed: PricingRequest | None) -> list[dict[str, floa
 
 def _comparison_contract_key(base: str) -> str:
     """Recreate only imported contract widgets, never benchmark selections."""
+    # Only submitted comparison settings may trigger model valuations.
     generation = st.session_state.get("cmp_import_nonce", 0)
     return f"{base}_{generation}" if generation else base
 
@@ -81,6 +82,7 @@ def _render_comparison_import() -> None:
 def _comparison_contract_fields() -> tuple:
     """Contract-specific choices; the option editor is shared with the explorer."""
     st.markdown('<div class="desk-section">01 · Contract</div>', unsafe_allow_html=True)
+    # Only submitted comparison settings may trigger model valuations.
     kind, exercise = render_option_pair(
         _comparison_contract_key, _comparison_default,
         widget_names=("cmp_kind", "cmp_exercise"),
@@ -104,6 +106,7 @@ def _comparison_market_fields() -> tuple:
 
 def _comparison_benchmark_fields() -> tuple:
     """Set independent timing runs and price reference."""
+    # Only submitted comparison settings may trigger model valuations.
     st.markdown('<div class="desk-section">03 · Benchmark setup</div>', unsafe_allow_html=True)
     steps = st.number_input("Time steps (N)", min_value=1, max_value=MAX_STEPS,
                             value=int(_comparison_default("steps", 100)),
@@ -135,6 +138,7 @@ def _comparison_benchmark_fields() -> tuple:
 def _comparison_dividend_fields() -> object:
     """Collect the same cash dividend schedule."""
     with st.expander("Cash dividends · optional"):
+        # Only submitted comparison settings may trigger model valuations.
         st.caption("Discrete payments: time in years, amount in EUR per share. "
                    "Multiple rows supported. Binomial will be marked unsupported.")
         frame = st.data_editor(
@@ -161,6 +165,7 @@ def comparison_form() -> tuple[
     bool, PricingRequest | None, tuple[str, ...], int, str, str | None
 ]:
     """Collect one identical contract for all selected pricing models."""
+    # Only submitted comparison settings may trigger model valuations.
     with st.form("model_comparison_ticket"):
         kind, exercise, models = _comparison_contract_fields()
 
@@ -192,6 +197,7 @@ def comparison_form() -> tuple[
 
 def _bar_chart(rows: list[dict[str, object]], field: str) -> alt.Chart:
     """Interactive bar chart for runtime or signed price deviation."""
+    # Only submitted comparison settings may trigger model valuations.
     frame = pd.DataFrame([row for row in rows if row[field] is not None])
     return (
         alt.Chart(frame)
@@ -212,6 +218,7 @@ def _bar_chart(rows: list[dict[str, object]], field: str) -> alt.Chart:
 def _render_comparison_head(report: ComparisonReport, valid: list, failed: list) -> None:
     """Present aggregate model diagnostics and pricing failures."""
     a, b, c = st.columns(3)
+    # Only submitted comparison settings may trigger model valuations.
     a.metric("Models priced", f"{len(valid)} / {len(report.lines)}")
     b.metric("Reference", report.reference_label or "Unavailable")
     c.metric("Reference premium", (
@@ -234,6 +241,7 @@ def _render_comparison_table(rows: list) -> None:
         "Model", "Status", "Price (€)", "Δ vs reference (€)",
         "Δ vs reference (%)", "Median time (ms)", "Reachable nodes",
     ]]
+    # Only submitted comparison settings may trigger model valuations.
     st.dataframe(
         table, width="stretch", hide_index=True,
         column_config={
@@ -258,6 +266,7 @@ def _render_comparison_charts(report: ComparisonReport, rows: list) -> None:
         else:
             st.caption("No usable price reference; showing independent model premiums.")
             st.altair_chart(_bar_chart(rows, "Price (€)"), width="stretch")
+    # Only submitted comparison settings may trigger model valuations.
     with tab_runtime:
         st.altair_chart(_bar_chart(rows, "Median time (ms)"), width="stretch")
     # Retain model-order and display labels in side-by-side comparisons.
@@ -337,6 +346,7 @@ def _update_comparison_result(
                     st.session_state["diagnostics_last_contract"] = request
                     st.session_state["diagnostics_last_source"] = "Compare models"
             except (PricingInputError, ValueError) as exc:
+                # Only submitted comparison settings may trigger model valuations.
                 st.error(str(exc))
 
 def _render_comparison_output_column(
@@ -372,16 +382,15 @@ def _render_comparison_output_column(
 
 def _render_comparison_heading() -> None:
     """Keep the standalone comparison title identical to the original page."""
-    if not embedded:
-        st.markdown('<div class="desk-kicker">Model comparison / 02</div>',
-                    unsafe_allow_html=True)
-        st.markdown('<div class="desk-title">Cross-Model · Pricing & Performance</div>',
-                    unsafe_allow_html=True)
-        st.markdown(
-            '<div class="desk-subtitle">One contract · multiple pricing engines · '
-            'explicit reference and numerical diagnostics</div>',
-            unsafe_allow_html=True,
-        )
+    st.markdown('<div class="desk-kicker">Model comparison / 02</div>',
+                unsafe_allow_html=True)
+    st.markdown('<div class="desk-title">Cross-Model · Pricing & Performance</div>',
+                unsafe_allow_html=True)
+    st.markdown(
+        '<div class="desk-subtitle">One contract · multiple pricing engines · '
+        'explicit reference and numerical diagnostics</div>',
+        unsafe_allow_html=True,
+    )
 
 
 def render_comparison_page(*, embedded: bool = False) -> None:

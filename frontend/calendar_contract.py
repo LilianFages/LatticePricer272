@@ -12,39 +12,31 @@ import math
 from dataclasses import dataclass
 from datetime import date, datetime
 
-
 DAYS_PER_YEAR = 365.0
 DAY_COUNT = "ACT/365F"
-
 
 class CalendarInputError(ValueError):
     """Invalid or inconsistent calendar data supplied by the user."""
 
-
 @dataclass(frozen=True, slots=True)
 class DatedCashDividend:
     """Cash dividend paid at the specified ex-dividend date."""
-
+    # Convert exact dates to ACT/365F without changing cash-dividend timing.
     ex_date: date
     amount: float
-
 
 @dataclass(frozen=True, slots=True)
 class RelativeCashDividend:
     """Dividend converted into the numerical engine's time convention."""
-
     time: float
     amount: float
-
 
 @dataclass(frozen=True, slots=True)
 class ResolvedCalendar:
     """Exact numerical schedule derived from the original dated inputs."""
-
     maturity: float
     dividends: tuple[RelativeCashDividend, ...]
     day_count: str = DAY_COUNT
-
 
 @dataclass(frozen=True, slots=True)
 class ContractCalendar:
@@ -53,7 +45,7 @@ class ContractCalendar:
     Dates use ACT/365 Fixed. Dividend events are mapped to time since the
     valuation date; any event on the valuation date is excluded.
     """
-
+    # Convert exact dates to ACT/365F without changing cash-dividend timing.
     valuation_date: date
     expiry_date: date
     dividends: tuple[DatedCashDividend, ...] = ()
@@ -62,7 +54,7 @@ class ContractCalendar:
         """Validate and convert all dated cashflows in ACT/365F time."""
         dividends: list[RelativeCashDividend] = []
         seen_dates: set[date] = set()
-
+        # Each ex-date is unique and strictly after valuation.
         for dividend in self.dividends:
             if not isinstance(dividend, DatedCashDividend):
                 raise CalendarInputError(
@@ -83,6 +75,7 @@ class ContractCalendar:
             days = (dividend.ex_date - self.valuation_date).days
             dividends.append(RelativeCashDividend(days / DAYS_PER_YEAR, amount))
 
+        # Convert exact dates to ACT/365F without changing cash-dividend timing.
         dividends.sort(key=lambda item: item.time)
         return tuple(dividends)
 
@@ -103,10 +96,10 @@ class ContractCalendar:
         maturity_days = (self.expiry_date - self.valuation_date).days
         dividends = self._resolved_dividends()
         return ResolvedCalendar(
+            # Convert exact dates to ACT/365F without changing cash-dividend timing.
             maturity=maturity_days / DAYS_PER_YEAR,
             dividends=dividends,
         )
-
 
 def _positive_cash_amount(raw_amount: object) -> float:
     """Reject booleans and nonpositive or nonfinite dividend cashflows."""
@@ -122,8 +115,8 @@ def _positive_cash_amount(raw_amount: object) -> float:
         )
     return amount
 
-
 def _require_date(value: object, name: str) -> None:
     """Reject datetime values: a date-based ticket must not hide a time zone."""
+    # Convert exact dates to ACT/365F without changing cash-dividend timing.
     if not isinstance(value, date) or isinstance(value, datetime):
         raise CalendarInputError(f"{name} must be a calendar date.")

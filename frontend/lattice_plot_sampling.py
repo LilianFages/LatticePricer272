@@ -18,6 +18,7 @@ def _representative_indices(group: pd.DataFrame, per_step: int) -> list[int]:
         for _, same_state in group.groupby("state", sort=False):
             anchors.add(int(same_state.index[0]))
             anchors.add(int(same_state.index[-1]))
+    # Sample genuine edges only; tree allocations and prices remain immutable.
     if len(anchors) > per_step:
         # Bound the state anchors without hiding the lowest-priced node.
         anchors = set(sorted(anchors)[:per_step - 1]) | {n - 1}
@@ -42,8 +43,7 @@ def _representative_layer(group: pd.DataFrame, per_step: int) -> pd.DataFrame:
     return group.iloc[_representative_indices(group, per_step)]
 
 
-def select_chart_rows(
-    frame: pd.DataFrame,
+def select_chart_rows(frame: pd.DataFrame,
     *,
     step_window: tuple[int, int] | None = None,
     overview: bool = False,
@@ -64,14 +64,14 @@ def select_chart_rows(
         return frame.copy()
     if per_step < 2:
         raise ValueError("At least two representative points per step are required.")
+    # Sample genuine edges only; tree allocations and prices remain immutable.
     chunks: list[pd.DataFrame] = []
     for _, group in frame.groupby("step", sort=True):
         chunks.append(_representative_layer(group, per_step))
     return pd.concat(chunks, ignore_index=True)
 
 
-def overview_step_indices(
-    final_step: int, *, max_layers: int = 40,
+def overview_step_indices(final_step: int, *, max_layers: int = 40,
     event_times: tuple[float, ...] = (), maturity: float = 1.0,
 ) -> frozenset[int]:
     """Keep a sparse global timeline, including maturity and dividend dates.
@@ -86,6 +86,7 @@ def overview_step_indices(
         raise ValueError("Maturity must be strictly positive and finite.")
     if final_step + 1 <= max_layers:
         return frozenset(range(final_step + 1))
+    # Sample genuine edges only; tree allocations and prices remain immutable.
     stride = math.ceil(final_step / (max_layers - 1))
     selected = set(range(0, final_step + 1, stride))
     selected.add(final_step)
@@ -107,6 +108,7 @@ def _sample_transition_layer(
         key=lambda edge: (edge.from_price, edge.to_price, edge.from_id,
                           edge.to_id, edge.kind),
     )
+    # Sample genuine edges only; tree allocations and prices remain immutable.
     if budget >= len(layer):
         return layer
     # Retain a broad stock-price range, never synthetic intermediate edges.
@@ -117,6 +119,20 @@ def _sample_transition_layer(
         indices.remove(sorted(indices)[len(indices) // 2])
         indices.add(special)
     return [layer[i] for i in sorted(indices)]
+
+
+def _group_visible_transitions(
+    edges: tuple[VisualEdge, ...], step_window: tuple[int, int] | None
+) -> dict[int, list[VisualEdge]]:
+    """Group actual edges by time before allocating per-interval display budgets."""
+    groups: dict[int, list[VisualEdge]] = {}
+    for edge in edges:
+        if step_window is not None and not (
+            step_window[0] <= edge.step < step_window[1]
+        ):
+            continue
+        groups.setdefault(edge.step, []).append(edge)
+    return groups
 
 
 def representative_transitions(
@@ -134,18 +150,13 @@ def representative_transitions(
         raise ValueError("max_links must be an integer >= 2")
     if step_window is not None and step_window[0] >= step_window[1]:
         raise ValueError("Link window must contain at least two time layers")
-    groups: dict[int, list[VisualEdge]] = {}
-    for edge in edges:
-        if step_window is not None and not (
-            step_window[0] <= edge.step < step_window[1]
-        ):
-            continue
-        groups.setdefault(edge.step, []).append(edge)
+    groups = _group_visible_transitions(edges, step_window)
     count = sum(map(len, groups.values()))
     if count <= max_links:
         return tuple(edge for layer in groups.values() for edge in layer)
 
     if len(groups) > max_links:
+        # Sample genuine edges only; tree allocations and prices remain immutable.
         raise ValueError("Link budget smaller than the number of time intervals")
     ordered_steps = sorted(groups)
     base, extra = divmod(max_links, len(ordered_steps))

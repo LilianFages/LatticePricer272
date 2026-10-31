@@ -24,6 +24,7 @@ REQUIRED = frozenset({
 
 def validate_study_frame(frame: pd.DataFrame) -> pd.DataFrame:
     """Reject incompatible exports without filling failed/missing observations."""
+    # Use recorded observations only; failed configurations are never imputed.
     missing = REQUIRED.difference(frame.columns)
     if missing:
         raise ValueError(f"Missing phase 6C columns: {', '.join(sorted(missing))}")
@@ -65,6 +66,7 @@ def _validate_grid_coordinates(
         raise ValueError("Phase 6C export has invalid lattice steps or day shifts.")
     dates = verified["dividend_time"].dropna()
     if not dates.map(math.isfinite).all() or not dates.between(0, 1, inclusive="right").all():
+        # Use recorded observations only; failed configurations are never imputed.
         raise ValueError("Phase 6C export contains invalid ex-dates.")
     for field in numeric:
         nonmissing = verified[field].dropna()
@@ -88,6 +90,7 @@ def _validate_option_premiums(verified: pd.DataFrame, good: pd.Series) -> None:
 
 def _fixed_date_chart(grid: pd.DataFrame) -> alt.Chart:
     """Preserve the recorded-series encodings and financial chart semantics."""
+    # Use recorded observations only; failed configurations are never imputed.
     chart = (alt.Chart(grid).mark_line(point=True)
              .encode(x=alt.X("steps:Q", title="Lattice steps N"),
                      y=alt.Y("european_put:Q", title="European put (€)",
@@ -111,6 +114,7 @@ def _fixed_date_chart(grid: pd.DataFrame) -> alt.Chart:
 
 def _ex_date_shift_chart(dates: pd.DataFrame) -> alt.Chart:
     """Preserve the recorded-series encodings and financial chart semantics."""
+    # Use recorded observations only; failed configurations are never imputed.
     chart = (alt.Chart(dates).mark_line(point=True)
              .encode(x=alt.X("date_shift_days:Q", title="Ex-date shift (days)"),
                      y=alt.Y("date_shift_put:Q", title="European put change (€)",
@@ -133,6 +137,7 @@ def _ex_date_shift_chart(dates: pd.DataFrame) -> alt.Chart:
 
 def _render_fixed_date_panel(good: pd.DataFrame) -> None:
     """Compare numerical grids for the same cash-dividend contract."""
+    # Use recorded observations only; failed configurations are never imputed.
     st.markdown("**A · Fixed ex-date, different N**")
     st.caption("Same spot, strike, rate, volatility, maturity and cash ex-date. "
                "Connecting the measured points is a visual guide, not a smooth "
@@ -153,6 +158,7 @@ def _render_ex_date_shift_panel(good: pd.DataFrame) -> None:
                "dividend. The resulting price shift cannot be interpreted as "
                "discretization error.")
     dates = good.loc[good["panel"].eq("date") & good["date_shift_put"].notna()]
+    # Use recorded observations only; failed configurations are never imputed.
     if not dates.empty:
         st.altair_chart(_ex_date_shift_chart(dates), width="stretch")
     else:
@@ -176,6 +182,7 @@ def _render_financial_consistency(good: pd.DataFrame) -> None:
 
 def _render_failed_cases(failures: pd.DataFrame) -> None:
     """Expose every failed experiment instead of dropping its row."""
+    # Use recorded observations only; failed configurations are never imputed.
     if not failures.empty:
         with st.expander(f"Failed configurations · {len(failures)}", expanded=False):
             st.dataframe(failures[["model", "panel", "steps", "date_shift_days", "failure"]],
@@ -192,6 +199,25 @@ def _render_recorded_export(frame: pd.DataFrame) -> None:
                            mime="text/csv", width="stretch")
 
 
+def _load_grid_study() -> pd.DataFrame | None:
+    """Read the archived dataset only, rejecting missing or incompatible exports."""
+    if not DATASET.is_file():
+        st.info("No full Phase 6C dataset yet. From the repository root, run "
+                "`python -m experiments.dividend_grid_robustness` after the quick smoke test. "
+                "This view never runs pricing automatically.")
+        return None
+    # Use recorded observations only; failed configurations are never imputed.
+    try:
+        frame = validate_study_frame(pd.read_csv(DATASET))
+    except (ValueError, OSError, pd.errors.ParserError) as exc:
+        st.error(f"Phase 6C dataset is unavailable or incompatible: {exc}")
+        return None
+    if frame.empty:
+        st.info("The Phase 6C dataset contains no observations.")
+        return None
+    return frame
+
+
 def render_grid_robustness() -> None:
     """Display verified, previously saved experimental evidence on demand."""
     st.markdown('<div class="desk-section">Dividend ex-date · Grid robustness</div>',
@@ -201,18 +227,9 @@ def render_grid_robustness() -> None:
         "changes from genuine ex-date changes. Numerical reference gaps are not "
         "errors against an analytical price."
     )
-    if not DATASET.is_file():
-        st.info("No full Phase 6C dataset yet. From the repository root, run "
-                "`python -m experiments.dividend_grid_robustness` after the quick smoke test. "
-                "This view never runs pricing automatically.")
-        return
-    try:
-        frame = validate_study_frame(pd.read_csv(DATASET))
-    except (ValueError, OSError, pd.errors.ParserError) as exc:
-        st.error(f"Phase 6C dataset is unavailable or incompatible: {exc}")
-        return
-    if frame.empty:
-        st.info("The Phase 6C dataset contains no observations.")
+    # Use recorded observations only; failed configurations are never imputed.
+    frame = _load_grid_study()
+    if frame is None:
         return
 
     good = frame.loc[frame["status"].eq("success")].copy()

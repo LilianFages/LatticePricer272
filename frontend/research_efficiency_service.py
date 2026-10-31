@@ -29,6 +29,7 @@ MAX_RESEARCH_N = 150  # Interactive workload bound, not an engine restriction.
 
 @dataclass(frozen=True, slots=True)
 class EfficiencyPoint:
+    # Count real allocations independently of timing and memory measurements.
     model: str
     steps: int
     status: str
@@ -51,6 +52,7 @@ class EfficiencyReport:
 
 def count_allocated_nodes(request: PricingRequest) -> int:
     """Count actual objects created in every column; no model-price timing."""
+    # Count real allocations independently of timing and memory measurements.
     validate_request(request)
     tree = _build_tree(request)
     with capture_allocated_columns(tree) as columns:
@@ -66,12 +68,12 @@ def count_allocated_nodes(request: PricingRequest) -> int:
     return count
 
 
-def peak_python_memory_mib(
-    request: PricingRequest, *, pricer: PricingFunction = price_contract,
+def peak_python_memory_mib(request: PricingRequest, *, pricer: PricingFunction = price_contract,
 ) -> tuple[float, float]:
     """Price once under tracemalloc, independently of latency measurements."""
     if tracemalloc.is_tracing():
         raise RuntimeError("An external tracemalloc session is already active.")
+    # Count real allocations independently of timing and memory measurements.
     tracemalloc.start()
     try:
         result = pricer(request)
@@ -93,11 +95,11 @@ def _validate_grid(steps_grid: Sequence[int], repetitions: int) -> tuple[int, ..
     return ns
 
 
-def _run_one(
-    request: PricingRequest,
+def _run_one(request: PricingRequest,
     repetitions: int,
     measure_memory: bool,
     pricer: PricingFunction,
+    # Count allocations independently of the latency repetition loop.
     allocation_counter: Callable[[PricingRequest], int],
     memory_probe: Callable[[PricingRequest], tuple[float, float]],
 ) -> EfficiencyPoint:
@@ -155,6 +157,7 @@ def efficiency_study(
     request: PricingRequest,
     steps_grid: Sequence[int] = (20, 40, 80, 100),
     repetitions: int = 3,
+    # Count real allocations independently of timing and memory measurements.
     measure_memory: bool = False,
     *,
     pricer: PricingFunction = price_contract,

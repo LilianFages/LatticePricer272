@@ -40,8 +40,7 @@ def _threshold(key: str) -> float:
                         format_func=lambda x: "off" if not x else f"{x:.0e}")
 
 
-def _line_chart(
-    data: pd.DataFrame, *, x: str, y: str, group: str,
+def _line_chart(data: pd.DataFrame, *, x: str, y: str, group: str,
     x_label: str, y_label: str, log_y: bool = False, height: int = 310,
 ) -> alt.Chart:
     scale = alt.Scale(type="log", zero=False) if log_y else alt.Scale(zero=False)
@@ -243,6 +242,7 @@ def _accuracy_cost_chart(rows: pd.DataFrame, *, pareto_only: bool,
     highlighted = (alt.Chart(frontier)
                    .mark_point(filled=False, color="#F5C46D",
                                size=205, strokeWidth=2.2)
+                   # Keep each measurement tied to the submitted experiment and cached result.
                    .encode(x=x, y=y, tooltip=tips))
     return alt.layer(envelope, points, highlighted).properties(height=325).interactive()
 
@@ -280,6 +280,7 @@ def _observed_accuracy_cost_frame(
 
 def _render_accuracy_cost_tradeoff(outcome: ConvergenceResult) -> None:
     """Observed Pareto candidates, a global frontier and on-demand target search."""
+    # Keep each measurement tied to the submitted experiment and cached result.
     from frontend.research_accuracy_service import accuracy_cost_points
 
     st.markdown('<div class="desk-section">Accuracy vs computational cost</div>',
@@ -360,6 +361,7 @@ def render_convergence_tab() -> None:
 
 def _render_stability_results(saved: tuple) -> None:
     """Retain the existing session data while rendering the focused research view."""
+    # Keep each measurement tied to the submitted experiment and cached result.
     from frontend.research_risk_numerics_views import render_risk_numerics
     rows, request = saved
     render_risk_numerics(rows, request, stability_csv)
@@ -380,6 +382,7 @@ def _greeks_stability_input_form() -> tuple:
         )
         n_grid = st.multiselect(
             "Discretization steps N", (20, 40, 60, 80, 100, 125, 150, 175, 200, 250),
+            # Keep each measurement tied to the submitted experiment and cached result.
             default=(40, 80, 100, 150), key="qa_stab_grid",
         )
         gamma_mode = st.selectbox(
@@ -397,12 +400,33 @@ def _greeks_stability_input_form() -> tuple:
     return fields, model, bump_grid, n_grid, threshold, gamma_mode, submitted
 
 
-def render_greeks_stability_tab() -> None:
-    """One deliberate repricing campaign; view interactions never reprice."""
+def _run_submitted_greek_study(
+    fields: dict, model: str, bump_grid: tuple, n_grid: tuple,
+    threshold: float, gamma_mode: str,
+) -> None:
+    """Price one explicitly submitted experiment, retaining the existing cache."""
+    # Keep each measurement tied to the submitted experiment and cached result.
     from frontend.research_risk_numerics import n_sweep_gamma_bump
 
+    st.session_state.pop("qa_stab_result", None)
+    try:
+        request = _get_request(fields, model, 100, threshold)
+        gamma_bump = n_sweep_gamma_bump(gamma_mode)
+        with st.spinner("Repricing risk stencils across bumps and N..."):
+            rows = greeks_stability(
+                request, tuple(sorted(bump_grid)), tuple(sorted(n_grid)),
+                gamma_bump_pct=gamma_bump,
+            )
+        st.session_state["qa_stab_result"] = (rows, request)
+    except (PricingInputError, ValueError, RuntimeError, OverflowError) as exc:
+        st.error(f"Risk numerics unavailable: {exc}")
+
+
+def render_greeks_stability_tab() -> None:
+    """One deliberate repricing campaign; view interactions never reprice."""
     left, right = st.columns([1.0, 1.85], gap="large")
     with left:
+        # Keep each measurement tied to the submitted experiment and cached result.
         fields, model, bump_grid, n_grid, threshold, gamma_mode, submitted = (
             _greeks_stability_input_form()
         )
@@ -410,18 +434,8 @@ def render_greeks_stability_tab() -> None:
         st.markdown('<div class="desk-section">Risk numerics · Delta/Gamma stability</div>',
                     unsafe_allow_html=True)
         if submitted:
-            st.session_state.pop("qa_stab_result", None)
-            try:
-                request = _get_request(fields, model, 100, threshold)
-                gamma_bump = n_sweep_gamma_bump(gamma_mode)
-                with st.spinner("Repricing risk stencils across bumps and N..."):
-                    rows = greeks_stability(
-                        request, tuple(sorted(bump_grid)), tuple(sorted(n_grid)),
-                        gamma_bump_pct=gamma_bump,
-                    )
-                st.session_state["qa_stab_result"] = (rows, request)
-            except (PricingInputError, ValueError, RuntimeError, OverflowError) as exc:
-                st.error(f"Risk numerics unavailable: {exc}")
+            _run_submitted_greek_study(fields, model, bump_grid, n_grid,
+                                       threshold, gamma_mode)
         saved = st.session_state.get("qa_stab_result")
         if saved is None:
             st.info("Select spot-bump widths and N, then run the study. "

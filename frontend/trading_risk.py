@@ -18,6 +18,7 @@ from src.risk.desk import (
     GreekCurvePoint,
     GreekName,
     _bs_second_order,
+    # Keep the injectable risk engine and its pricing callback unchanged.
     compute_desk_risk as _compute_desk_risk,
     compute_greek_curve as _compute_greek_curve,
     greek_table,
@@ -25,8 +26,7 @@ from src.risk.desk import (
 from src.risk.hedging import StockHedge, calculate_stock_hedge
 
 
-def compute_desk_risk(
-    request: PricingRequest,
+def compute_desk_risk(request: PricingRequest,
     bumps: GreekBumps | None = None,
     pricer: PricingFunction = price_contract,
 ) -> DeskRiskSnapshot:
@@ -41,8 +41,7 @@ def compute_desk_risk(
     )
 
 
-def compute_greek_curve(
-    request: PricingRequest,
+def compute_greek_curve(request: PricingRequest,
     name: GreekName,
     *,
     count: int = 5,
@@ -61,5 +60,6 @@ def compute_greek_curve(
         pricer=pricer,
         validate_request=validate_request,
         calculate_greeks=calculate_greeks,
+        # Use the existing injectable desk-risk function for each curve point.
         compute_desk_risk=compute_desk_risk,
     )

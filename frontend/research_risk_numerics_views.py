@@ -26,6 +26,7 @@ def _risk_chart(rows: tuple, dimension: str, greek: str,
                           analytical=analytical, deviation=deviation)
     if not points:
         return None
+    # Plot measured Greeks only; failed stencils have already been filtered.
     data = pd.DataFrame([{
         "x": p.coordinate, "y": p.plotted, "measured": p.measured,
         "N": p.steps, "gamma_bump": p.gamma_bump_pct,
@@ -42,6 +43,7 @@ def _risk_chart(rows: tuple, dimension: str, greek: str,
                  alt.Tooltip("gamma_bump:Q", title="Gamma bump (%)", format=".3f"),
                  alt.Tooltip("N:Q", title="Lattice N"),
              ]))
+    # Analytical lines are conditional on a valid Black–Scholes comparator.
     if analytical is None or not math.isfinite(analytical):
         return curve.properties(height=285).interactive()
     ref_value = 0.0 if deviation else analytical
@@ -62,6 +64,7 @@ def _render_risk_overview(stats: StabilitySummary, analytic: dict[str, float] | 
     a, b, c = st.columns(3)
     a.metric("Valid configurations", f"{stats.successful}/{stats.total}")
     b.metric("Delta span across N", _fmt(stats.n_delta_span))
+    # Show observed finite differences without assuming convergence.
     c.metric("Gamma span across N", _fmt(stats.n_gamma_span))
     if analytic:
         a, b = st.columns(2)
@@ -82,6 +85,7 @@ def _render_risk_charts(rows: tuple, analytic: dict[str, float] | None, deviatio
     st.caption("The bump sweep holds N fixed and uses equal Delta/Gamma spot shocks. "
                "The N sweep holds Delta's bump at ±1%; Gamma follows the selected "
                "adaptive or fixed scheme. Orange dashed line = Black–Scholes when valid.")
+    # Show observed finite differences without assuming convergence.
     for dimension, label in DIMENSIONS:
         st.markdown(f'<div class="desk-section">{label}</div>', unsafe_allow_html=True)
         left, right = st.columns(2, gap="large")
@@ -102,6 +106,7 @@ def _render_risk_methodology(rows: tuple, stats: StabilitySummary, export_csv: C
         st.warning(f"Near-zero Gamma at {stats.near_zero_n_gamma} N settings "
                    "despite nonzero analytic Black–Scholes Gamma. "
                    "This may indicate finite-lattice stencil instability.")
+    # Show observed finite differences without assuming convergence.
     failed = [r for r in rows if r.status != "ok" or r.delta is None or r.gamma is None]
     if failed:
         st.warning(f"{len(failed)} configurations did not yield complete finite-difference Greeks.")

@@ -61,6 +61,7 @@ def render_market_fields(
         value=float(default_for("spot", 100.0)), step=1.0,
         format="%.2f", key=key_for(spot_key),
     )
+    # Retain form state and the explicit saved-reference import behavior.
     strike = b.number_input(
         "Strike · €", min_value=0.0, max_value=strike_max,
         value=float(default_for("strike", 100.0)), step=1.0,
@@ -111,6 +112,7 @@ _REFERENCE_IMPORT_UI = {
 
 
 def _reference_import_settings(mode: str) -> tuple[str, str, str, str, str]:
+    # Retain form state and the explicit saved-reference import behavior.
     try:
         return _REFERENCE_IMPORT_UI[mode]
     except KeyError:
@@ -132,6 +134,7 @@ def render_reference_import(mode: str) -> None:
     button_key, feedback_key, _, help_text, caption = _reference_import_settings(mode)
     st.markdown('<div class="desk-section">Reference contract · optional</div>',
                 unsafe_allow_html=True)
+    # Import is opt-in: reading a reference never submits a pricing form.
     reference = get_reference(st.session_state)
     if reference is None:
         st.caption("Save a successfully priced contract in Pricing Terminal first.")
@@ -139,6 +142,7 @@ def render_reference_import(mode: str) -> None:
         "Import reference contract", on_click=on_reference_import, args=(mode,),
         disabled=reference is None, key=button_key, width="stretch", help=help_text,
     )
+    # Feedback stays attached to the selected diagnostic workspace.
     feedback = st.session_state.get(feedback_key)
     if feedback is not None:
         level, message = feedback

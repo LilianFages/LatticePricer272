@@ -61,6 +61,7 @@ def read_dividend_table(frame: pd.DataFrame) -> tuple[DividendInput, ...]:
 
 def _render_ticket_configuration(prefix: str) -> tuple[str, str, bool]:
     """Render date convention and model-family controls outside the pricing form."""
+    # Resolve only the submitted form; ordinary reruns do not calculate prices.
     date_col, model_col = st.columns([1.2, 1.0], gap="medium")
     with date_col:
         date_mode = st.radio(
@@ -81,6 +82,7 @@ def _render_ticket_configuration(prefix: str) -> tuple[str, str, bool]:
             key=f"{prefix}_pruning_mode",
             help="Off uses the full trinomial; On enables probability pruning.",
         )
+        # Resolve only the submitted form; ordinary reruns do not calculate prices.
         pruning_enabled = pruning_mode == "On"
     return date_mode, model_family, pruning_enabled
 
@@ -231,8 +233,29 @@ def _apply_ticket_dividends(
     return replace(request, dividends=read_dividend_table(frame))
 
 
+def _make_ticket_request(
+    model_family: str, pruning_enabled: bool, pruning_method: str,
+    pruning_threshold: float, spot: float, strike: float, rate_pct: float,
+    vol_pct: float, maturity: float | None, steps: int, option_type: str,
+    exercise: str,
+) -> PricingRequest:
+    """Resolve model selection and normalize percent inputs just once on submit."""
+    model, pruning_threshold = resolve_model_selection(
+        model_family, pruning_enabled, pruning_method, pruning_threshold,
+    )
+    request = PricingRequest(
+        spot=float(spot), strike=float(strike), rate=float(rate_pct) / 100.0,
+        volatility=float(vol_pct) / 100.0,
+        maturity=float(maturity) if maturity is not None else 1.0,
+        steps=int(steps), option_type=option_type, exercise=exercise,
+        model=model, pruning_threshold=pruning_threshold,
+    )
+    return request
+
+
 def build_ticket_form(reset_nonce: int) -> tuple[bool, PricingRequest | None, str | None]:
     """Return submitted status and either a validated shape or parsing error."""
+    # Resolve only the submitted form; ordinary reruns do not calculate prices.
     prefix = f"ticket_{reset_nonce}"
     date_mode, model_family, pruning_enabled = _render_ticket_configuration(prefix)
     with st.form(f"pricing_ticket_{reset_nonce}", clear_on_submit=False):
@@ -256,15 +279,9 @@ def build_ticket_form(reset_nonce: int) -> tuple[bool, PricingRequest | None, st
     st.session_state.pop("ticket_submitted_calendar", None)
     st.session_state.pop("ticket_submitted_algorithm", None)
     try:
-        model, pruning_threshold = resolve_model_selection(
+        request = _make_ticket_request(
             model_family, pruning_enabled, pruning_method, pruning_threshold,
-        )
-        request = PricingRequest(
-            spot=float(spot), strike=float(strike), rate=float(rate_pct) / 100.0,
-            volatility=float(vol_pct) / 100.0,
-            maturity=float(maturity) if maturity is not None else 1.0,
-            steps=int(steps), option_type=option_type, exercise=exercise,
-            model=model, pruning_threshold=pruning_threshold,
+            spot, strike, rate_pct, vol_pct, maturity, steps, option_type, exercise,
         )
         request = _apply_ticket_dividends(
             request, dividend_frame, date_mode, valuation_date, expiry_date,
@@ -278,6 +295,7 @@ def build_ticket_form(reset_nonce: int) -> tuple[bool, PricingRequest | None, st
 def reset_ticket() -> None:
     """Create fresh widget identities; preserve session blotter."""
     st.session_state["ticket_reset_nonce"] = st.session_state.get("ticket_reset_nonce", 0) + 1
+    # Resolve only the submitted form; ordinary reruns do not calculate prices.
     st.session_state["last_pricing_result"] = None
     st.session_state.pop("desk_risk_snapshot", None)
     st.session_state.pop("desk_risk_error", None)
@@ -298,6 +316,7 @@ def _initialize_session_state() -> None:
 def _render_reference_sidebar() -> None:
     """Display saved reference contract without touching session state."""
     reference = get_reference(st.session_state)
+    # Preserve current navigation and Streamlit session-state conventions.
     if reference is None:
         st.caption("No reference saved yet.")
     else:
@@ -356,6 +375,7 @@ def _render_sidebar() -> str:
 
 def _record_pricing_history(request: PricingRequest, result: PricingResult, selected_algorithm: str) -> None:
     """Store at most twelve successful valuations in the session blotter."""
+    # Keep priced results and optional Greek diagnostics independent.
     history = st.session_state["pricing_history"]
     history.insert(0, {
         "Model": request.model, "Engine": selected_algorithm,
@@ -376,6 +396,7 @@ def _process_pricing_submission(
     st.session_state.pop("desk_risk_error", None)
     st.session_state.pop("desk_greek_curve", None)
     st.session_state.pop("last_pricing_calendar", None)
+    # Keep priced results and optional Greek diagnostics independent.
     st.session_state.pop("spot_revaluation", None)
     if parsing_error is not None:
         # Preserve error messages and empty states for model failures.
@@ -428,6 +449,7 @@ def _render_pricing_results(submitted: bool) -> None:
         if get_reference(st.session_state) == last_result.request:
             st.caption("Active reference · saved from this pricing ticket.")
         else:
+            # Keep priced results and optional Greek diagnostics independent.
             st.caption("Save this ticket to reuse its inputs across workspaces.")
     elif not submitted:
         st.markdown('<div class="desk-section">Valuation output</div>', unsafe_allow_html=True)
@@ -461,6 +483,7 @@ def _render_pricing_terminal() -> None:
         if submitted:
             _process_pricing_submission(request, parsing_error)
 
+        # Keep priced results and optional Greek diagnostics independent.
         _render_pricing_results(submitted)
 
     st.divider()

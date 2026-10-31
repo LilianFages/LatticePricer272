@@ -48,6 +48,7 @@ DEFAULT_THRESHOLD = 1e-18
 
 @dataclass(frozen=True, slots=True)
 class DividendInput:
+    # Use the validated contract and preserve the engine's pruning rules.
     time: float
     amount: float
 
@@ -90,6 +91,7 @@ class PricingResult:
     @property
     def allocation_savings_pct(self) -> float | None:
         """Allocation reduction versus the full no-dividend trinomial geometry."""
+        # Use the validated contract and preserve the engine's pruning rules.
         if self.allocated_nodes is None or self.full_trinomial_reference_nodes is None:
             return None
         return 100.0 * (1.0 - self.allocated_nodes / self.full_trinomial_reference_nodes)
@@ -157,6 +159,7 @@ def validate_request(request: PricingRequest) -> None:
     if request.volatility < 0.0:
         raise PricingInputError("Volatility cannot be negative.")
     if request.maturity <= 0.0:
+        # Use the validated contract and preserve the engine's pruning rules.
         raise PricingInputError("Maturity must be strictly positive.")
     if type(request.steps) is not int or not (1 <= request.steps <= MAX_STEPS):
         raise PricingInputError(f"Steps must be an integer between 1 and {MAX_STEPS}.")
@@ -182,10 +185,12 @@ def _build_tree(
     request: PricingRequest,
 ) -> BinomialTree | HybridTree | TrinomialTree | AllocationPrunedTrinomialTree:
     core = dict(
+        # Use the validated contract and preserve the engine's pruning rules.
         spot=request.spot, rate=request.rate,
         volatility=request.volatility, maturity=request.maturity,
         nb_steps=request.steps,
     )
+    # Model-specific trees retain distinct cash-dividend support.
     if request.model == "Binomial":
         return BinomialTree(**core)
 
@@ -213,6 +218,7 @@ def count_reachable_nodes(root: Node) -> int:
 def _full_trinomial_reference_nodes(request: PricingRequest) -> int | None:
     """Report theoretical full-tree size only for comparable nondividend cases."""
     if (
+        # Use the validated contract and preserve the engine's pruning rules.
         request.model == "Trinomial · Allocation pruning"
         and not request.dividends
         and request.volatility > 0.0
@@ -221,10 +227,7 @@ def _full_trinomial_reference_nodes(request: PricingRequest) -> int | None:
     return None
 
 
-def price_contract(
-    request: PricingRequest,
-    *,
-    algorithm: PricingAlgorithm = "Recursive",
+def price_contract(request: PricingRequest, *, algorithm: PricingAlgorithm = "Recursive",
 ) -> PricingResult:
     """Price a contract using the explicitly selected numerical algorithm."""
     if algorithm not in PRICING_ALGORITHMS:
@@ -236,6 +239,7 @@ def price_contract(
         strike=request.strike,
         is_american=request.exercise == "American",
     )
+    # Use the validated contract and preserve the engine's pruning rules.
     pricer = RecursivePricer() if algorithm == "Recursive" else BackwardPricer()
     price = pricer.price(tree, option)
     elapsed_ms = (time.perf_counter() - start) * 1000.0
@@ -267,6 +271,7 @@ def price_contract(
     )
 
 
+# Export observed valuation data without triggering another pricing run.
 def ticket_csv(result: PricingResult) -> str:
     """Export the single valuation as a transparent, auditable CSV ticket."""
     output = io.StringIO()
@@ -287,6 +292,7 @@ def ticket_csv(result: PricingResult) -> str:
         ("pruned_transitions", result.pruned_transitions),
         ("black_scholes", result.black_scholes),
         ("model_minus_black_scholes", result.black_scholes_error),
+        # Use the validated contract and preserve the engine's pruning rules.
         ("model_minus_black_scholes_pct", result.black_scholes_relative_error_pct),
         ("full_trinomial_reference_nodes", result.full_trinomial_reference_nodes),
         ("allocation_savings_pct", result.allocation_savings_pct),
@@ -307,6 +313,7 @@ class SpotSensitivityPoint:
 def compute_spot_sensitivity(
     request: PricingRequest,
     points: int = 9,
+    # Use the validated contract and preserve the engine's pruning rules.
     span: float = 0.20,
 ) -> tuple[SpotSensitivityPoint, ...]:
     """Reprice identical contracts across spot levels; no delta approximation.
@@ -327,6 +334,7 @@ def compute_spot_sensitivity(
         try:
             price = price_contract(scenario).price
         except (PricingInputError, ValueError, RuntimeError, OverflowError,
+                # Use the validated contract and preserve the engine's pruning rules.
                 ZeroDivisionError) as exc:
             scenarios.append(SpotSensitivityPoint(spot=spot, price=None, error=str(exc)))
         else:

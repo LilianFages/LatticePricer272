@@ -35,6 +35,7 @@ TARGETS = (
 class TransferCheck:
     """Whether the complete request fits the target's current input controls."""
 
+    # Check destination controls without modifying the saved reference contract.
     target: str
     issues: tuple[str, ...]
 
@@ -80,6 +81,7 @@ def save_reference_from_last_result(
 
 def get_reference(state: MutableMapping[str, Any]) -> PricingRequest | None:
     """Return the session reference, or None when none has been saved."""
+    # Check destination controls without modifying the saved reference contract.
     stored = state.get(REFERENCE_KEY)
     if stored is None:
         return None
@@ -128,6 +130,7 @@ def _collect_destination_limits(request: PricingRequest, target: str, issues: li
             issues.append(
                 "The reference pruning threshold is not offered in Lattice Explorer."
             )
+    # Boundary analytics use a separate safe depth cap and threshold grid.
     elif target == "exercise_boundary":
         if request.steps > MAX_BOUNDARY_STEPS:
             issues.append(
@@ -138,11 +141,13 @@ def _collect_destination_limits(request: PricingRequest, target: str, issues: li
             issues.append(
                 "The reference pruning threshold is not offered in Exercise Boundary."
             )
+    # Benchmark comparison has its own supported pruning thresholds.
     elif target == "model_comparison":
         if request.pruning_threshold not in _COMPARISON_THRESHOLDS:
             issues.append(
                 "The reference pruning threshold is not offered in Model Comparison."
             )
+    # Risk and convergence studies share the analytics threshold choices.
     elif target == "quant_analytics":
         if request.pruning_threshold not in _ANALYTICS_THRESHOLDS:
             issues.append(
@@ -163,6 +168,7 @@ def _collect_market_limits(request: PricingRequest, target: str, issues: list[st
     if target in ("model_comparison", "quant_analytics"):
         if request.spot > 1e7 or request.strike > 1e7:
             issues.append("The target spot and strike inputs are capped at EUR 10,000,000.")
+        # Check destination controls without modifying the saved reference contract.
         if request.maturity > 100.0:
             issues.append("The target maturity input is capped at 100 years.")
 
