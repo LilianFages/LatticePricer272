@@ -18,6 +18,9 @@ from frontend.pricing_service import (
 )
 
 ParameterName = Literal["spot", "volatility", "rate", "maturity"]
+# Immutable defaults also make the two independent numerical grids explicit.
+DEFAULT_SPOT_BUMP_GRID: tuple[float, ...] = (0.5, 1.0, 2.0, 3.5)
+DEFAULT_STEPS_GRID: tuple[int, ...] = (40, 80, 100, 150)
 DEFAULT_AMPLITUDE: dict[str, float] = {
     "spot": 0.20,       # ±20% of base spot
     "volatility": 0.05, # ±5 volatility percentage points
@@ -227,8 +230,8 @@ def _stability_at(
 
 def greeks_stability(
     request: PricingRequest,
-    delta_bumps_pct: Sequence[float] = (0.5, 1.0, 2.0, 3.5),
-    steps_grid: Sequence[int] = (40, 80, 100, 150),
+    delta_bumps_pct: Sequence[float] = DEFAULT_SPOT_BUMP_GRID,
+    steps_grid: Sequence[int] = DEFAULT_STEPS_GRID,
     gamma_bump_pct: float | None = None,
     pricer: PricingFunction = price_contract,
 ) -> tuple[StabilityObservation, ...]:

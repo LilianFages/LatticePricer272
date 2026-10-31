@@ -264,6 +264,12 @@ def _render_option_contract_fields(prefix: str) -> tuple[str, str]:
     return option_type, exercise
 
 
+def _clear_pending_ticket_submission() -> None:
+    """Discard the previous form's derived calendar and pricing algorithm."""
+    st.session_state.pop("ticket_submitted_calendar", None)
+    st.session_state.pop("ticket_submitted_algorithm", None)
+
+
 def build_ticket_form(reset_nonce: int) -> tuple[bool, PricingRequest | None, str | None]:
     """Return submitted status and either a validated shape or parsing error."""
     # Resolve only the submitted form; ordinary reruns do not calculate prices.
@@ -282,13 +288,14 @@ def build_ticket_form(reset_nonce: int) -> tuple[bool, PricingRequest | None, st
 
     if not submitted:
         return False, None, None
-    st.session_state.pop("ticket_submitted_calendar", None)
-    st.session_state.pop("ticket_submitted_algorithm", None)
+    _clear_pending_ticket_submission()
     try:
+        # Convert display percentages and model controls only after submission.
         request = _make_ticket_request(
             model_family, pruning_enabled, pruning_method, pruning_threshold,
             spot, strike, rate_pct, vol_pct, maturity, steps, option_type, exercise,
         )
+        # Translate dated dividends into the engine convention without repricing.
         request = _apply_ticket_dividends(
             request, dividend_frame, date_mode, valuation_date, expiry_date,
         )
@@ -334,6 +341,7 @@ def _render_reference_sidebar() -> None:
             f"{reference.model} · N={reference.steps} · "
             f"{len(reference.dividends)} cash dividend(s)"
         )
+        # Keep date provenance visible when importing a saved reference contract.
         reference_calendar = get_reference_calendar(st.session_state)
         if reference_calendar is not None:
             st.caption(
