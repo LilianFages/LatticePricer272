@@ -4,8 +4,10 @@ from __future__ import annotations
 import math
 
 import pandas as pd
+from typing import TYPE_CHECKING
 
-from frontend.lattice_explorer_service import VisualEdge
+if TYPE_CHECKING:
+    from frontend.lattice_explorer_service import VisualEdge
 
 
 def _representative_indices(group: pd.DataFrame, per_step: int) -> list[int]:
