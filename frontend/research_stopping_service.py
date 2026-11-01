@@ -36,11 +36,7 @@ class DividendExerciseComparison:
                 - self.without_dividends.early_exercise_probability)
 
 
-def compare_dividend_exercise(
-    request: PricingRequest,
-    *,
-    analyzer: Callable[[PricingRequest], ExerciseStudy] = run_exercise_study,
-) -> DividendExerciseComparison:
+def compare_dividend_exercise( request: PricingRequest, *, analyzer: Callable[[PricingRequest], ExerciseStudy] = run_exercise_study) -> DividendExerciseComparison:
     """Evaluate two deliberately comparable lattice contracts, only on demand.
 
     Preserve any validation failure; never fabricate a zero-dividend premium or

@@ -95,9 +95,7 @@ def _render_ticket_configuration(prefix: str) -> tuple[str, str, bool, str]:
     return date_mode, model_family, pruning_enabled, algorithm
 
 
-def _render_contract_dates(
-    prefix: str, date_mode: str,
-) -> tuple[date | None, date | None, float | None]:
+def _render_contract_dates( prefix: str, date_mode: str) -> tuple[date | None, date | None, float | None]:
     """Render the calendar or legacy maturity inputs inside the form."""
     st.markdown('<div class="desk-section">02 · Contract dates</div>', unsafe_allow_html=True)
     valuation_date = None
@@ -144,9 +142,7 @@ def _render_market_inputs(prefix: str) -> tuple[float, float, float, float]:
     return spot, strike, vol_pct, rate_pct
 
 
-def _render_pricing_setup(
-    prefix: str, model_family: str, pruning_enabled: bool, algorithm: str,
-) -> tuple[int, str, float]:
+def _render_pricing_setup( prefix: str, model_family: str, pruning_enabled: bool, algorithm: str) -> tuple[int, str, float]:
     """Render the pricing algorithm, lattice depth and pruning configuration."""
     st.markdown(
         '<div class="desk-section">04 · Model & numerical setup</div>',
@@ -181,9 +177,7 @@ def _render_pricing_setup(
     return steps, pruning_method, pruning_threshold
 
 
-def _render_dividend_editor(
-    prefix: str, date_mode: str, valuation_date: date | None,
-) -> pd.DataFrame:
+def _render_dividend_editor( prefix: str, date_mode: str, valuation_date: date | None) -> pd.DataFrame:
     """Render the model-compatible cash-dividend table editor."""
     with st.expander("Cash dividends · optional", expanded=False):
         # Use identical monetary bounds in the dated and relative-time editors.
@@ -226,11 +220,7 @@ def _render_dividend_editor(
     return dividend_frame
 
 
-def _apply_ticket_dividends(
-    request: PricingRequest, frame: pd.DataFrame, date_mode: str,
-    valuation_date: date | None, expiry_date: date | None,
-    algorithm: str,
-) -> PricingRequest:
+def _apply_ticket_dividends( request: PricingRequest, frame: pd.DataFrame, date_mode: str, valuation_date: date | None, expiry_date: date | None, algorithm: str) -> PricingRequest:
     """Attach either the dated or relative cashflows to the validated ticket."""
     if date_mode == "Calendar dates":
         dates = parse_dated_dividends(frame)
@@ -243,12 +233,7 @@ def _apply_ticket_dividends(
     return replace(request, dividends=read_dividend_table(frame))
 
 
-def _make_ticket_request(
-    model_family: str, pruning_enabled: bool, pruning_method: str,
-    pruning_threshold: float, spot: float, strike: float, rate_pct: float,
-    vol_pct: float, maturity: float | None, steps: int, option_type: str,
-    exercise: str,
-) -> PricingRequest:
+def _make_ticket_request( model_family: str, pruning_enabled: bool, pruning_method: str, pruning_threshold: float, spot: float, strike: float, rate_pct: float, vol_pct: float, maturity: float | None, steps: int, option_type: str, exercise: str) -> PricingRequest:
     """Resolve model selection and normalize percent inputs just once on submit."""
     model, pruning_threshold = resolve_model_selection(
         model_family, pruning_enabled, pruning_method, pruning_threshold,
@@ -411,9 +396,7 @@ def _record_pricing_history(request: PricingRequest, result: PricingResult, sele
     del history[12:]
 
 
-def _process_pricing_submission(
-    request: PricingRequest | None, parsing_error: str | None,
-) -> None:
+def _process_pricing_submission( request: PricingRequest | None, parsing_error: str | None) -> None:
     st.session_state["last_pricing_result"] = None
     st.session_state.pop("desk_risk_snapshot", None)
     st.session_state.pop("desk_risk_error", None)

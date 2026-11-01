@@ -277,9 +277,7 @@ def test_explicit_numeric_reference_clears_previous_calendar() -> None:
 @pytest.mark.parametrize(("algorithm", "limit"), [
     ("Recursive", 700), ("Backward", 1000),
 ])
-def test_dated_request_uses_terminal_algorithm_limit(
-    algorithm: str, limit: int,
-) -> None:
+def test_dated_request_uses_terminal_algorithm_limit( algorithm: str, limit: int) -> None:
     from frontend.pricing_service import terminal_step_limit
 
     assert terminal_step_limit(algorithm) == limit
@@ -296,11 +294,10 @@ def test_dated_request_uses_terminal_algorithm_limit(
 @pytest.mark.parametrize(("algorithm", "over_limit"), [
     ("Recursive", 701), ("Backward", 1001),
 ])
-def test_dated_request_rejects_excessive_terminal_depth(
-    algorithm: str, over_limit: int,
-) -> None:
+def test_dated_request_rejects_excessive_terminal_depth( algorithm: str, over_limit: int) -> None:
     from frontend.pricing_service import terminal_step_limit
 
+    # Calendar conversion must honor the cap of the selected terminal engine.
     maximum = terminal_step_limit(algorithm)
     with pytest.raises(CalendarInputError, match=f"between 1 and {maximum}"):
         dated_request(

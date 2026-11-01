@@ -152,9 +152,7 @@ def _validate_dividend_schedule(request: PricingRequest) -> None:
         )
 
 
-def validate_request(
-    request: PricingRequest, *, max_steps: int = MAX_STEPS,
-) -> None:
+def validate_request( request: PricingRequest, *, max_steps: int = MAX_STEPS) -> None:
     """Validate input before passing it to the existing financial engines."""
     scalar_inputs = (
         request.spot, request.strike, request.rate,
@@ -191,9 +189,7 @@ def validate_request(
     _validate_dividend_schedule(request)
 
 
-def _build_tree(
-    request: PricingRequest,
-) -> BinomialTree | HybridTree | TrinomialTree | AllocationPrunedTrinomialTree:
+def _build_tree( request: PricingRequest) -> BinomialTree | HybridTree | TrinomialTree | AllocationPrunedTrinomialTree:
     core = dict(
         # Use the validated contract and preserve the engine's pruning rules.
         spot=request.spot, rate=request.rate,
@@ -266,8 +262,7 @@ def _recursive_pricing_capacity(steps: int) -> Iterator[None]:
             sys.setrecursionlimit(previous)
 
 
-def price_contract(request: PricingRequest, *, algorithm: PricingAlgorithm = "Recursive",
-) -> PricingResult:
+def price_contract(request: PricingRequest, *, algorithm: PricingAlgorithm = "Recursive") -> PricingResult:
     """Price a contract using the explicitly selected numerical algorithm."""
     validate_request(request, max_steps=terminal_step_limit(algorithm))
     start = time.perf_counter()
@@ -350,13 +345,7 @@ class SpotSensitivityPoint:
     error: str | None = None
 
 
-def compute_spot_sensitivity(
-    request: PricingRequest,
-    points: int = 9,
-    span: float = 0.20,
-    *,
-    algorithm: PricingAlgorithm = "Recursive",
-) -> tuple[SpotSensitivityPoint, ...]:
+def compute_spot_sensitivity( request: PricingRequest, points: int = 9, span: float = 0.20, *, algorithm: PricingAlgorithm = "Recursive") -> tuple[SpotSensitivityPoint, ...]:
     """Reprice identical contracts across spot levels; no delta approximation.
 
     An individual scenario may be invalid for cash dividends; record its

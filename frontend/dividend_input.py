@@ -15,9 +15,7 @@ from frontend.pricing_service import DividendInput, PricingInputError
 InputContext = Literal["terminal", "analysis"]
 
 
-def _validated_dividend_amount(
-    raw_amount: object, raw_time: object, row_number: int, context: InputContext
-) -> float | None:
+def _validated_dividend_amount( raw_amount: object, raw_time: object, row_number: int, context: InputContext) -> float | None:
     """Validate a cash amount; fully blank rows return None."""
     if pd.isna(raw_amount):
         if not pd.isna(raw_time):
@@ -36,9 +34,7 @@ def _validated_dividend_amount(
     return amount
 
 
-def _validated_dividend_time(
-    raw_time: object, row_number: int, context: InputContext
-) -> float:
+def _validated_dividend_time( raw_time: object, row_number: int, context: InputContext) -> float:
     """Validate payment-time entry, retaining workspace error wording."""
     if pd.isna(raw_time):
         instruction = (
@@ -53,9 +49,7 @@ def _validated_dividend_time(
     return dividend_time
 
 
-def parse_cash_dividends(
-    frame: pd.DataFrame, *, context: InputContext = "analysis",
-) -> tuple[DividendInput, ...]:
+def parse_cash_dividends( frame: pd.DataFrame, *, context: InputContext = "analysis") -> tuple[DividendInput, ...]:
     """Parse chronological cashflows, ignoring zero and fully blank rows.
 
     No date rounding, cashflow omission, pricing or contract mutation occurs.

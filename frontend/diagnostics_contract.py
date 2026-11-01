@@ -24,13 +24,7 @@ THRESHOLDS = {
 }
 
 
-def plan_handoff(
-    request: PricingRequest,
-    destination: str,
-    *,
-    steps: int | None = None,
-    threshold: float | None = None,
-) -> tuple[PricingRequest, tuple[str, ...]]:
+def plan_handoff( request: PricingRequest, destination: str, *, steps: int | None = None, threshold: float | None = None) -> tuple[PricingRequest, tuple[str, ...]]:
     """Compute the *explicitly proposed* target ticket without modifying state."""
     if destination not in VIEW_TO_TARGET:
         raise ValueError(f"Unknown Model Diagnostics view: {destination}.")
@@ -44,9 +38,7 @@ def plan_handoff(
     return adjusted, assess_transfer(adjusted, VIEW_TO_TARGET[destination]).issues
 
 
-def apply_handoff(
-    state: MutableMapping[str, Any], destination: str, request: PricingRequest
-) -> None:
+def apply_handoff( state: MutableMapping[str, Any], destination: str, request: PricingRequest) -> None:
     """Prefill only compatible widgets; no numerical calculation or shared-reference edits."""
     _, issues = plan_handoff(request, destination)
     if issues:
@@ -69,9 +61,7 @@ def apply_handoff(
         state.pop("lattice_explorer_result", None)
 
 
-def import_saved_reference(
-    state: MutableMapping[str, Any], destination: str,
-) -> tuple[bool, tuple[str, ...]]:
+def import_saved_reference( state: MutableMapping[str, Any], destination: str) -> tuple[bool, tuple[str, ...]]:
     """Import the saved pricing ticket into either diagnostic editor.
 
     Reject incompatible requests without mutating the session. On success,

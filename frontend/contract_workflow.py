@@ -33,6 +33,7 @@ TARGETS = (
     "research_lab",
 )
 
+# A transfer check records compatibility without mutating the reference ticket.
 @dataclass(frozen=True, slots=True)
 class TransferCheck:
     """Whether the complete request fits the target's current input controls."""
@@ -47,9 +48,7 @@ class TransferCheck:
         return not self.issues
 
 
-def save_reference(
-    state: MutableMapping[str, Any], request: PricingRequest,
-) -> None:
+def save_reference( state: MutableMapping[str, Any], request: PricingRequest) -> None:
     """Save a validated contract without executing any financial model."""
     if not isinstance(request, PricingRequest):
         raise TypeError("Reference contract must be a PricingRequest.")
@@ -58,9 +57,7 @@ def save_reference(
     state.pop(REFERENCE_CALENDAR_KEY, None)
 
 
-def save_reference_from_last_result(
-    state: MutableMapping[str, Any],
-) -> PricingRequest:
+def save_reference_from_last_result( state: MutableMapping[str, Any]) -> PricingRequest:
     """Explicitly save the latest *successful* pricing ticket, without repricing.
 
     A subsequent valuation, failed attempt or ticket reset will never replace

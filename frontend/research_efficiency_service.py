@@ -68,8 +68,7 @@ def count_allocated_nodes(request: PricingRequest) -> int:
     return count
 
 
-def peak_python_memory_mib(request: PricingRequest, *, pricer: PricingFunction = price_contract,
-) -> tuple[float, float]:
+def peak_python_memory_mib(request: PricingRequest, *, pricer: PricingFunction = price_contract) -> tuple[float, float]:
     """Price once under tracemalloc, independently of latency measurements."""
     if tracemalloc.is_tracing():
         raise RuntimeError("An external tracemalloc session is already active.")
@@ -95,14 +94,8 @@ def _validate_grid(steps_grid: Sequence[int], repetitions: int) -> tuple[int, ..
     return ns
 
 
-def _run_one(request: PricingRequest,
-    repetitions: int,
-    measure_memory: bool,
-    pricer: PricingFunction,
-    # Count allocations independently of the latency repetition loop.
-    allocation_counter: Callable[[PricingRequest], int],
-    memory_probe: Callable[[PricingRequest], tuple[float, float]],
-) -> EfficiencyPoint:
+# Count allocations independently of the latency repetition loop.
+def _run_one(request: PricingRequest, repetitions: int, measure_memory: bool, pricer: PricingFunction, allocation_counter: Callable[[PricingRequest], int], memory_probe: Callable[[PricingRequest], tuple[float, float]]) -> EfficiencyPoint:
     try:
         # Timing runs are independent of the optional tracemalloc valuation.
         timed_results: list[PricingResult] = [pricer(request) for _ in range(repetitions)]
@@ -153,17 +146,8 @@ def _relative_to_full(points: Sequence[EfficiencyPoint]) -> tuple[EfficiencyPoin
     return tuple(decorated)
 
 
-def efficiency_study(
-    request: PricingRequest,
-    steps_grid: Sequence[int] = (20, 40, 80, 100),
-    repetitions: int = 3,
-    # Count real allocations independently of timing and memory measurements.
-    measure_memory: bool = False,
-    *,
-    pricer: PricingFunction = price_contract,
-    allocation_counter: Callable[[PricingRequest], int] = count_allocated_nodes,
-    memory_probe: Callable[[PricingRequest], tuple[float, float]] = peak_python_memory_mib,
-) -> EfficiencyReport:
+# Count real allocations independently of timing and memory measurements.
+def efficiency_study( request: PricingRequest, steps_grid: Sequence[int] = (20, 40, 80, 100), repetitions: int = 3, measure_memory: bool = False, *, pricer: PricingFunction = price_contract, allocation_counter: Callable[[PricingRequest], int] = count_allocated_nodes, memory_probe: Callable[[PricingRequest], tuple[float, float]] = peak_python_memory_mib) -> EfficiencyReport:
     """Reprice three trinomial architectures with fixed contract and pruning.
 
     The unpruned full tree is a same-N comparator, not a true-price oracle.

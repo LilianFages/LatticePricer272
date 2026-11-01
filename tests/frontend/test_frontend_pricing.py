@@ -178,9 +178,7 @@ def _matching_engines(request: PricingRequest) -> tuple[PricingResult, PricingRe
             price_contract(request, algorithm="Backward"))
 
 
-def _assert_same_lattice_accounting(
-    recursive: PricingResult, backward: PricingResult
-) -> None:
+def _assert_same_lattice_accounting( recursive: PricingResult, backward: PricingResult) -> None:
     """Compare graph allocation and pruned edges independently of price."""
     assert recursive.reachable_nodes == backward.reachable_nodes
     assert recursive.allocated_nodes == backward.allocated_nodes
@@ -197,10 +195,7 @@ MODELS = (
 )
 
 
-def _make_request(model: str, option_type: str, exercise: str, *,
-    dividends: tuple[DividendInput, ...] = (),
-    steps: int = 14,
-) -> PricingRequest:
+def _make_request(model: str, option_type: str, exercise: str, *, dividends: tuple[DividendInput, ...] = (), steps: int = 14) -> PricingRequest:
     return PricingRequest(
         model=model,
         option_type=option_type,
@@ -475,13 +470,12 @@ def test_terminal_step_caps_are_algorithm_specific(algorithm: str, limit: int) -
 @pytest.mark.parametrize(("algorithm", "limit"), [
     ("Recursive", 700), ("Backward", 1000),
 ])
-def test_terminal_rejects_excessive_N_before_build(
-    monkeypatch: pytest.MonkeyPatch, algorithm: str, limit: int,
-) -> None:
+def test_terminal_rejects_excessive_N_before_build( monkeypatch: pytest.MonkeyPatch, algorithm: str, limit: int) -> None:
     def _unexpected_build(request: PricingRequest) -> None:
         raise AssertionError("Invalid depth must not allocate lattice nodes")
 
     monkeypatch.setattr("frontend.pricing_service._build_tree", _unexpected_build)
+    # Reject invalid terminal depth before invoking any lattice construction.
     with pytest.raises(PricingInputError, match=f"between 1 and {limit}"):
         price_contract(PricingRequest(steps=limit + 1), algorithm=algorithm)
 
@@ -489,15 +483,14 @@ def test_terminal_rejects_excessive_N_before_build(
 @pytest.mark.parametrize(("algorithm", "limit"), [
     ("Recursive", 700), ("Backward", 1000),
 ])
-def test_terminal_accepts_limit_with_stubbed_engine(
-    monkeypatch: pytest.MonkeyPatch, algorithm: str, limit: int,
-) -> None:
+def test_terminal_accepts_limit_with_stubbed_engine( monkeypatch: pytest.MonkeyPatch, algorithm: str, limit: int) -> None:
     import sys
     from types import SimpleNamespace
     import frontend.pricing_service as service
 
     # Test routing and bounds only; never allocate the million-node full tree.
     tree = SimpleNamespace(root=Node(100.0))
+    # Stub only the costly tree construction, keeping routing checks unchanged.
     monkeypatch.setattr(service, "_build_tree", lambda request: tree)
     monkeypatch.setattr(service.RecursivePricer, "price",
                         lambda self, tree, option: 4.25)
@@ -522,9 +515,7 @@ def test_high_depth_risk_uses_terminal_validation() -> None:
     assert snapshot.base.price == 4.25
 
 
-def test_high_depth_spot_sensitivity_preserves_backward_algorithm(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_high_depth_spot_sensitivity_preserves_backward_algorithm( monkeypatch: pytest.MonkeyPatch) -> None:
     from types import SimpleNamespace
     from frontend.pricing_service import compute_spot_sensitivity
 
