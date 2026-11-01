@@ -44,7 +44,6 @@ def _representative_layer(group: pd.DataFrame, per_step: int) -> pd.DataFrame:
 
 
 def select_chart_rows(frame: pd.DataFrame,
-    *,
     step_window: tuple[int, int] | None = None,
     overview: bool = False,
     per_step: int = 10,
@@ -71,7 +70,7 @@ def select_chart_rows(frame: pd.DataFrame,
     return pd.concat(chunks, ignore_index=True)
 
 
-def overview_step_indices(final_step: int, *, max_layers: int = 40,
+def overview_step_indices(final_step: int, max_layers: int = 40,
     event_times: tuple[float, ...] = (), maturity: float = 1.0,
 ) -> frozenset[int]:
     """Keep a sparse global timeline, including maturity and dividend dates.
@@ -99,7 +98,7 @@ def overview_step_indices(final_step: int, *, max_layers: int = 40,
     return frozenset(selected)
 
 
-def _sample_transition_layer( edges: list[VisualEdge], budget: int) -> list[VisualEdge]:
+def _sample_transition_layer(edges: list[VisualEdge], budget: int) -> list[VisualEdge]:
     """Select genuine links across price levels while retaining pruned edges."""
     layer = sorted(
         edges,
@@ -134,7 +133,7 @@ def _group_visible_transitions(
 
 
 def representative_transitions(
-    edges: tuple[VisualEdge, ...], *, step_window: tuple[int, int] | None = None,
+    edges: tuple[VisualEdge, ...], step_window: tuple[int, int] | None = None,
     max_links: int = 240,
 ) -> tuple[VisualEdge, ...]:
     """Bound the *drawn* real edges, retaining broad time/spot coverage.

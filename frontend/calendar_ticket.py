@@ -20,6 +20,10 @@ from frontend.pricing_service import (
 )
 
 
+# Shared annotations for readable, short function signatures.
+DatedDividends = tuple[DatedCashDividend, ...]
+ResolvedTicket = tuple[PricingRequest, ContractCalendar]
+
 def _as_date(value: object, row_number: int) -> date:
     """Normalize Streamlit DateColumn values; reject arbitrary date strings."""
     if isinstance(value, datetime):
@@ -78,10 +82,9 @@ def dated_request(
     base: PricingRequest,
     valuation_date: date,
     expiry_date: date,
-    dated_dividends: tuple[DatedCashDividend, ...],
-    *,
+    dated_dividends: DatedDividends,
     max_steps: int = MAX_STEPS,
-) -> tuple[PricingRequest, ContractCalendar]:
+) -> ResolvedTicket:
     """Derive the exact model ticket, leaving the original immutable ticket intact."""
     calendar = ContractCalendar(valuation_date, expiry_date, dated_dividends)
     resolved = calendar.resolve()

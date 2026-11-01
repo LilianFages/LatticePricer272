@@ -19,6 +19,9 @@ from frontend.pricing_service import (
 )
 
 
+# Shared annotations for readable, short function signatures.
+StudyRunner = Callable[[PricingRequest], ExerciseStudy]
+
 @dataclass(frozen=True, slots=True)
 class DividendExerciseComparison:
     with_dividends: ExerciseStudy
@@ -38,8 +41,7 @@ class DividendExerciseComparison:
 
 def compare_dividend_exercise(
     request: PricingRequest,
-    *,
-    analyzer: Callable[[PricingRequest], ExerciseStudy] = run_exercise_study,
+    analyzer: StudyRunner = run_exercise_study,
 ) -> DividendExerciseComparison:
     """Evaluate two deliberately comparable lattice contracts, only on demand.
 

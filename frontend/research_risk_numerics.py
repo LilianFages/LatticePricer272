@@ -53,9 +53,13 @@ class StabilitySummary:
     near_zero_n_gamma: int
 
 
-def observations(rows: Sequence[StabilityObservation], *, dimension: str, greek: str,
+# Shared annotations for readable, short function signatures.
+RiskRows = Sequence[StabilityObservation]
+RiskPoints = tuple[RiskMeasure, ...]
+
+def observations(rows: RiskRows, dimension: str, greek: str,
     analytical: float | None = None, deviation: bool = False,
-) -> tuple[RiskMeasure, ...]:
+) -> RiskPoints:
     """Retain only successful finite observations and never invent zeroes.
 
     A 'deviation' is legitimate only when an analytical comparator exists.
@@ -97,8 +101,7 @@ def _max_gap(values: Sequence[RiskMeasure], ref: float | None) -> float | None:
     return max(abs(x.measured-ref) for x in values)
 
 
-def summarize_stability(rows: Sequence[StabilityObservation], analytical: dict[str, float] | None,
-) -> StabilitySummary:
+def summarize_stability(rows: Sequence[StabilityObservation], analytical: dict[str, float] | None) -> StabilitySummary:
     """Observed spans, not confidence intervals or convergence guarantees."""
     valid = sum(point.status == "ok" and point.delta is not None
                 and point.gamma is not None

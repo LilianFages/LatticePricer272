@@ -35,10 +35,12 @@ COLORS = {
 }
 
 
-def _plot_domain(
-    snapshots: list[LatticeSnapshot], all_allocated: bool,
-    step_window: tuple[int, int] | None = None,
-) -> tuple[float, float]:
+# Shared annotations for readable, short function signatures.
+Snapshot = LatticeSnapshot
+StepWindow = tuple[int, int]
+PriceBand = tuple[float, float]
+
+def _plot_domain(snapshots: list[Snapshot], all_allocated: bool, step_window: StepWindow | None = None) -> PriceBand:
     """One initial Y-axis domain for BOTH models, independent of focus mode."""
     # The domain includes unreachable allocations only when explicitly requested.
     prices = [
@@ -55,8 +57,8 @@ def _plot_domain(
 
 
 
-def _lattice_chart_data(snapshot: LatticeSnapshot, *, include_links: bool = True,
-    step_window: tuple[int, int] | None = None,
+def _lattice_chart_data(snapshot: Snapshot, include_links: bool = True,
+    step_window: StepWindow | None = None,
     max_links: int | None = None,
 ) -> tuple:
     """Map actual graph objects to plotted node and edge data."""
@@ -92,7 +94,7 @@ def _lattice_chart_data(snapshot: LatticeSnapshot, *, include_links: bool = True
 
 
 
-def _lattice_axes( snapshot: LatticeSnapshot, domain: tuple, step_window: tuple[int, int] | None = None) -> tuple:
+def _lattice_axes(snapshot: Snapshot, domain: tuple, step_window: StepWindow | None = None) -> tuple:
     """Sensible tick spacing at large N; shared by node and edge views."""
     n = snapshot.request.steps
     low, high = step_window if step_window is not None else (0, n)
@@ -110,10 +112,7 @@ def _lattice_axes( snapshot: LatticeSnapshot, domain: tuple, step_window: tuple[
     return x, y
 
 
-def _lattice_edge_marks(
-    snapshot: LatticeSnapshot, domain: tuple, links: list,
-    step_window: tuple[int, int] | None = None,
-) -> tuple:
+def _lattice_edge_marks(snapshot: Snapshot, domain: tuple, links: list, step_window: StepWindow | None = None) -> tuple:
     """Preserve exact positive-probability edge identities when requested."""
     x, y = _lattice_axes(snapshot, domain, step_window)
     frame = pd.DataFrame(links)
@@ -129,8 +128,8 @@ def _lattice_edge_marks(
 
 
 
-def _lattice_point_marks(snapshot: LatticeSnapshot, nodes: pd.DataFrame, x: alt.X, y: alt.Y,
-    *, step_window: tuple[int, int] | None = None, overview: bool = False,
+def _lattice_point_marks(snapshot: Snapshot, nodes: pd.DataFrame, x: alt.X, y: alt.Y,
+    *, step_window: StepWindow | None = None, overview: bool = False,
 ) -> tuple:
     """Keep unreached allocation and option state visual marks."""
     # Ghost marks correspond to actually allocated nodes with no positive-mass path.
@@ -189,13 +188,12 @@ def _lattice_point_marks(snapshot: LatticeSnapshot, nodes: pd.DataFrame, x: alt.
 
 
 def _chart(
-    snapshot: LatticeSnapshot,
-    domain: tuple[float, float],
-    *,
+    snapshot: Snapshot,
+    domain: PriceBand,
     all_allocated: bool,
     height: int,
     show_links: bool = True,
-    step_window: tuple[int, int] | None = None,
+    step_window: StepWindow | None = None,
     overview: bool = False,
     max_links: int | None = None,
 ) -> alt.Chart:
@@ -242,7 +240,7 @@ def _chart(
 
 
 
-def _inspect_connected_node(snapshot: LatticeSnapshot, prefix: str) -> None:
+def _inspect_connected_node(snapshot: Snapshot, prefix: str) -> None:
     """Inspect selected priced node state and transition probabilities."""
     # Display only genuine priced nodes and edges without altering the lattice.
     st.caption("Inspect the engine-priced object and its transition probabilities.")
@@ -274,7 +272,7 @@ def _inspect_connected_node(snapshot: LatticeSnapshot, prefix: str) -> None:
     }]), hide_index=True, width="stretch")
 
 
-def _display_node_details(snapshot: LatticeSnapshot, prefix: str) -> None:
+def _display_node_details(snapshot: Snapshot, prefix: str) -> None:
     inactive = [n for n in snapshot.allocated_geometry if not n.connected]
     selection = "Priced / connected"
     if inactive:
@@ -310,11 +308,7 @@ def _display_node_details(snapshot: LatticeSnapshot, prefix: str) -> None:
     _inspect_connected_node(snapshot, prefix)
 
 
-def focus_lattice_snapshot(
-    snapshot: LatticeSnapshot,
-    step_window: tuple[int, int],
-    spot_band: tuple[float, float],
-) -> LatticeSnapshot:
+def focus_lattice_snapshot(snapshot: Snapshot, step_window: StepWindow, spot_band: PriceBand) -> Snapshot:
     """Induced priced subgraph inside an exact time/spot rectangle.
 
     Unlike link sampling, this preserves ALL real edges with BOTH endpoints
@@ -343,8 +337,8 @@ def focus_lattice_snapshot(
 
 
 def _render_lattice_explanations(
-    snapshot: LatticeSnapshot, all_allocated: bool, show_links: bool,
-    overview: bool, spot_band: tuple[float, float] | None,
+    snapshot: Snapshot, all_allocated: bool, show_links: bool,
+    overview: bool, spot_band: PriceBand | None,
 ) -> None:
     """Keep graph disclosures and dividend exercise qualifications together."""
     if spot_band is not None:
@@ -375,17 +369,16 @@ def _render_lattice_explanations(
 
 # The renderer reuses a priced snapshot; display focus never changes valuation.
 def _render_snapshot(
-    snapshot: LatticeSnapshot,
+    snapshot: Snapshot,
     prefix: str,
-    domain: tuple[float, float],
-    *,
+    domain: PriceBand,
     all_allocated: bool,
     expanded: bool,
     show_links: bool = True,
-    step_window: tuple[int, int] | None = None,
+    step_window: StepWindow | None = None,
     overview: bool = False,
     max_links: int | None = None,
-    spot_band: tuple[float, float] | None = None,
+    spot_band: PriceBand | None = None,
 ) -> None:
     # Aggregate diagnostics describe the complete graph, before chart sampling.
     a, b, c, d = st.columns(4)
@@ -431,7 +424,7 @@ def _render_snapshot(
         _display_node_details(snapshot, prefix)
 
 
-def _pruning_comparison( stored: list[tuple[str, LatticeSnapshot | None, str | None]]) -> None:
+def _pruning_comparison(stored: list[tuple[str, Snapshot | None, str | None]]) -> None:
     """Show savings only when comparing the SAME trinomial family."""
     available = {
         name: snap for name, snap, error in stored if snap is not None and error is None
@@ -461,12 +454,12 @@ def _pruning_comparison( stored: list[tuple[str, LatticeSnapshot | None, str | N
 
 
 
-def apply_reference_to_explorer( state: MutableMapping[str, Any]) -> tuple[bool, tuple[str, ...]]:
+def apply_reference_to_explorer(state: MutableMapping[str, Any]) -> tuple[bool, tuple[str, ...]]:
     """Explicit exact import, preserving lattice-model and view choices."""
     return import_saved_reference(state, "Explore lattice")
 
 
-def explorer_dividend_defaults( seed: PricingRequest | None) -> tuple[bool, float, float]:
+def explorer_dividend_defaults(seed: PricingRequest | None) -> tuple[bool, float, float]:
     """Match the existing single-dividend editor without discarding cashflows."""
     # Display only genuine priced nodes and edges without altering the lattice.
     if seed is None or not seed.dividends:
@@ -556,12 +549,12 @@ def _explorer_graph_fields(right: object) -> tuple:
 
 
 
-def _has_ghost_allocations(snapshots: list[LatticeSnapshot]) -> bool:
+def _has_ghost_allocations(snapshots: list[Snapshot]) -> bool:
     """Whether All allocated differs from Connected only in this run."""
     return any(snapshot.unreached_allocations > 0 for snapshot in snapshots)
 
 
-def _explorer_display_controls(snapshots: list[LatticeSnapshot]) -> tuple[str, bool]:
+def _explorer_display_controls(snapshots: list[Snapshot]) -> tuple[str, bool]:
     """Choose focus and allocated-node visibility without rebuilding lattices."""
     aa, bb = st.columns([1, 1.25])
     view = aa.radio(
@@ -581,7 +574,7 @@ def _explorer_display_controls(snapshots: list[LatticeSnapshot]) -> tuple[str, b
     return view, show_all
 
 
-def _explorer_local_window(snapshots: list[LatticeSnapshot]) -> tuple:
+def _explorer_local_window(snapshots: list[Snapshot]) -> tuple:
     """Choose the exact time/spot corridor and genuine visible transitions."""
     max_steps = min(snap.request.steps for snap in snapshots)
     center = st.slider(
@@ -624,7 +617,7 @@ def _explorer_local_window(snapshots: list[LatticeSnapshot]) -> tuple:
     return step_window, spot_band, show_links
 
 
-def _explorer_detail_controls(snapshots: list[LatticeSnapshot]) -> tuple:
+def _explorer_detail_controls(snapshots: list[Snapshot]) -> tuple:
     """Configure fast overview or exact local window; preserve widget order."""
     large_tree = any(snap.request.steps >= 20 for snap in snapshots)
     step_window = None
@@ -653,9 +646,9 @@ def _explorer_detail_controls(snapshots: list[LatticeSnapshot]) -> tuple:
 
 
 def _explorer_shared_domain(
-    snapshots: list[LatticeSnapshot], show_all: bool,
-    step_window: tuple[int, int] | None, spot_band: tuple[float, float] | None,
-) -> tuple[float, float]:
+    snapshots: list[Snapshot], show_all: bool,
+    step_window: StepWindow | None, spot_band: PriceBand | None,
+) -> PriceBand:
     """Use the same price-axis bounds across both comparison panels."""
     domain = _plot_domain(snapshots, show_all, step_window)
     if spot_band is not None:
@@ -666,7 +659,7 @@ def _explorer_shared_domain(
 
 
 def _explorer_plot_panels(
-    stored: list, snapshots: list[LatticeSnapshot], view: str,
+    stored: list, snapshots: list[Snapshot], view: str,
     show_all: bool, step_window: tuple | None, spot_band: tuple | None,
     overview: bool, show_links: bool,
 ) -> None:
@@ -728,7 +721,7 @@ def _build_explorer_model_snapshots(
     base: PricingRequest,
     first: str,
     second: str,
-) -> list[tuple[str, LatticeSnapshot | None, str | None]]:
+) -> list[tuple[str, Snapshot | None, str | None]]:
     """Construct both independent lattices and preserve failure reporting."""
     results: list[tuple[str, LatticeSnapshot | None, str | None]] = []
     # Display only genuine priced nodes and edges without altering the lattice.
@@ -764,7 +757,7 @@ def _store_explorer_snapshots(base: PricingRequest, first: str, second: str) -> 
         st.session_state["diagnostics_last_source"] = "Explore lattice"
 
 
-def render_lattice_explorer_page(*, embedded: bool = False) -> None:
+def render_lattice_explorer_page( embedded: bool = False) -> None:
     """Render the small-grid explorer within or outside Model Diagnostics."""
     if not embedded:
         _render_explorer_heading()

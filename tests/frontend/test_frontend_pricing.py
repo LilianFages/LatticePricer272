@@ -40,6 +40,9 @@ from frontend.model_selection import (
 from frontend.pricing_service import MODELS, PricingInputError, PricingRequest
 
 
+# Shared annotations for readable, short function signatures.
+CashSchedule = tuple[DividendInput, ...]
+
 # test_frontend_pricing.py (tests preserved)
 # Check nonnegative prices, populated references and coherent lattice sizes.
 @pytest.mark.parametrize("model", MODELS)
@@ -178,7 +181,7 @@ def _matching_engines(request: PricingRequest) -> tuple[PricingResult, PricingRe
             price_contract(request, algorithm="Backward"))
 
 
-def _assert_same_lattice_accounting( recursive: PricingResult, backward: PricingResult) -> None:
+def _assert_same_lattice_accounting(recursive: PricingResult, backward: PricingResult) -> None:
     """Compare graph allocation and pruned edges independently of price."""
     assert recursive.reachable_nodes == backward.reachable_nodes
     assert recursive.allocated_nodes == backward.allocated_nodes
@@ -195,8 +198,8 @@ MODELS = (
 )
 
 
-def _make_request(model: str, option_type: str, exercise: str, *,
-    dividends: tuple[DividendInput, ...] = (),
+def _make_request(model: str, option_type: str, exercise: str,
+    dividends: CashSchedule = (),
     steps: int = 14,
 ) -> PricingRequest:
     return PricingRequest(
@@ -473,9 +476,7 @@ def test_terminal_step_caps_are_algorithm_specific(algorithm: str, limit: int) -
 @pytest.mark.parametrize(("algorithm", "limit"), [
     ("Recursive", 700), ("Backward", 1000),
 ])
-def test_terminal_rejects_excessive_N_before_build(
-    monkeypatch: pytest.MonkeyPatch, algorithm: str, limit: int,
-) -> None:
+def test_terminal_rejects_excessive_N_before_build(monkeypatch: pytest.MonkeyPatch, algorithm: str, limit: int) -> None:
     def _unexpected_build(request: PricingRequest) -> None:
         raise AssertionError("Invalid depth must not allocate lattice nodes")
 
@@ -488,9 +489,7 @@ def test_terminal_rejects_excessive_N_before_build(
 @pytest.mark.parametrize(("algorithm", "limit"), [
     ("Recursive", 700), ("Backward", 1000),
 ])
-def test_terminal_accepts_limit_with_stubbed_engine(
-    monkeypatch: pytest.MonkeyPatch, algorithm: str, limit: int,
-) -> None:
+def test_terminal_accepts_limit_with_stubbed_engine(monkeypatch: pytest.MonkeyPatch, algorithm: str, limit: int) -> None:
     import sys
     from types import SimpleNamespace
     import frontend.pricing_service as service
@@ -522,13 +521,13 @@ def test_high_depth_risk_uses_terminal_validation() -> None:
     assert snapshot.base.price == 4.25
 
 
-def test_high_depth_spot_sensitivity_preserves_backward_algorithm( monkeypatch: pytest.MonkeyPatch) -> None:
+def test_high_depth_spot_sensitivity_preserves_backward_algorithm(monkeypatch: pytest.MonkeyPatch) -> None:
     from types import SimpleNamespace
     from frontend.pricing_service import compute_spot_sensitivity
 
     selected: list[str] = []
 
-    def _fake_price(request: PricingRequest, *, algorithm: str) -> SimpleNamespace:
+    def _fake_price(request: PricingRequest, algorithm: str) -> SimpleNamespace:
         selected.append(algorithm)
         return SimpleNamespace(price=request.spot / 10)
 

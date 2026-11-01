@@ -68,8 +68,7 @@ def count_allocated_nodes(request: PricingRequest) -> int:
     return count
 
 
-def peak_python_memory_mib(request: PricingRequest, *, pricer: PricingFunction = price_contract,
-) -> tuple[float, float]:
+def peak_python_memory_mib(request: PricingRequest, pricer: PricingFunction = price_contract) -> tuple[float, float]:
     """Price once under tracemalloc, independently of latency measurements."""
     if tracemalloc.is_tracing():
         raise RuntimeError("An external tracemalloc session is already active.")
@@ -159,7 +158,6 @@ def efficiency_study(
     repetitions: int = 3,
     # Count real allocations independently of timing and memory measurements.
     measure_memory: bool = False,
-    *,
     pricer: PricingFunction = price_contract,
     allocation_counter: Callable[[PricingRequest], int] = count_allocated_nodes,
     memory_probe: Callable[[PricingRequest], tuple[float, float]] = peak_python_memory_mib,

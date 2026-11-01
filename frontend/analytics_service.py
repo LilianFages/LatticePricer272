@@ -62,7 +62,10 @@ class StabilityObservation:
     status: str
 
 
-def _check_models( models: Sequence[str], *, max_count: int = 5) -> tuple[str, ...]:
+# Shared annotations for readable, short function signatures.
+SpotPair = tuple[float | None, float | None, str | None]
+
+def _check_models(models: Sequence[str], max_count: int = 5) -> tuple[str, ...]:
     if not models or len(models) > max_count or len(set(models)) != len(models):
         # Reuse the same contract specification for each numerical sweep.
         raise PricingInputError("Choose 1–5 distinct pricing models.")
@@ -188,9 +191,7 @@ def convergence_study(
 
 
 # Preserve measured Greek stability and finite-difference conventions.
-def _spot_pair(
-    request: PricingRequest, bump_pct: float, pricer: PricingFunction,
-) -> tuple[float | None, float | None, str | None]:
+def _spot_pair(request: PricingRequest, bump_pct: float, pricer: PricingFunction) -> SpotPair:
     h = request.spot*bump_pct/100
     a = _evaluate(replace(request, spot=request.spot-h), -h, pricer)
     b = _evaluate(replace(request, spot=request.spot+h), +h, pricer)
@@ -200,7 +201,7 @@ def _spot_pair(
 
 
 def _stability_at(
-    request: PricingRequest, *, dimension: str, coordinate: float,
+    request: PricingRequest, dimension: str, coordinate: float,
     delta_pct: float, gamma_pct: float | None, pricer: PricingFunction,
 ) -> StabilityObservation:
     base = _evaluate(request, request.spot, pricer)
@@ -266,7 +267,7 @@ def greeks_stability(
     return tuple(rows)
 
 
-def observations_csv( rows: Sequence[PricingObservation], *, reference: float | None = None, label: str = "") -> str:
+def observations_csv(rows: Sequence[PricingObservation], reference: float | None = None, label: str = "") -> str:
     buf = io.StringIO()
     out = csv.writer(buf)
     out.writerow(["model", "coordinate", "price", "runtime_ms", "status",

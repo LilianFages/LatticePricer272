@@ -29,7 +29,7 @@ from frontend.research_contract import (
 
 
 
-def _model_select(key: str, *, default: tuple[str, ...]) -> tuple[str, ...]:
+def _model_select(key: str, default: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(st.multiselect("Models to compare", MODELS, default=default, key=key))
 
 
@@ -40,7 +40,7 @@ def _threshold(key: str) -> float:
                         format_func=lambda x: "off" if not x else f"{x:.0e}")
 
 
-def _line_chart(data: pd.DataFrame, *, x: str, y: str, group: str,
+def _line_chart(data: pd.DataFrame, x: str, y: str, group: str,
     x_label: str, y_label: str, log_y: bool = False, height: int = 310,
 ) -> alt.Chart:
     scale = alt.Scale(type="log", zero=False) if log_y else alt.Scale(zero=False)
@@ -213,7 +213,7 @@ def _accuracy_cost_tooltips() -> list:
             "Pareto candidate:N"]
 
 
-def _accuracy_cost_chart(rows: pd.DataFrame, *, pareto_only: bool, gap_label: str) -> alt.LayerChart:
+def _accuracy_cost_chart(rows: pd.DataFrame, pareto_only: bool, gap_label: str) -> alt.LayerChart:
     """Plot all observed points plus the *global* nondominated envelope.
 
     The dashed segments are visual guides between sampled settings; they are
@@ -266,7 +266,7 @@ def _render_accuracy_target_result(points: tuple, target: float) -> None:
                    f"Full model name: {winner.model}.")
 
 
-def _observed_accuracy_cost_frame( points: tuple[AccuracyCostPoint, ...]) -> pd.DataFrame:
+def _observed_accuracy_cost_frame(points: tuple[AccuracyCostPoint, ...]) -> pd.DataFrame:
     """Keep the observed price/runtime/Pareto schema stable for charts and CSV."""
     return pd.DataFrame([{
         "Model": p.model, "N": p.steps, "Premium (€)": p.premium,
