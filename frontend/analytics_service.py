@@ -65,6 +65,19 @@ class StabilityObservation:
 # Shared annotations for readable, short function signatures.
 SpotPair = tuple[float | None, float | None, str | None]
 
+# Local type aliases keep adapter signatures readable and fully annotated.
+Req = PricingRequest
+PN = ParameterName
+Ms = Sequence[str]
+Si = Sequence[int]
+F = float | None
+PF = PricingFunction
+Rows = tuple[PricingObservation, ...]
+Conv = ConvergenceResult
+Stab = StabilityObservation
+pc = price_contract
+rm = "Trinomial · Allocation pruning"
+
 def _check_models(models: Sequence[str], max_count: int = 5) -> tuple[str, ...]:
     if not models or len(models) > max_count or len(set(models)) != len(models):
         # Reuse the same contract specification for each numerical sweep.
@@ -103,14 +116,7 @@ def _validate_shared_contract(request: PricingRequest) -> None:
     validate_request(base)
 
 
-def sensitivity_sweep(
-    request: PricingRequest,
-    parameter: ParameterName,
-    models: Sequence[str],
-    count: int = 9,
-    amplitude: float | None = None,
-    pricer: PricingFunction = price_contract,
-) -> tuple[PricingObservation, ...]:
+def sensitivity_sweep(request: Req, parameter: PN, models: Ms, count: int = 9, amplitude: F = None, pricer: PF = pc) -> Rows:
     """Independent repricings across one parameter; one failure never stops others.
 
     ``amplitude`` is an absolute half-width except for spot/maturity, where
@@ -147,13 +153,7 @@ def _validate_convergence_grid(grid: tuple, numerical_reference_model: str) -> N
         raise PricingInputError("Unknown reference model.")
 
 
-def convergence_study(
-    request: PricingRequest,
-    models: Sequence[str],
-    steps_grid: Sequence[int],
-    numerical_reference_model: str = "Trinomial · Allocation pruning",
-    pricer: PricingFunction = price_contract,
-) -> ConvergenceResult:
+def convergence_study(request: Req, models: Ms, steps_grid: Si, numerical_reference_model: str = rm, pricer: PF = pc) -> Conv:
     """Price and runtime vs N. Error for non-European cases is a *gap*, not truth.
 
     The numerical reference is the selected reference model at the highest
@@ -200,10 +200,7 @@ def _spot_pair(request: PricingRequest, bump_pct: float, pricer: PricingFunction
     return a.price, b.price, None
 
 
-def _stability_at(
-    request: PricingRequest, dimension: str, coordinate: float,
-    delta_pct: float, gamma_pct: float | None, pricer: PricingFunction,
-) -> StabilityObservation:
+def _stability_at(request: Req, dimension: str, coordinate: float, delta_pct: float, gamma_pct: F, pricer: PF) -> Stab:
     base = _evaluate(request, request.spot, pricer)
     if gamma_pct is None:
         # Return status indicators without silently dropping failed points.

@@ -29,10 +29,15 @@ from src.risk.hedging import StockHedge, calculate_stock_hedge
 # Shared annotations for readable, short function signatures.
 RiskPricer = PricingFunction
 
-def compute_desk_risk(request: PricingRequest,
-    bumps: GreekBumps | None = None,
-    pricer: RiskPricer = price_contract,
-) -> DeskRiskSnapshot:
+# Local type aliases keep adapter signatures readable and fully annotated.
+R = PricingRequest
+N = GreekName
+B = GreekBumps | None
+PF = RiskPricer
+pc = price_contract
+Curve = tuple[GreekCurvePoint, ...]
+
+def compute_desk_risk(request: R, bumps: B = None, pricer: PF = pc) -> DeskRiskSnapshot:
     """Inject existing validators and pricing engine into the shared core."""
     # Keep the core engine injectable so test doubles and notebook adapters work.
     return _compute_desk_risk(
@@ -44,13 +49,7 @@ def compute_desk_risk(request: PricingRequest,
     )
 
 
-def compute_greek_curve(request: PricingRequest,
-    name: GreekName,
-    count: int = 5,
-    span_pct: float = 10.0,
-    bumps: GreekBumps | None = None,
-    pricer: RiskPricer = price_contract,
-) -> tuple[GreekCurvePoint, ...]:
+def compute_greek_curve(request: R, name: N, count: int = 5, span_pct: float = 10.0, bumps: B = None, pricer: PF = pc) -> Curve:
     """Retain lazy-curve semantics and monkeypatchable risk callbacks."""
     # Greeks are evaluated lazily through the existing shared implementation.
     return _compute_greek_curve(

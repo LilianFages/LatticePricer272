@@ -40,6 +40,15 @@ Snapshot = LatticeSnapshot
 StepWindow = tuple[int, int]
 PriceBand = tuple[float, float]
 
+# Local type aliases keep adapter signatures readable and fully annotated.
+S = Snapshot
+W = StepWindow | None
+I = int | None
+DF = pd.DataFrame
+SS = list[Snapshot]
+B = PriceBand | None
+Stored = list[tuple[str, Snapshot | None, str | None]]
+
 def _plot_domain(snapshots: list[Snapshot], all_allocated: bool, step_window: StepWindow | None = None) -> PriceBand:
     """One initial Y-axis domain for BOTH models, independent of focus mode."""
     # The domain includes unreachable allocations only when explicitly requested.
@@ -57,10 +66,7 @@ def _plot_domain(snapshots: list[Snapshot], all_allocated: bool, step_window: St
 
 
 
-def _lattice_chart_data(snapshot: Snapshot, include_links: bool = True,
-    step_window: StepWindow | None = None,
-    max_links: int | None = None,
-) -> tuple:
+def _lattice_chart_data(snapshot: S, include_links: bool = True, step_window: W = None, max_links: I = None) -> tuple:
     """Map actual graph objects to plotted node and edge data."""
     nodes = pd.DataFrame([
         {
@@ -128,9 +134,7 @@ def _lattice_edge_marks(snapshot: Snapshot, domain: tuple, links: list, step_win
 
 
 
-def _lattice_point_marks(snapshot: Snapshot, nodes: pd.DataFrame, x: alt.X, y: alt.Y,
-    *, step_window: StepWindow | None = None, overview: bool = False,
-) -> tuple:
+def _lattice_point_marks(snapshot: S, nodes: DF, x: alt.X, y: alt.Y, step_window: W = None, overview: bool = False) -> tuple:
     """Keep unreached allocation and option state visual marks."""
     # Ghost marks correspond to actually allocated nodes with no positive-mass path.
     ghosts = pd.DataFrame([
@@ -645,10 +649,7 @@ def _explorer_detail_controls(snapshots: list[Snapshot]) -> tuple:
     return step_window, spot_band, overview, show_links
 
 
-def _explorer_shared_domain(
-    snapshots: list[Snapshot], show_all: bool,
-    step_window: StepWindow | None, spot_band: PriceBand | None,
-) -> PriceBand:
+def _explorer_shared_domain(snapshots: SS, show_all: bool, step_window: W, spot_band: B) -> PriceBand:
     """Use the same price-axis bounds across both comparison panels."""
     domain = _plot_domain(snapshots, show_all, step_window)
     if spot_band is not None:
@@ -717,11 +718,7 @@ def _render_explorer_geometry(stored: list) -> None:
 
 
 
-def _build_explorer_model_snapshots(
-    base: PricingRequest,
-    first: str,
-    second: str,
-) -> list[tuple[str, Snapshot | None, str | None]]:
+def _build_explorer_model_snapshots(base: PricingRequest, first: str, second: str) -> Stored:
     """Construct both independent lattices and preserve failure reporting."""
     results: list[tuple[str, LatticeSnapshot | None, str | None]] = []
     # Display only genuine priced nodes and edges without altering the lattice.

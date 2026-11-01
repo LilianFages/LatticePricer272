@@ -43,11 +43,11 @@ def _representative_layer(group: pd.DataFrame, per_step: int) -> pd.DataFrame:
     return group.iloc[_representative_indices(group, per_step)]
 
 
-def select_chart_rows(frame: pd.DataFrame,
-    step_window: tuple[int, int] | None = None,
-    overview: bool = False,
-    per_step: int = 10,
-) -> pd.DataFrame:
+# Local type aliases keep adapter signatures readable and fully annotated.
+W = tuple[int, int] | None
+T = tuple[float, ...]
+
+def select_chart_rows(frame: pd.DataFrame, step_window: W = None, overview: bool = False, per_step: int = 10) -> pd.DataFrame:
     """Select a readable chart, preserving exercise-state boundaries per step.
 
     Overview: at most ``per_step`` representative points per time layer.
@@ -70,9 +70,7 @@ def select_chart_rows(frame: pd.DataFrame,
     return pd.concat(chunks, ignore_index=True)
 
 
-def overview_step_indices(final_step: int, max_layers: int = 40,
-    event_times: tuple[float, ...] = (), maturity: float = 1.0,
-) -> frozenset[int]:
+def overview_step_indices(final_step: int, max_layers: int = 40, event_times: T = (), maturity: float = 1.0) -> frozenset[int]:
     """Keep a sparse global timeline, including maturity and dividend dates.
 
     The right/left neighboring time steps of each ex-date are retained, so
