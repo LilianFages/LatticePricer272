@@ -297,7 +297,7 @@ def test_dated_request_uses_terminal_algorithm_limit( algorithm: str, limit: int
 def test_dated_request_rejects_excessive_terminal_depth( algorithm: str, over_limit: int) -> None:
     from frontend.pricing_service import terminal_step_limit
 
-    # Calendar conversion must honor the cap of the selected terminal engine.
+    # Check calendar validation against the chosen terminal algorithm cap.
     maximum = terminal_step_limit(algorithm)
     with pytest.raises(CalendarInputError, match=f"between 1 and {maximum}"):
         dated_request(

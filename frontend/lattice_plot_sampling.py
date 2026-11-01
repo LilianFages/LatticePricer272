@@ -43,7 +43,12 @@ def _representative_layer(group: pd.DataFrame, per_step: int) -> pd.DataFrame:
     return group.iloc[_representative_indices(group, per_step)]
 
 
-def select_chart_rows(frame: pd.DataFrame, *, step_window: tuple[int, int] | None = None, overview: bool = False, per_step: int = 10) -> pd.DataFrame:
+def select_chart_rows(frame: pd.DataFrame,
+    *,
+    step_window: tuple[int, int] | None = None,
+    overview: bool = False,
+    per_step: int = 10,
+) -> pd.DataFrame:
     """Select a readable chart, preserving exercise-state boundaries per step.
 
     Overview: at most ``per_step`` representative points per time layer.
@@ -66,7 +71,9 @@ def select_chart_rows(frame: pd.DataFrame, *, step_window: tuple[int, int] | Non
     return pd.concat(chunks, ignore_index=True)
 
 
-def overview_step_indices(final_step: int, *, max_layers: int = 40, event_times: tuple[float, ...] = (), maturity: float = 1.0) -> frozenset[int]:
+def overview_step_indices(final_step: int, *, max_layers: int = 40,
+    event_times: tuple[float, ...] = (), maturity: float = 1.0,
+) -> frozenset[int]:
     """Keep a sparse global timeline, including maturity and dividend dates.
 
     The right/left neighboring time steps of each ex-date are retained, so
@@ -112,7 +119,9 @@ def _sample_transition_layer( edges: list[VisualEdge], budget: int) -> list[Visu
     return [layer[i] for i in sorted(indices)]
 
 
-def _group_visible_transitions( edges: tuple[VisualEdge, ...], step_window: tuple[int, int] | None) -> dict[int, list[VisualEdge]]:
+def _group_visible_transitions(
+    edges: tuple[VisualEdge, ...], step_window: tuple[int, int] | None
+) -> dict[int, list[VisualEdge]]:
     """Group actual edges by time before allocating per-interval display budgets."""
     groups: dict[int, list[VisualEdge]] = {}
     for edge in edges:
@@ -124,7 +133,10 @@ def _group_visible_transitions( edges: tuple[VisualEdge, ...], step_window: tupl
     return groups
 
 
-def representative_transitions( edges: tuple[VisualEdge, ...], *, step_window: tuple[int, int] | None = None, max_links: int = 240) -> tuple[VisualEdge, ...]:
+def representative_transitions(
+    edges: tuple[VisualEdge, ...], *, step_window: tuple[int, int] | None = None,
+    max_links: int = 240,
+) -> tuple[VisualEdge, ...]:
     """Bound the *drawn* real edges, retaining broad time/spot coverage.
 
     The full immutable snapshot.edges is untouched. The selected lines are

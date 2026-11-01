@@ -33,7 +33,7 @@ TARGETS = (
     "research_lab",
 )
 
-# A transfer check records compatibility without mutating the reference ticket.
+# Assess transfers without mutating the saved reference contract.
 @dataclass(frozen=True, slots=True)
 class TransferCheck:
     """Whether the complete request fits the target's current input controls."""

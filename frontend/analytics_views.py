@@ -40,7 +40,9 @@ def _threshold(key: str) -> float:
                         format_func=lambda x: "off" if not x else f"{x:.0e}")
 
 
-def _line_chart(data: pd.DataFrame, *, x: str, y: str, group: str, x_label: str, y_label: str, log_y: bool = False, height: int = 310) -> alt.Chart:
+def _line_chart(data: pd.DataFrame, *, x: str, y: str, group: str,
+    x_label: str, y_label: str, log_y: bool = False, height: int = 310,
+) -> alt.Chart:
     scale = alt.Scale(type="log", zero=False) if log_y else alt.Scale(zero=False)
     return (alt.Chart(data).mark_line(point=alt.OverlayMarkDef(size=55), strokeWidth=2.2)
             .encode(x=alt.X(f"{x}:Q", title=x_label, scale=alt.Scale(zero=False)),
@@ -111,7 +113,8 @@ def _sensitivity_input_form() -> tuple:
     return (fields, models, parameter, n, multiplier, count, threshold, submitted)
 
 
-def _run_sensitivity_on_submit(submitted: bool, fields: dict, models: tuple, n: int, threshold: float, parameter: str, multiplier: float, count: int) -> None:
+def _run_sensitivity_on_submit(submitted: bool, fields: dict, models: tuple, n: int,
+    threshold: float, parameter: str, multiplier: float, count: int) -> None:
     if submitted:
         st.session_state.pop("qa_sens_result", None)
         try:
@@ -396,7 +399,10 @@ def _greeks_stability_input_form() -> tuple:
     return fields, model, bump_grid, n_grid, threshold, gamma_mode, submitted
 
 
-def _run_submitted_greek_study( fields: dict, model: str, bump_grid: tuple, n_grid: tuple, threshold: float, gamma_mode: str) -> None:
+def _run_submitted_greek_study(
+    fields: dict, model: str, bump_grid: tuple, n_grid: tuple,
+    threshold: float, gamma_mode: str,
+) -> None:
     """Price one explicitly submitted experiment, retaining the existing cache."""
     # Keep each measurement tied to the submitted experiment and cached result.
     from frontend.research_risk_numerics import n_sweep_gamma_bump

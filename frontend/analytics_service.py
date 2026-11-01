@@ -100,7 +100,14 @@ def _validate_shared_contract(request: PricingRequest) -> None:
     validate_request(base)
 
 
-def sensitivity_sweep( request: PricingRequest, parameter: ParameterName, models: Sequence[str], count: int = 9, amplitude: float | None = None, pricer: PricingFunction = price_contract) -> tuple[PricingObservation, ...]:
+def sensitivity_sweep(
+    request: PricingRequest,
+    parameter: ParameterName,
+    models: Sequence[str],
+    count: int = 9,
+    amplitude: float | None = None,
+    pricer: PricingFunction = price_contract,
+) -> tuple[PricingObservation, ...]:
     """Independent repricings across one parameter; one failure never stops others.
 
     ``amplitude`` is an absolute half-width except for spot/maturity, where
@@ -137,7 +144,13 @@ def _validate_convergence_grid(grid: tuple, numerical_reference_model: str) -> N
         raise PricingInputError("Unknown reference model.")
 
 
-def convergence_study( request: PricingRequest, models: Sequence[str], steps_grid: Sequence[int], numerical_reference_model: str = "Trinomial · Allocation pruning", pricer: PricingFunction = price_contract) -> ConvergenceResult:
+def convergence_study(
+    request: PricingRequest,
+    models: Sequence[str],
+    steps_grid: Sequence[int],
+    numerical_reference_model: str = "Trinomial · Allocation pruning",
+    pricer: PricingFunction = price_contract,
+) -> ConvergenceResult:
     """Price and runtime vs N. Error for non-European cases is a *gap*, not truth.
 
     The numerical reference is the selected reference model at the highest
@@ -175,7 +188,9 @@ def convergence_study( request: PricingRequest, models: Sequence[str], steps_gri
 
 
 # Preserve measured Greek stability and finite-difference conventions.
-def _spot_pair( request: PricingRequest, bump_pct: float, pricer: PricingFunction) -> tuple[float | None, float | None, str | None]:
+def _spot_pair(
+    request: PricingRequest, bump_pct: float, pricer: PricingFunction,
+) -> tuple[float | None, float | None, str | None]:
     h = request.spot*bump_pct/100
     a = _evaluate(replace(request, spot=request.spot-h), -h, pricer)
     b = _evaluate(replace(request, spot=request.spot+h), +h, pricer)
@@ -184,7 +199,10 @@ def _spot_pair( request: PricingRequest, bump_pct: float, pricer: PricingFunctio
     return a.price, b.price, None
 
 
-def _stability_at( request: PricingRequest, *, dimension: str, coordinate: float, delta_pct: float, gamma_pct: float | None, pricer: PricingFunction) -> StabilityObservation:
+def _stability_at(
+    request: PricingRequest, *, dimension: str, coordinate: float,
+    delta_pct: float, gamma_pct: float | None, pricer: PricingFunction,
+) -> StabilityObservation:
     base = _evaluate(request, request.spot, pricer)
     if gamma_pct is None:
         # Return status indicators without silently dropping failed points.
@@ -208,7 +226,13 @@ def _stability_at( request: PricingRequest, *, dimension: str, coordinate: float
                                 else "; ".join(x for x in (issue_d,issue_g) if x))
 
 
-def greeks_stability( request: PricingRequest, delta_bumps_pct: Sequence[float] = DEFAULT_SPOT_BUMP_GRID, steps_grid: Sequence[int] = DEFAULT_STEPS_GRID, gamma_bump_pct: float | None = None, pricer: PricingFunction = price_contract) -> tuple[StabilityObservation, ...]:
+def greeks_stability(
+    request: PricingRequest,
+    delta_bumps_pct: Sequence[float] = DEFAULT_SPOT_BUMP_GRID,
+    steps_grid: Sequence[int] = DEFAULT_STEPS_GRID,
+    gamma_bump_pct: float | None = None,
+    pricer: PricingFunction = price_contract,
+) -> tuple[StabilityObservation, ...]:
     """Compare Delta/Gamma versus spot-bump width and N independently.
 
     Bump sweep uses equal widths for Delta and Gamma so both can be compared.

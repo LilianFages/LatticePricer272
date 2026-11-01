@@ -35,7 +35,10 @@ COLORS = {
 }
 
 
-def _plot_domain( snapshots: list[LatticeSnapshot], all_allocated: bool, step_window: tuple[int, int] | None = None) -> tuple[float, float]:
+def _plot_domain(
+    snapshots: list[LatticeSnapshot], all_allocated: bool,
+    step_window: tuple[int, int] | None = None,
+) -> tuple[float, float]:
     """One initial Y-axis domain for BOTH models, independent of focus mode."""
     # The domain includes unreachable allocations only when explicitly requested.
     prices = [
@@ -52,7 +55,10 @@ def _plot_domain( snapshots: list[LatticeSnapshot], all_allocated: bool, step_wi
 
 
 
-def _lattice_chart_data(snapshot: LatticeSnapshot, *, include_links: bool = True, step_window: tuple[int, int] | None = None, max_links: int | None = None) -> tuple:
+def _lattice_chart_data(snapshot: LatticeSnapshot, *, include_links: bool = True,
+    step_window: tuple[int, int] | None = None,
+    max_links: int | None = None,
+) -> tuple:
     """Map actual graph objects to plotted node and edge data."""
     nodes = pd.DataFrame([
         {
@@ -104,7 +110,10 @@ def _lattice_axes( snapshot: LatticeSnapshot, domain: tuple, step_window: tuple[
     return x, y
 
 
-def _lattice_edge_marks( snapshot: LatticeSnapshot, domain: tuple, links: list, step_window: tuple[int, int] | None = None) -> tuple:
+def _lattice_edge_marks(
+    snapshot: LatticeSnapshot, domain: tuple, links: list,
+    step_window: tuple[int, int] | None = None,
+) -> tuple:
     """Preserve exact positive-probability edge identities when requested."""
     x, y = _lattice_axes(snapshot, domain, step_window)
     frame = pd.DataFrame(links)
@@ -120,7 +129,9 @@ def _lattice_edge_marks( snapshot: LatticeSnapshot, domain: tuple, links: list, 
 
 
 
-def _lattice_point_marks(snapshot: LatticeSnapshot, nodes: pd.DataFrame, x: alt.X, y: alt.Y, *, step_window: tuple[int, int] | None = None, overview: bool = False) -> tuple:
+def _lattice_point_marks(snapshot: LatticeSnapshot, nodes: pd.DataFrame, x: alt.X, y: alt.Y,
+    *, step_window: tuple[int, int] | None = None, overview: bool = False,
+) -> tuple:
     """Keep unreached allocation and option state visual marks."""
     # Ghost marks correspond to actually allocated nodes with no positive-mass path.
     ghosts = pd.DataFrame([
@@ -177,7 +188,17 @@ def _lattice_point_marks(snapshot: LatticeSnapshot, nodes: pd.DataFrame, x: alt.
     return ghost_chart, active_points
 
 
-def _chart( snapshot: LatticeSnapshot, domain: tuple[float, float], *, all_allocated: bool, height: int, show_links: bool = True, step_window: tuple[int, int] | None = None, overview: bool = False, max_links: int | None = None) -> alt.Chart:
+def _chart(
+    snapshot: LatticeSnapshot,
+    domain: tuple[float, float],
+    *,
+    all_allocated: bool,
+    height: int,
+    show_links: bool = True,
+    step_window: tuple[int, int] | None = None,
+    overview: bool = False,
+    max_links: int | None = None,
+) -> alt.Chart:
     """Sparse global chart or complete local priced nodes; never reprice."""
     if overview and show_links:
         raise ValueError("Full links require the detailed time-window view.")
@@ -289,7 +310,11 @@ def _display_node_details(snapshot: LatticeSnapshot, prefix: str) -> None:
     _inspect_connected_node(snapshot, prefix)
 
 
-def focus_lattice_snapshot( snapshot: LatticeSnapshot, step_window: tuple[int, int], spot_band: tuple[float, float]) -> LatticeSnapshot:
+def focus_lattice_snapshot(
+    snapshot: LatticeSnapshot,
+    step_window: tuple[int, int],
+    spot_band: tuple[float, float],
+) -> LatticeSnapshot:
     """Induced priced subgraph inside an exact time/spot rectangle.
 
     Unlike link sampling, this preserves ALL real edges with BOTH endpoints
@@ -317,7 +342,10 @@ def focus_lattice_snapshot( snapshot: LatticeSnapshot, step_window: tuple[int, i
                    allocated_geometry=allocated)
 
 
-def _render_lattice_explanations( snapshot: LatticeSnapshot, all_allocated: bool, show_links: bool, overview: bool, spot_band: tuple[float, float] | None) -> None:
+def _render_lattice_explanations(
+    snapshot: LatticeSnapshot, all_allocated: bool, show_links: bool,
+    overview: bool, spot_band: tuple[float, float] | None,
+) -> None:
     """Keep graph disclosures and dividend exercise qualifications together."""
     if spot_band is not None:
         st.caption("Focused lattice · every node and connection inside the "
@@ -346,7 +374,19 @@ def _render_lattice_explanations( snapshot: LatticeSnapshot, all_allocated: bool
 
 
 # The renderer reuses a priced snapshot; display focus never changes valuation.
-def _render_snapshot( snapshot: LatticeSnapshot, prefix: str, domain: tuple[float, float], *, all_allocated: bool, expanded: bool, show_links: bool = True, step_window: tuple[int, int] | None = None, overview: bool = False, max_links: int | None = None, spot_band: tuple[float, float] | None = None) -> None:
+def _render_snapshot(
+    snapshot: LatticeSnapshot,
+    prefix: str,
+    domain: tuple[float, float],
+    *,
+    all_allocated: bool,
+    expanded: bool,
+    show_links: bool = True,
+    step_window: tuple[int, int] | None = None,
+    overview: bool = False,
+    max_links: int | None = None,
+    spot_band: tuple[float, float] | None = None,
+) -> None:
     # Aggregate diagnostics describe the complete graph, before chart sampling.
     a, b, c, d = st.columns(4)
     a.metric("Model premium", f"{snapshot.model_price:.6f} €")
@@ -612,7 +652,10 @@ def _explorer_detail_controls(snapshots: list[LatticeSnapshot]) -> tuple:
     return step_window, spot_band, overview, show_links
 
 
-def _explorer_shared_domain( snapshots: list[LatticeSnapshot], show_all: bool, step_window: tuple[int, int] | None, spot_band: tuple[float, float] | None) -> tuple[float, float]:
+def _explorer_shared_domain(
+    snapshots: list[LatticeSnapshot], show_all: bool,
+    step_window: tuple[int, int] | None, spot_band: tuple[float, float] | None,
+) -> tuple[float, float]:
     """Use the same price-axis bounds across both comparison panels."""
     domain = _plot_domain(snapshots, show_all, step_window)
     if spot_band is not None:
@@ -622,7 +665,11 @@ def _explorer_shared_domain( snapshots: list[LatticeSnapshot], show_all: bool, s
     return domain
 
 
-def _explorer_plot_panels( stored: list, snapshots: list[LatticeSnapshot], view: str, show_all: bool, step_window: tuple | None, spot_band: tuple | None, overview: bool, show_links: bool) -> None:
+def _explorer_plot_panels(
+    stored: list, snapshots: list[LatticeSnapshot], view: str,
+    show_all: bool, step_window: tuple | None, spot_band: tuple | None,
+    overview: bool, show_links: bool,
+) -> None:
     """Display actual stored lattice snapshots on one comparable domain."""
     max_links = None  # Display every genuine edge inside the local corridor.
     domain = _explorer_shared_domain(
@@ -677,7 +724,11 @@ def _render_explorer_geometry(stored: list) -> None:
 
 
 
-def _build_explorer_model_snapshots( base: PricingRequest, first: str, second: str) -> list[tuple[str, LatticeSnapshot | None, str | None]]:
+def _build_explorer_model_snapshots(
+    base: PricingRequest,
+    first: str,
+    second: str,
+) -> list[tuple[str, LatticeSnapshot | None, str | None]]:
     """Construct both independent lattices and preserve failure reporting."""
     results: list[tuple[str, LatticeSnapshot | None, str | None]] = []
     # Display only genuine priced nodes and edges without altering the lattice.

@@ -195,7 +195,10 @@ MODELS = (
 )
 
 
-def _make_request(model: str, option_type: str, exercise: str, *, dividends: tuple[DividendInput, ...] = (), steps: int = 14) -> PricingRequest:
+def _make_request(model: str, option_type: str, exercise: str, *,
+    dividends: tuple[DividendInput, ...] = (),
+    steps: int = 14,
+) -> PricingRequest:
     return PricingRequest(
         model=model,
         option_type=option_type,
@@ -470,12 +473,14 @@ def test_terminal_step_caps_are_algorithm_specific(algorithm: str, limit: int) -
 @pytest.mark.parametrize(("algorithm", "limit"), [
     ("Recursive", 700), ("Backward", 1000),
 ])
-def test_terminal_rejects_excessive_N_before_build( monkeypatch: pytest.MonkeyPatch, algorithm: str, limit: int) -> None:
+def test_terminal_rejects_excessive_N_before_build(
+    monkeypatch: pytest.MonkeyPatch, algorithm: str, limit: int,
+) -> None:
     def _unexpected_build(request: PricingRequest) -> None:
         raise AssertionError("Invalid depth must not allocate lattice nodes")
 
     monkeypatch.setattr("frontend.pricing_service._build_tree", _unexpected_build)
-    # Reject invalid terminal depth before invoking any lattice construction.
+    # Reject excessive depth before allocating any lattice nodes.
     with pytest.raises(PricingInputError, match=f"between 1 and {limit}"):
         price_contract(PricingRequest(steps=limit + 1), algorithm=algorithm)
 
@@ -483,14 +488,16 @@ def test_terminal_rejects_excessive_N_before_build( monkeypatch: pytest.MonkeyPa
 @pytest.mark.parametrize(("algorithm", "limit"), [
     ("Recursive", 700), ("Backward", 1000),
 ])
-def test_terminal_accepts_limit_with_stubbed_engine( monkeypatch: pytest.MonkeyPatch, algorithm: str, limit: int) -> None:
+def test_terminal_accepts_limit_with_stubbed_engine(
+    monkeypatch: pytest.MonkeyPatch, algorithm: str, limit: int,
+) -> None:
     import sys
     from types import SimpleNamespace
     import frontend.pricing_service as service
 
     # Test routing and bounds only; never allocate the million-node full tree.
     tree = SimpleNamespace(root=Node(100.0))
-    # Stub only the costly tree construction, keeping routing checks unchanged.
+    # Stub the costly build to isolate algorithm routing and depth checks.
     monkeypatch.setattr(service, "_build_tree", lambda request: tree)
     monkeypatch.setattr(service.RecursivePricer, "price",
                         lambda self, tree, option: 4.25)

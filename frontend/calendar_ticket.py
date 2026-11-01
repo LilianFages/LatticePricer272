@@ -69,12 +69,19 @@ def parse_dated_dividends(frame: pd.DataFrame) -> tuple[DatedCashDividend, ...]:
             raise CalendarInputError(
                 f"Dividend row {row_number}: positive amount requires an ex-date."
             )
-        # Retain only validated, strictly positive cash events.
+        # Keep only validated positive events; ignore zero cashflows.
         events.append(DatedCashDividend(_as_date(date_raw, row_number), amount))
     return tuple(sorted(events, key=lambda item: item.ex_date))
 
 
-def dated_request( base: PricingRequest, valuation_date: date, expiry_date: date, dated_dividends: tuple[DatedCashDividend, ...], *, max_steps: int = MAX_STEPS) -> tuple[PricingRequest, ContractCalendar]:
+def dated_request(
+    base: PricingRequest,
+    valuation_date: date,
+    expiry_date: date,
+    dated_dividends: tuple[DatedCashDividend, ...],
+    *,
+    max_steps: int = MAX_STEPS,
+) -> tuple[PricingRequest, ContractCalendar]:
     """Derive the exact model ticket, leaving the original immutable ticket intact."""
     calendar = ContractCalendar(valuation_date, expiry_date, dated_dividends)
     resolved = calendar.resolve()
@@ -84,7 +91,7 @@ def dated_request( base: PricingRequest, valuation_date: date, expiry_date: date
         dividends=tuple(DividendInput(item.time, item.amount)
                         for item in resolved.dividends),
     )
-    # Apply the chosen workspace limit after mapping calendar times to year fractions.
+    # Check the chosen depth limit after converting the contract dates.
     try:
         validate_request(request, max_steps=max_steps)
     except PricingInputError as exc:

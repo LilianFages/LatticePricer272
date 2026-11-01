@@ -15,7 +15,9 @@ from frontend.pricing_service import DividendInput, PricingInputError
 InputContext = Literal["terminal", "analysis"]
 
 
-def _validated_dividend_amount( raw_amount: object, raw_time: object, row_number: int, context: InputContext) -> float | None:
+def _validated_dividend_amount(
+    raw_amount: object, raw_time: object, row_number: int, context: InputContext
+) -> float | None:
     """Validate a cash amount; fully blank rows return None."""
     if pd.isna(raw_amount):
         if not pd.isna(raw_time):

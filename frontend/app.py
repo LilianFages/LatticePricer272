@@ -142,7 +142,9 @@ def _render_market_inputs(prefix: str) -> tuple[float, float, float, float]:
     return spot, strike, vol_pct, rate_pct
 
 
-def _render_pricing_setup( prefix: str, model_family: str, pruning_enabled: bool, algorithm: str) -> tuple[int, str, float]:
+def _render_pricing_setup(
+    prefix: str, model_family: str, pruning_enabled: bool, algorithm: str,
+) -> tuple[int, str, float]:
     """Render the pricing algorithm, lattice depth and pruning configuration."""
     st.markdown(
         '<div class="desk-section">04 · Model & numerical setup</div>',
@@ -220,7 +222,11 @@ def _render_dividend_editor( prefix: str, date_mode: str, valuation_date: date |
     return dividend_frame
 
 
-def _apply_ticket_dividends( request: PricingRequest, frame: pd.DataFrame, date_mode: str, valuation_date: date | None, expiry_date: date | None, algorithm: str) -> PricingRequest:
+def _apply_ticket_dividends(
+    request: PricingRequest, frame: pd.DataFrame, date_mode: str,
+    valuation_date: date | None, expiry_date: date | None,
+    algorithm: str,
+) -> PricingRequest:
     """Attach either the dated or relative cashflows to the validated ticket."""
     if date_mode == "Calendar dates":
         dates = parse_dated_dividends(frame)
@@ -233,7 +239,12 @@ def _apply_ticket_dividends( request: PricingRequest, frame: pd.DataFrame, date_
     return replace(request, dividends=read_dividend_table(frame))
 
 
-def _make_ticket_request( model_family: str, pruning_enabled: bool, pruning_method: str, pruning_threshold: float, spot: float, strike: float, rate_pct: float, vol_pct: float, maturity: float | None, steps: int, option_type: str, exercise: str) -> PricingRequest:
+def _make_ticket_request(
+    model_family: str, pruning_enabled: bool, pruning_method: str,
+    pruning_threshold: float, spot: float, strike: float, rate_pct: float,
+    vol_pct: float, maturity: float | None, steps: int, option_type: str,
+    exercise: str,
+) -> PricingRequest:
     """Resolve model selection and normalize percent inputs just once on submit."""
     model, pruning_threshold = resolve_model_selection(
         model_family, pruning_enabled, pruning_method, pruning_threshold,

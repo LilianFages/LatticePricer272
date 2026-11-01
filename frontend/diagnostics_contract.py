@@ -24,7 +24,13 @@ THRESHOLDS = {
 }
 
 
-def plan_handoff( request: PricingRequest, destination: str, *, steps: int | None = None, threshold: float | None = None) -> tuple[PricingRequest, tuple[str, ...]]:
+def plan_handoff(
+    request: PricingRequest,
+    destination: str,
+    *,
+    steps: int | None = None,
+    threshold: float | None = None,
+) -> tuple[PricingRequest, tuple[str, ...]]:
     """Compute the *explicitly proposed* target ticket without modifying state."""
     if destination not in VIEW_TO_TARGET:
         raise ValueError(f"Unknown Model Diagnostics view: {destination}.")
